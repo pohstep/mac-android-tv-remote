@@ -40,6 +40,18 @@ A macOS menu bar remote for Sony Bravia / Android TV: D-pad, apps, inputs, volum
 3. The pre-shared key is stored in your **login keychain**. The first time, macOS asks to let the app use it: enter your Mac password and click **Always Allow**.
 4. For keyboard-as-remote, grant **System Settings → Privacy & Security → Accessibility** to the app, then quit and reopen it.
 
+## First launch (unsigned app)
+
+The app is not signed with an Apple developer account, so macOS blocks it the first time. Allow it once:
+
+- **macOS 13 or 14:** in Applications, right-click **Pohstep Remote**, choose **Open**, then **Open** again.
+- **macOS 15 or newer:** try to open it, then go to **System Settings → Privacy & Security** and click **Open Anyway**.
+- **Or, in Terminal:**
+
+  ```sh
+  xattr -dr com.apple.quarantine "/Applications/Pohstep Remote.app"
+  ```
+
 ## Build from source
 
 No Xcode needed: the Command Line Tools (`swiftc`) are enough.
