@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Pohstep Remote</title>
+  <style>
+    :root {
+      --bg: #16171a;
+      --button: #2c2f36;
+      --text: #f3f1ea;
+      --muted: #9c988f;
+      --green: #8fceab;
+      --amber: #e2b15a;
+      --coral: #e08b72;
+      --line: #3a3d44;
+      --title: #2a2c31;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; background: #1c1e22; color: var(--text); font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
+    body.shot { padding: 0 !important; background: #ff00aa; }
+    body.shot .window, body.shot .settings { box-shadow: none; border-radius: 0; }
+    body.stage { min-height: 100vh; display: flex; align-items: flex-start; justify-content: center; padding: 28px 16px 40px; }
+    .menubar {
+      display: none;
+      position: fixed; top: 0; left: 0; right: 0; height: 28px;
+      background: #2c2c2e; color: #f2f2f2; font-size: 13px;
+      align-items: center; padding: 0 12px; gap: 16px;
+    }
+    body.with-bar .menubar { display: flex; }
+    body.with-bar { padding-top: 48px; }
+    .menu-spacer { flex: 1; }
+    .menu-icon { width: 16px; height: 16px; display: grid; place-items: center; }
+    .menu-icon.on { color: var(--amber); }
+    .window {
+      width: 308px;
+      background: var(--bg);
+      border: 1px solid #000;
+      border-radius: 10px;
+      overflow: hidden;
+      box-shadow: 0 18px 50px rgba(0,0,0,.35);
+    }
+    .titlebar {
+      height: 28px; background: var(--title); display: flex; align-items: center; justify-content: center;
+      position: relative; color: #d5d2cb; font-size: 12px; font-weight: 600;
+    }
+    .lights { position: absolute; left: 10px; display: flex; gap: 6px; }
+    .lights i { width: 10px; height: 10px; border-radius: 50%; display: block; }
+    .lights i:nth-child(1) { background: #ff5f57; }
+    .lights i:nth-child(2) { background: #febc2e; }
+    .lights i:nth-child(3) { background: #28c840; }
+    .amber-bar { height: 3px; background: var(--amber); }
+    .body { padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+    h1 { margin: 0; font-size: 18px; font-weight: 600; }
+    .eyebrow { margin: 2px 0 0; color: var(--muted); font-size: 11px; font-weight: 500; letter-spacing: .01em; }
+    .row { display: flex; align-items: center; gap: 8px; }
+    .grow { flex: 1; }
+    .power {
+      width: 40px; height: 40px; border-radius: 50%; background: var(--button); color: var(--coral);
+      display: grid; place-items: center; border: 0;
+    }
+    .status { display: flex; gap: 8px; align-items: flex-start; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 4px; flex: none; }
+    .status strong { display: block; font-size: 13px; }
+    .status p, .hint, .banner, .legend { margin: 2px 0 0; font-size: 11px; color: var(--muted); line-height: 1.35; }
+    .banner.bad { color: var(--coral); }
+    .toggle {
+      text-align: left; border: 0; border-radius: 12px; padding: 10px 12px; width: 100%;
+      background: var(--button); color: var(--text); display: flex; gap: 8px; align-items: center;
+    }
+    .toggle.on { background: var(--amber); color: #16171a; }
+    .toggle strong { display: block; font-size: 13px; }
+    .toggle span { display: block; font-size: 11px; margin-top: 2px; }
+    .dpad { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+    .pad, .ok, .key {
+      border: 0; color: var(--text); background: var(--button); border-radius: 10px;
+      display: grid; place-items: center;
+    }
+    .pad { width: 52px; height: 40px; }
+    .ok { width: 64px; height: 64px; border-radius: 50%; background: var(--text); color: #16171a; font-weight: 700; font-size: 15px; }
+    .keys3, .keys2 { display: grid; gap: 8px; }
+    .keys3 { grid-template-columns: 1fr 1fr 1fr; }
+    .keys2 { grid-template-columns: 1fr 1fr; }
+    .key { min-height: 40px; font-size: 10px; font-weight: 500; gap: 2px; }
+    .key svg { display: block; margin: 0 auto 2px; }
+    .apps { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .apps button, .ghost {
+      border: 0; background: var(--button); color: var(--text); border-radius: 12px;
+      min-height: 36px; font-size: 13px; font-weight: 500;
+    }
+    .section-label { font-size: 11px; font-weight: 600; color: var(--muted); margin: 0; }
+    .legend { color: var(--amber); }
+    .footer { display: flex; align-items: center; gap: 8px; }
+    .addr { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px; color: var(--muted); }
+    .quit { border: 0; background: transparent; color: var(--muted); font-size: 12px; font-weight: 500; }
+    .settings {
+      width: 480px; background: #1e1f23; border-radius: 10px; overflow: hidden;
+      border: 1px solid #000; box-shadow: 0 18px 50px rgba(0,0,0,.35);
+    }
+    .settings .body { gap: 16px; }
+    .settings h2 { margin: 0 0 8px; font-size: 13px; }
+    .field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
+    .field span { font-size: 11px; color: var(--muted); }
+    .field div, .pkg {
+      background: #111214; border: 1px solid #3a3d44; border-radius: 6px; padding: 7px 8px; font-size: 13px; color: var(--text);
+    }
+    .check { background: #3a3d44; color: var(--text); border: 0; border-radius: 6px; padding: 6px 10px; font-size: 12px; }
+    .note { font-size: 12px; color: var(--muted); line-height: 1.4; margin: 0; }
+    label.wol { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; margin-bottom: 8px; }
+    .app-line { display: grid; grid-template-columns: 120px 1fr; gap: 8px; margin-bottom: 6px; }
+  </style>
+</head>
+<body>
+  <div class="menubar">
+    <strong>Pohstep Remote</strong>
+    <span>File</span><span>Edit</span><span>View</span>
+    <span class="menu-spacer"></span>
+    <span class="menu-icon" id="menuIcon"></span>
+    <span>Tue 12:41</span>
+  </div>
+  <div id="stage"></div>
+  <script>
+    const icons = {
+      power: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M8 2.2v5.2"/><path d="M4.1 4.4a5.2 5.2 0 1 0 7.8 0"/></svg>',
+      up: '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 9l4-4 4 4"/></svg>',
+      down: '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 5l4 4 4-4"/></svg>',
+      left: '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M9 3L5 7l4 4"/></svg>',
+      right: '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M5 3l4 4-4 4"/></svg>',
+      back: '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 3L2.5 6.5 6 10"/><path d="M3 6.5h6.2A2.3 2.3 0 0 1 11.5 8.8v1"/></svg>',
+      home: '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 6.2L7 2.2l5 4V12H9V8.5H5V12H2z"/></svg>',
+      play: '<svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><path d="M3 2.5v9l4-2.2V4.7L3 2.5zM8 4.7v4.6L11.2 7 8 4.7z"/></svg>',
+      mute: '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2.5 5.2h2L7.2 3v8L4.5 8.8h-2z"/><path d="M9.2 5.2l3 3.6M12.2 5.2l-3 3.6"/></svg>',
+      moon: '<svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><path d="M7.2 1.4a5.2 5.2 0 1 0 5.4 7.6A4.4 4.4 0 0 1 7.2 1.4z"/></svg>',
+      volDown: '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2.2 5.2h2L7 3v8L4.2 8.8h-2z"/><path d="M9 5.6a2.6 2.6 0 0 1 0 2.8"/></svg>',
+      volUp: '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 5.2h2L6.6 3v8L4 8.8H2z"/><path d="M8.4 4.4a3.6 3.6 0 0 1 0 5.2"/><path d="M10 2.8a5.4 5.4 0 0 1 0 8.4"/></svg>',
+      keyboard: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1.5" y="3.5" width="13" height="9" rx="1.4"/><path d="M4 6.5h.01M6.5 6.5h.01M9 6.5h.01M11.5 6.5h.01M4 9h8"/></svg>',
+      tv: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1.5" y="3" width="13" height="9" rx="1.3"/><path d="M6 14h4"/></svg>',
+      gear: '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="7" cy="7" r="2"/><path d="M7 1.6v1.4M7 11v1.4M1.6 7H3M11 7h1.4M3 3l1 1M10 10l1 1M11 3l-1 1M4 10l-1 1"/></svg>'
+    };
+
+    const apps = ["SmartTube", "Netflix", "Disney+", "VLC", "Spotify", "TV Bro"];
+
+    function key(icon, label) {
+      return `<button class="key">${icons[icon]}<div>${label}</div></button>`;
+    }
+
+    function remote(state) {
+      const keyboard = state.keyboard;
+      const dot = state.dot;
+      return `
+        <div class="window">
+          <div class="titlebar"><span class="lights"><i></i><i></i><i></i></span>Pohstep Remote</div>
+          ${keyboard ? '<div class="amber-bar"></div>' : ''}
+          <div class="body">
+            <div class="row">
+              <div class="grow"><h1>Bravia</h1><p class="eyebrow">pohstep remote</p></div>
+              <button class="power" aria-label="Wake">${icons.power}</button>
+            </div>
+            <div class="status">
+              <div class="dot" style="background:${dot}"></div>
+              <div><strong>${state.title}</strong><p>${state.detail}</p></div>
+            </div>
+            <button class="toggle ${keyboard ? "on" : ""}">
+              <div class="grow"><strong>${keyboard ? "Keyboard mode on" : "Keyboard mode off"}</strong>
+              <span>${keyboard ? "⌃⌥K  ·  keys go to the TV" : "⌃⌥K lets the keyboard drive the TV"}</span></div>
+              ${icons.keyboard}
+            </button>
+            ${state.banner ? `<p class="banner ${state.bad ? "bad" : ""}">${state.banner}</p>` : ""}
+            <div class="dpad">
+              <button class="pad">${icons.up}</button>
+              <div class="row">
+                <button class="pad">${icons.left}</button>
+                <button class="ok">OK</button>
+                <button class="pad">${icons.right}</button>
+              </div>
+              <button class="pad">${icons.down}</button>
+            </div>
+            <div class="keys2">${key("back","Back")}${key("home","Home")}</div>
+            <div class="keys3">${key("play","Play")}${key("mute","Mute")}${key("moon","Sleep")}</div>
+            <div class="keys2">${key("volDown","Vol down")}${key("volUp","Vol up")}</div>
+            <p class="section-label">Apps</p>
+            <div class="apps">${apps.map(name => `<button>${name}</button>`).join("")}</div>
+            ${keyboard ? `<p class="legend">Arrows move · return OK · esc and delete back · ⌃H home · ⌃⌥K toggles this</p>` : ""}
+            <div class="footer">
+              <span class="addr">${state.address}</span>
+              <span class="grow"></span>
+              ${icons.gear}
+              <button class="quit">Quit</button>
+            </div>
+          </div>
+        </div>`;
+    }
+
+    function settings() {
+      const rows = [
+        ["SmartTube", "org.smarttube.stable"],
+        ["Netflix", "com.netflix.ninja"],
+        ["Disney+", "com.disney.disneyplus"],
+        ["VLC", "org.videolan.vlc"],
+        ["Spotify", "com.spotify.tv.android"],
+        ["TV Bro", "com.phlox.tvwebbrowser"]
+      ];
+      return `
+        <div class="settings">
+          <div class="titlebar"><span class="lights"><i></i><i></i><i></i></span>Pohstep Remote Settings</div>
+          <div class="body">
+            <p class="note">The address is an IP or a hostname. Tailscale MagicDNS works once this Mac and the Bravia are on the tailnet. Wake-on-LAN only travels a local network, or a subnet that forwards broadcasts.</p>
+            <div>
+              <h2>TV</h2>
+              <div class="field"><span>Address</span><div>bravia.tailnet.ts.net</div></div>
+              <div class="field"><span>Port</span><div>5555</div></div>
+              <div class="field"><span>adb path</span><div style="color:#9c988f">Blank finds Homebrew's adb</div></div>
+              <button class="check">Check connection</button>
+            </div>
+            <div>
+              <h2>Wake on LAN</h2>
+              <label class="wol"><input type="checkbox" checked /> Send a magic packet when the TV doesn't answer adb</label>
+              <div class="field"><span>MAC address</span><div>A4:F1:E8:2C:10:6B</div></div>
+              <div class="field"><span>Broadcast</span><div>255.255.255.255</div></div>
+              <p class="note">Power sends KEYCODE_WAKEUP when the TV is connected. From standby it sends this packet instead.</p>
+            </div>
+            <div>
+              <h2>Apps</h2>
+              ${rows.map(([n,p]) => `<div class="app-line"><div class="pkg">${n}</div><div class="pkg">${p}</div></div>`).join("")}
+            </div>
+          </div>
+        </div>`;
+    }
+
+    const states = {
+      connected: {
+        keyboard: false, dot: "#8fceab", title: "Connected",
+        detail: "192.0.2.42:5555", address: "192.0.2.42:5555", banner: ""
+      },
+      keyboard: {
+        keyboard: true, dot: "#8fceab", title: "Connected",
+        detail: "192.0.2.42:5555", address: "192.0.2.42:5555",
+        banner: "Keyboard mode on"
+      },
+      "adb-missing": {
+        keyboard: false, dot: "#e08b72", title: "adb isn't installed",
+        detail: "adb isn't installed. Install it with Homebrew: brew install android-platform-tools",
+        address: "192.0.2.42:5555",
+        banner: "adb isn't installed. Install it with Homebrew: brew install android-platform-tools",
+        bad: true
+      },
+      refused: {
+        keyboard: false, dot: "#e08b72", title: "The TV refused the connection",
+        detail: "The TV refused the connection to 192.0.2.42:5555. On the Sony, turn on network debugging and check the address.",
+        address: "192.0.2.42:5555", banner: "", bad: true
+      },
+      idle: {
+        keyboard: false, dot: "#9c988f", title: "No TV address yet",
+        detail: "Add an IP or Tailscale hostname in Settings.",
+        address: "no address", banner: ""
+      }
+    };
+
+    const params = new URLSearchParams(location.search);
+    const name = params.get("state") || "connected";
+    if (params.get("shot") === "1") document.body.classList.add("shot");
+    const stage = document.getElementById("stage");
+    if (name === "menubar") {
+      document.body.classList.add("with-bar", "stage");
+      document.getElementById("menuIcon").innerHTML = icons.tv;
+      stage.innerHTML = remote(states.connected);
+    } else if (name === "menubar-keys") {
+      document.body.classList.add("with-bar", "stage");
+      document.getElementById("menuIcon").classList.add("on");
+      document.getElementById("menuIcon").innerHTML = icons.keyboard;
+      stage.innerHTML = remote(states.keyboard);
+    } else if (name === "settings") {
+      document.body.classList.add("stage");
+      stage.innerHTML = settings();
+    } else {
+      document.body.classList.add("stage");
+      stage.innerHTML = remote(states[name] || states.connected);
+    }
+  </script>
+</body>
+</html>

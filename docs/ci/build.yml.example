@@ -1,0 +1,17 @@
+name: build
+on:
+  push:
+  pull_request:
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build (ad-hoc signed, no install)
+        run: NO_INSTALL=1 ARCH=arm64 scripts/build-local.sh
+      - name: Zip
+        run: ditto -c -k --keepParent "dist/Mac Android TV Remote.app" dist/Mac-Android-TV-Remote.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Mac-Android-TV-Remote
+          path: dist/Mac-Android-TV-Remote.zip

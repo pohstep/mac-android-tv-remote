@@ -1,0 +1,13 @@
+build/
+dist/
+.build/
+*.log
+*.zip
+settings.json
+apps.json
+*.p12
+*.pem
+.DS_Store
+xcuserdata/
+DerivedData/
+design/screenshots/
