@@ -24,6 +24,7 @@ final class AppModel: ObservableObject {
     @Published var jobRaw = ""
     @Published var jobIsError = false
     @Published var jobBusy = false
+    @Published var jobCancellable = false
     @Published var screenshotPNG: Data?
     #if ZAPBAR_ADVANCED
     @Published var advancedExpanded = false
@@ -61,6 +62,9 @@ final class AppModel: ObservableObject {
     private var hudItem: DispatchWorkItem?
     private var pendingKey = ""
     private var lastSeenWrite = Date.distantPast
+    private let transfers = TransferGate()
+    private let stageLock = NSLock()
+    private var pendingStage: [String] = []
 
     var allowsKeyboardCapture: Bool {
         if BuildMode.sandbox { return false }
@@ -399,11 +403,8 @@ final class AppModel: ObservableObject {
     }
 
     func sendLink(_ raw: String) {
-        beginJob("Sending the link…")
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            guard let self else { return }
-            let report = self.session.sendLink(raw)
-            DispatchQueue.main.async { self.finish(report) }
+        runJob("Sending the link…", cancellable: false) { [weak self] _ in
+            self?.session.sendLink(raw) ?? JobReport(sentence: "Cancelled.", raw: "", isError: true)
         }
     }
 
@@ -412,54 +413,59 @@ final class AppModel: ObservableObject {
     }
 
     func receiveStaged(_ paths: [String]) {
+        let directories = takePendingStages()
         let apks = paths.filter { $0.lowercased().hasSuffix(".apk") }
         guard !apks.isEmpty else {
-            finish(JobReport(sentence: "Drop an app file ending in .apk.", raw: "", isError: true))
+            discard(directories)
+            noteJob(JobReport(sentence: "Drop an app file ending in .apk.", raw: "", isError: true))
             return
         }
-        for path in apks {
-            installApk(at: path)
-        }
+        runInstalls(apks, directories: directories)
     }
 
     func receiveApks(_ urls: [URL]) {
         let apks = urls.filter { $0.path.lowercased().hasSuffix(".apk") }
         guard !apks.isEmpty else {
-            finish(JobReport(sentence: "Drop an app file ending in .apk.", raw: "", isError: true))
+            noteJob(JobReport(sentence: "Drop an app file ending in .apk.", raw: "", isError: true))
             return
         }
+        var paths: [String] = []
         for url in apks {
             let scoped = url.startAccessingSecurityScopedResource()
-            let staged = stageReadableCopy(of: url)
-            if scoped { url.stopAccessingSecurityScopedResource() }
-            guard let staged else {
-                finish(JobReport(sentence: "That file can't be read.", raw: url.lastPathComponent, isError: true))
-                continue
+            if let staged = stageReadableCopy(of: url) {
+                paths.append(staged)
             }
-            installApk(at: staged)
+            if scoped { url.stopAccessingSecurityScopedResource() }
         }
+        let directories = takePendingStages()
+        guard !paths.isEmpty else {
+            discard(directories)
+            noteJob(JobReport(sentence: "That file can't be read.", raw: "", isError: true))
+            return
+        }
+        runInstalls(paths, directories: directories)
     }
 
     func installApk(at path: String) {
-        let name = URL(fileURLWithPath: path).lastPathComponent
-        beginJob("Installing \(name)…")
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            guard let self else { return }
-            let report = self.session.installApk(at: path)
-            DispatchQueue.main.async { self.finish(report) }
-        }
+        runInstalls([path], directories: [])
     }
 
     func takeScreenshot() {
-        beginJob("Taking a screenshot…")
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            guard let self else { return }
+        runJob("Taking a screenshot…", cancellable: false) { [weak self] _ in
+            guard let self else { return JobReport(sentence: "Cancelled.", raw: "", isError: true) }
             let shot = self.session.captureScreenshot()
-            DispatchQueue.main.async {
-                self.screenshotPNG = shot.png
-                self.finish(JobReport(sentence: shot.sentence, raw: shot.raw, isError: shot.isError))
-            }
+            DispatchQueue.main.async { self.screenshotPNG = shot.png }
+            return JobReport(sentence: shot.sentence, raw: shot.raw, isError: shot.isError)
         }
+    }
+
+    func stopAdbServer() {
+        session.stopAdbServer()
+    }
+
+    func cancelJob() {
+        guard jobBusy, jobCancellable else { return }
+        session.cancelTransfer()
     }
 
     func copyScreenshot() {
@@ -474,16 +480,26 @@ final class AppModel: ObservableObject {
 
     func saveScreenshot() {
         guard let png = screenshotPNG else { return }
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.allowsMultipleSelection = false
+        let panel = NSSavePanel()
+        panel.canCreateDirectories = true
         panel.prompt = "Save"
-        panel.message = "Choose a folder for the screenshot."
-        guard panel.runModal() == .OK, let folder = panel.url else { return }
-        let scoped = folder.startAccessingSecurityScopedResource()
-        defer { if scoped { folder.stopAccessingSecurityScopedResource() } }
-        let dest = folder.appendingPathComponent("Zapbar screenshot.png")
+        panel.message = "Save the screenshot."
+        let folder = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+        if let folder {
+            panel.directoryURL = folder
+            let names = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
+            panel.nameFieldStringValue = ScreenshotSave.availableName(existing: Set(names))
+        } else {
+            panel.nameFieldStringValue = ScreenshotSave.defaultName
+        }
+        guard panel.runModal() == .OK, let chosen = panel.url else { return }
+        let scoped = chosen.startAccessingSecurityScopedResource()
+        defer { if scoped { chosen.stopAccessingSecurityScopedResource() } }
+        let parent = chosen.deletingLastPathComponent()
+        let names = Set((try? FileManager.default.contentsOfDirectory(atPath: parent.path)) ?? [])
+        let dest = parent.appendingPathComponent(
+            ScreenshotSave.availableName(existing: names, preferred: chosen.lastPathComponent)
+        )
         do {
             try png.write(to: dest)
             jobLine = "Saved."
@@ -507,47 +523,108 @@ final class AppModel: ObservableObject {
         let scoped = url.startAccessingSecurityScopedResource()
         let staged = stageReadableCopy(of: url)
         if scoped { url.stopAccessingSecurityScopedResource() }
+        let directories = takePendingStages()
         guard let staged else {
-            finish(JobReport(sentence: "That file can't be read.", raw: url.lastPathComponent, isError: true))
+            discard(directories)
+            noteJob(JobReport(sentence: "That file can't be read.", raw: url.lastPathComponent, isError: true))
             return
         }
-        sendFile(at: staged)
+        let name = URL(fileURLWithPath: staged).lastPathComponent
+        runJob("Sending \(name)…", directories: directories, cancellable: true) { [weak self] _ in
+            self?.session.sendFile(at: staged) ?? JobReport(sentence: "Cancelled.", raw: "", isError: true)
+        }
     }
 
-    func sendFile(at path: String) {
-        let name = URL(fileURLWithPath: path).lastPathComponent
-        beginJob("Sending \(name)…")
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            guard let self else { return }
-            let report = self.session.sendFile(at: path)
-            DispatchQueue.main.async { self.finish(report) }
+    private func runInstalls(_ paths: [String], directories: [String]) {
+        guard let first = paths.first else { return }
+        let name = URL(fileURLWithPath: first).lastPathComponent
+        runJob("Installing \(name)…", directories: directories, cancellable: true) { [weak self] token in
+            guard let self else { return JobReport(sentence: "Cancelled.", raw: "", isError: true) }
+            var index = 0
+            return SerialTransfers.run(paths) { path in
+                let file = URL(fileURLWithPath: path).lastPathComponent
+                let clear = index == 0
+                index += 1
+                DispatchQueue.main.async {
+                    if self.transfers.update(token: token, line: "Installing \(file)…") {
+                        self.jobLine = "Installing \(file)…"
+                    }
+                }
+                return self.session.installApk(at: path, clearingCancel: clear)
+            }
         }
+    }
+
+    private func runJob(_ line: String, directories: [String] = [], cancellable: Bool, work: @escaping (UInt) -> JobReport) {
+        guard let token = transfers.begin(line: line, directories: directories) else {
+            discard(directories)
+            jobLine = TransferGate.busySentence
+            jobIsError = true
+            return
+        }
+        jobBusy = true
+        jobCancellable = cancellable
+        jobLine = line
+        jobRaw = ""
+        jobIsError = false
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let report = work(token)
+            DispatchQueue.main.async { self?.complete(token: token, report: report) }
+        }
+    }
+
+    private func complete(token: UInt, report: JobReport) {
+        guard let directories = transfers.finish(token: token) else { return }
+        discard(directories)
+        jobBusy = false
+        jobCancellable = false
+        jobLine = report.sentence
+        jobRaw = report.raw
+        jobIsError = report.isError
+    }
+
+    /// Shows a sentence without clearing a job this call did not start.
+    private func noteJob(_ report: JobReport) {
+        if transfers.busy {
+            jobLine = TransferGate.busySentence
+            jobIsError = true
+            return
+        }
+        jobLine = report.sentence
+        jobRaw = report.raw
+        jobIsError = report.isError
     }
 
     private func stageReadableCopy(of url: URL) -> String? {
-        let dest = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true).appendingPathComponent(url.lastPathComponent)
-        if dest.path == url.path { return url.path }
-        try? FileManager.default.removeItem(at: dest)
+        let directory = ReadableStage.directory(in: NSTemporaryDirectory(), jobID: UUID().uuidString)
         do {
-            try FileManager.default.copyItem(at: url, to: dest)
-            return dest.path
+            let path = try ReadableStage.copy(url: url, into: directory)
+            if path == url.path {
+                ReadableStage.remove(directory)
+                return path
+            }
+            stageLock.lock()
+            pendingStage.append(directory)
+            stageLock.unlock()
+            return path
         } catch {
+            ReadableStage.remove(directory)
             return nil
         }
     }
 
-    private func beginJob(_ line: String) {
-        jobBusy = true
-        jobLine = line
-        jobRaw = ""
-        jobIsError = false
+    private func takePendingStages() -> [String] {
+        stageLock.lock()
+        defer { stageLock.unlock() }
+        let directories = pendingStage
+        pendingStage = []
+        return directories
     }
 
-    private func finish(_ report: JobReport) {
-        jobBusy = false
-        jobLine = report.sentence
-        jobRaw = report.raw
-        jobIsError = report.isError
+    private func discard(_ directories: [String]) {
+        for directory in directories {
+            ReadableStage.remove(directory)
+        }
     }
 
     func selectDevice(_ id: String) {

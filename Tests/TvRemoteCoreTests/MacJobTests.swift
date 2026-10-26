@@ -15,6 +15,9 @@ final class MacJobTests: XCTestCase {
         let fake = FakeRunner()
         let session = connectedSession(fake, temporaryDirectory: "/var/folders/zapbar")
         fake.handler = { arguments in
+            if arguments == ["devices"] {
+                return .success(CommandResult(status: 0, stdout: "List of devices attached\n192.0.2.20:5555\tdevice\n", stderr: ""))
+            }
             if arguments.contains("install") {
                 let raw = "Failure [INSTALL_FAILED_VERSION_DOWNGRADE]\n"
                 return .success(CommandResult(status: 1, stdout: raw, stderr: ""))
@@ -58,7 +61,12 @@ final class MacJobTests: XCTestCase {
         XCTAssertEqual(refused.sentence, "Only web links can be sent. Use http or https.")
         XCTAssertTrue(fake.calls.isEmpty)
 
-        fake.handler = { _ in .success(CommandResult(status: 0, stdout: "Starting: Intent", stderr: "")) }
+        fake.handler = { arguments in
+            if arguments == ["devices"] {
+                return .success(CommandResult(status: 0, stdout: "List of devices attached\n192.0.2.20:5555\tdevice\n", stderr: ""))
+            }
+            return .success(CommandResult(status: 0, stdout: "Starting: Intent", stderr: ""))
+        }
         let sent = session.sendLink("https://example.com/a?b=1&c=2")
         XCTAssertEqual(sent.sentence, "Opened on the TV.")
         XCTAssertFalse(sent.isError)
@@ -67,7 +75,12 @@ final class MacJobTests: XCTestCase {
             ["-s", "192.0.2.20:5555", "shell", "am start -a android.intent.action.VIEW -d 'https://example.com/a?b=1&c=2'"]
         )
 
-        fake.handler = { _ in .success(CommandResult(status: 1, stdout: "", stderr: "Error: Activity not started")) }
+        fake.handler = { arguments in
+            if arguments == ["devices"] {
+                return .success(CommandResult(status: 0, stdout: "List of devices attached\n192.0.2.20:5555\tdevice\n", stderr: ""))
+            }
+            return .success(CommandResult(status: 1, stdout: "", stderr: "Error: Activity not started"))
+        }
         let failed = session.sendLink("https://example.com")
         XCTAssertEqual(failed.sentence, "The TV didn't open that link. It needs a browser.")
         XCTAssertTrue(failed.raw.contains("Activity not started"))
@@ -85,8 +98,9 @@ final class MacJobTests: XCTestCase {
             fallbacks += 1
             return (redPNG, "unused")
         }
-        XCTAssertNil(black.png)
-        XCTAssertEqual(black.sentence, "blank, the TV blocks screenshots for protected video")
+        XCTAssertEqual(black.png, blackPNG)
+        XCTAssertEqual(black.sentence, "The TV may block screenshots of protected video.")
+        XCTAssertFalse(black.isError)
         XCTAssertEqual(fallbacks, 0)
 
         let pulled = ScreenshotCapture.resolve(execOut: Data("broken".utf8)) {
@@ -100,8 +114,9 @@ final class MacJobTests: XCTestCase {
         let stillBlank = ScreenshotCapture.resolve(execOut: Data()) {
             return (blackPNG, "adb: broken pipe")
         }
-        XCTAssertNil(stillBlank.png)
+        XCTAssertEqual(stillBlank.png, blackPNG)
         XCTAssertEqual(stillBlank.sentence, ScreenshotBytes.blankSentence)
+        XCTAssertFalse(stillBlank.isError)
         XCTAssertEqual(stillBlank.raw, "adb: broken pipe")
 
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("zapbar-shot-\(UUID().uuidString)", isDirectory: true)
@@ -109,6 +124,9 @@ final class MacJobTests: XCTestCase {
         let fake = FakeRunner()
         let session = connectedSession(fake, temporaryDirectory: folder.path)
         fake.handler = { arguments in
+            if arguments == ["devices"] {
+                return .success(CommandResult(status: 0, stdout: "List of devices attached\n192.0.2.20:5555\tdevice\n", stderr: ""))
+            }
             if arguments.contains("exec-out") {
                 return .success(CommandResult(status: 0, stdout: "", stderr: "", stdoutData: Data("nope".utf8)))
             }
@@ -127,6 +145,10 @@ final class MacJobTests: XCTestCase {
         XCTAssertFalse(shot.isError)
         XCTAssertTrue(fake.calls.contains { $0.arguments.contains("exec-out") && $0.arguments.contains("screencap") })
         XCTAssertTrue(fake.calls.contains { $0.arguments.contains("pull") && $0.arguments.contains("/sdcard/Download/zapbar-screen.png") })
+        XCTAssertTrue(fake.calls.contains { $0.arguments.joined(separator: " ").contains("rm -f") })
+        if let local = fake.calls.first(where: { $0.arguments.contains("pull") })?.arguments.last {
+            XCTAssertFalse(FileManager.default.fileExists(atPath: local))
+        }
         XCTAssertEqual(fake.calls.first { $0.arguments.contains("exec-out") }?.environment["TMPDIR"], folder.path)
     }
 
@@ -144,6 +166,9 @@ final class MacJobTests: XCTestCase {
         let fake = FakeRunner()
         let session = connectedSession(fake, temporaryDirectory: NSTemporaryDirectory())
         fake.handler = { arguments in
+            if arguments == ["devices"] {
+                return .success(CommandResult(status: 0, stdout: "List of devices attached\n192.0.2.20:5555\tdevice\n", stderr: ""))
+            }
             if arguments.contains("push") {
                 return .success(CommandResult(status: 0, stdout: "1 file pushed", stderr: ""))
             }
@@ -153,7 +178,7 @@ final class MacJobTests: XCTestCase {
         XCTAssertEqual(sent.sentence, "Sent. The TV needs a player to open it.")
         XCTAssertFalse(sent.isError)
         XCTAssertEqual(
-            fake.calls.first?.arguments,
+            fake.calls.first { $0.arguments.contains("push") }?.arguments,
             ["-s", "192.0.2.20:5555", "push", video.path, "/sdcard/Download/My Video.mp4"]
         )
         XCTAssertEqual(
@@ -163,6 +188,9 @@ final class MacJobTests: XCTestCase {
 
         fake.calls = []
         fake.handler = { arguments in
+            if arguments == ["devices"] {
+                return .success(CommandResult(status: 0, stdout: "List of devices attached\n192.0.2.20:5555\tdevice\n", stderr: ""))
+            }
             if arguments.contains("push") {
                 return .success(CommandResult(status: 1, stdout: "", stderr: "adb: error: failed to copy: No space left on device"))
             }
@@ -175,6 +203,9 @@ final class MacJobTests: XCTestCase {
 
         fake.calls = []
         fake.handler = { arguments in
+            if arguments == ["devices"] {
+                return .success(CommandResult(status: 0, stdout: "List of devices attached\n192.0.2.20:5555\tdevice\n", stderr: ""))
+            }
             if arguments.contains("push") {
                 return .success(CommandResult(status: 0, stdout: "1 file pushed", stderr: ""))
             }

@@ -26,6 +26,12 @@ public struct CommandResult: Equatable {
 public protocol CommandRunning {
     func run(_ executable: String, arguments: [String], timeout: TimeInterval) throws -> CommandResult
     func run(_ executable: String, arguments: [String], timeout: TimeInterval, environment: [String: String]) throws -> CommandResult
+    /// Stops the command started by `run`, if one is still running.
+    func cancel()
+}
+
+public extension CommandRunning {
+    func cancel() {}
 }
 
 public enum ConnectOutcome: Equatable {

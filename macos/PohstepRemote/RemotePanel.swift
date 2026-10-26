@@ -195,8 +195,18 @@ struct RemotePanel: View {
                     .disabled(model.screenshotPNG == nil)
                 Button("Send file…") { model.chooseFileToSend() }
                     .disabled(model.jobBusy)
+                if model.jobBusy && model.jobCancellable {
+                    Button("Cancel") { model.cancelJob() }
+                }
             }
             .font(.system(size: 12))
+            if let png = model.screenshotPNG, let image = NSImage(data: png) {
+                Image(nsImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(maxWidth: .infinity, maxHeight: 96)
+                    .accessibilityLabel("Screenshot")
+            }
             Text(dropTargeted ? "Drop the app file to install it." : "Drop an app file here or on the menu bar icon.")
                 .font(.system(size: 11))
                 .foregroundColor(tertiaryInk)

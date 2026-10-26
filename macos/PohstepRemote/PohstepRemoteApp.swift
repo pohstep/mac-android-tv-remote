@@ -87,6 +87,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var globalClick: Any?
     private var localClick: Any?
 
+    func applicationWillTerminate(_ notification: Notification) {
+        model.stopAdbServer()
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         AppearanceLock.applyGlobally()
         monitor = KeyboardMonitor(model: model)

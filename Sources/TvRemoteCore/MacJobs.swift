@@ -53,6 +53,8 @@ public enum InstallExplain {
             return "The TV cancelled the install."
         case "INSTALL_FAILED_MISSING_SHARED_LIBRARY":
             return "The TV is missing a library this app needs."
+        case nil:
+            return "The install didn't finish."
         default:
             return "The TV refused the install."
         }
@@ -86,6 +88,8 @@ public enum LinkSend {
 public enum FileSend {
     public static let playerSentence = "Sent. The TV needs a player to open it."
     public static let playerLeftBehind = "The file is in Downloads. The TV needs a player to open it."
+    /// Push finished and the open command failed. The file is still in Downloads.
+    public static let stayedOnTV = "The file is on the TV in Downloads, but it did not open."
 
     public static func downloadPath(for localPath: String) -> String {
         var name = URL(fileURLWithPath: localPath).lastPathComponent
@@ -135,21 +139,54 @@ public enum FileSend {
 public enum ScreenshotCapture {
     public static let remotePath = "/sdcard/Download/zapbar-screen.png"
 
-    /// A valid picture is returned as-is. A black picture is not. A broken exec-out result uses the fallback bytes.
+    /// A valid PNG, including an all-black frame, is kept. A broken exec-out result uses the fallback bytes.
     public static func resolve(execOut: Data, fallbackRaw: String = "", fallback: () -> (Data, String)) -> ScreenshotResult {
         switch ScreenshotBytes.kind(execOut) {
         case .picture:
             return ScreenshotResult(png: execOut, sentence: "Screenshot ready.", raw: "", isError: false)
         case .blank:
-            return ScreenshotResult(png: nil, sentence: ScreenshotBytes.blankSentence, raw: fallbackRaw, isError: true)
+            return ScreenshotResult(png: execOut, sentence: ScreenshotBytes.blankSentence, raw: "", isError: false)
         case .broken:
             let pulled = fallback()
             switch ScreenshotBytes.kind(pulled.0) {
             case .picture:
                 return ScreenshotResult(png: pulled.0, sentence: "Screenshot ready.", raw: pulled.1, isError: false)
-            case .blank, .broken:
-                return ScreenshotResult(png: nil, sentence: ScreenshotBytes.blankSentence, raw: pulled.1, isError: true)
+            case .blank:
+                return ScreenshotResult(png: pulled.0, sentence: ScreenshotBytes.blankSentence, raw: pulled.1, isError: false)
+            case .broken:
+                return ScreenshotResult(png: nil, sentence: "The screenshot didn't come back.", raw: pulled.1, isError: true)
             }
         }
+    }
+}
+
+public enum ScreenshotSave {
+    public static let defaultName = "Zapbar screenshot.png"
+
+    /// Next free file name. Never returns a name that is already in `existing`.
+    public static func availableName(existing: Set<String>, preferred: String = defaultName) -> String {
+        if !existing.contains(preferred) { return preferred }
+        let url = URL(fileURLWithPath: preferred)
+        let base = url.deletingPathExtension().lastPathComponent
+        let ext = url.pathExtension
+        var number = 2
+        while true {
+            let candidate = ext.isEmpty ? "\(base) \(number)" : "\(base) \(number).\(ext)"
+            if !existing.contains(candidate) { return candidate }
+            number += 1
+            if number > 10000 { return candidate }
+        }
+    }
+}
+
+public enum SerialTransfers {
+    /// Runs `body` on each path, and only starts the next after the previous returns. Stops on the first error.
+    public static func run(_ paths: [String], body: (String) -> JobReport) -> JobReport {
+        var last = JobReport(sentence: "Installed.", raw: "", isError: false)
+        for path in paths {
+            last = body(path)
+            if last.isError { return last }
+        }
+        return last
     }
 }

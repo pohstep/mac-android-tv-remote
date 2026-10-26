@@ -1,7 +1,27 @@
 import Foundation
+#if canImport(Darwin)
+import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 
 public final class ShellRunner: CommandRunning {
+    private let state = NSLock()
+    private var running: Process?
+
     public init() {}
+
+    public func cancel() {
+        state.lock()
+        let process = running
+        state.unlock()
+        guard let process else { return }
+        let pid = process.processIdentifier
+        // SIGKILL. Process.terminate() from another thread does not stop the child.
+        if pid > 0 {
+            _ = kill(pid, SIGKILL)
+        }
+    }
 
     public func run(_ executable: String, arguments: [String], timeout: TimeInterval) throws -> CommandResult {
         try run(executable, arguments: arguments, timeout: timeout, environment: [:])
@@ -42,6 +62,15 @@ public final class ShellRunner: CommandRunning {
         queue.async {
             stderrBox.data = stderrPipe.fileHandleForReading.readDataToEndOfFile()
             group.leave()
+        }
+
+        state.lock()
+        running = process
+        state.unlock()
+        defer {
+            state.lock()
+            if running === process { running = nil }
+            state.unlock()
         }
 
         do {

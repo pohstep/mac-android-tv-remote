@@ -128,6 +128,11 @@ public struct AdbClient {
         try run(AdbCommands.viewFile(serial: serial, fileURL: fileURL, mime: mime), timeout: 20)
     }
 
+    /// Stops the adb server this client started. Waits at most `AdbLaunch.quitWait`.
+    public func killServer() {
+        _ = try? run(["kill-server"], timeout: AdbLaunch.quitWait)
+    }
+
     private func run(_ arguments: [String], timeout override: TimeInterval? = nil) throws -> CommandResult {
         try runner.run(
             adbPath,

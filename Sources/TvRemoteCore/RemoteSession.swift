@@ -32,6 +32,8 @@ public final class RemoteSession {
     private var picture = TvPicture()
     private var sonyBlockedUntil = Date.distantPast
     private var adbLink = false
+    private var cancelFlag = false
+    private var transferRemote: String?
 
     public init(
         settings: Settings,
@@ -452,7 +454,21 @@ public final class RemoteSession {
         }
     }
 
-    public func installApk(at path: String) -> JobReport {
+    /// Stops the adb server for this app. Waits at most `AdbLaunch.quitWait`, then returns.
+    public func stopAdbServer() {
+        guard let path = resolvedAdbPath() else { return }
+        makeClient(path: path).killServer()
+    }
+
+    /// Terminates the adb process for the current install or push. The job removes a partial remote file.
+    public func cancelTransfer() {
+        lock.lock()
+        cancelFlag = true
+        lock.unlock()
+        runner.cancel()
+    }
+
+    public func installApk(at path: String, clearingCancel: Bool = true) -> JobReport {
         let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.lowercased().hasSuffix(".apk") else {
             return JobReport(sentence: "Drop an app file ending in .apk.", raw: "", isError: true)
@@ -463,14 +479,21 @@ public final class RemoteSession {
         guard let serial = debuggingSerial() else {
             return debuggingRequired()
         }
+        armTransfer(remote: nil, resetCancel: clearingCancel)
+        defer { endTransfer() }
+        let client = client()
+        if let blocked = prepareTransfer(client: client, serial: serial) { return blocked }
+        if wasCancelled() { return cancelledJob() }
         do {
-            let result = try client().installPackage(at: trimmed, serial: serial)
+            let result = try client.installPackage(at: trimmed, serial: serial)
+            if wasCancelled() { return cancelledJob() }
             let raw = result.combined.trimmingCharacters(in: .whitespacesAndNewlines)
             let sentence = InstallExplain.sentence(status: result.status, output: raw)
             let failed = sentence != "Installed."
             return JobReport(sentence: sentence, raw: failed ? raw : "", isError: failed)
         } catch {
-            return JobReport(sentence: "The TV refused the install.", raw: errorText(error), isError: true)
+            if wasCancelled() { return cancelledJob() }
+            return failureJob(error)
         }
     }
 
@@ -481,14 +504,22 @@ public final class RemoteSession {
         guard let serial = debuggingSerial() else {
             return debuggingRequired()
         }
+        armTransfer(remote: nil, resetCancel: true)
+        defer { endTransfer() }
+        let client = client()
+        if let blocked = prepareTransfer(client: client, serial: serial) { return blocked }
+        if wasCancelled() { return cancelledJob() }
         do {
-            let result = try client().openLink(url, serial: serial)
+            let result = try client.openLink(url, serial: serial)
+            if wasCancelled() { return cancelledJob() }
             let text = result.combined.trimmingCharacters(in: .whitespacesAndNewlines)
             let sentence = LinkSend.sentence(status: result.status, output: text)
             let failed = sentence != "Opened on the TV."
             return JobReport(sentence: sentence, raw: failed ? text : "", isError: failed)
         } catch {
-            return JobReport(sentence: "The TV didn't open that link. It needs a browser.", raw: errorText(error), isError: true)
+            if wasCancelled() { return cancelledJob() }
+            if isTimeout(error) { return failureJob(error) }
+            return JobReport(sentence: "The TV didn't open that link. It needs a browser.", raw: safeDetail(error), isError: true)
         }
     }
 
@@ -496,15 +527,30 @@ public final class RemoteSession {
         guard let serial = debuggingSerial() else {
             return ScreenshotResult(png: nil, sentence: "This needs a network debugging connection.", raw: "", isError: true)
         }
+        armTransfer(remote: nil, resetCancel: true)
+        defer { endTransfer() }
         let client = client()
+        if let blocked = prepareTransfer(client: client, serial: serial) {
+            return ScreenshotResult(png: nil, sentence: blocked.sentence, raw: blocked.raw, isError: true)
+        }
+        if wasCancelled() { return cancelledScreenshot() }
+        let execData: Data
+        let execRaw: String
         do {
             let exec = try client.captureScreen(serial: serial)
-            return ScreenshotCapture.resolve(execOut: exec.stdoutData, fallbackRaw: exec.combined) {
-                self.pullScreenshot(client: client, serial: serial)
-            }
+            if wasCancelled() { return cancelledScreenshot() }
+            execData = exec.stdoutData
+            execRaw = exec.combined
         } catch {
-            return ScreenshotResult(png: nil, sentence: "The screenshot didn't come back.", raw: errorText(error), isError: true)
+            if wasCancelled() { return cancelledScreenshot() }
+            execData = Data()
+            execRaw = safeDetail(error)
         }
+        let result = ScreenshotCapture.resolve(execOut: execData, fallbackRaw: execRaw) {
+            self.pullScreenshot(client: client, serial: serial)
+        }
+        if wasCancelled() { return cancelledScreenshot() }
+        return result
     }
 
     public func sendFile(at path: String) -> JobReport {
@@ -517,22 +563,54 @@ public final class RemoteSession {
         }
         let remote = FileSend.downloadPath(for: trimmed)
         let mime = FileSend.mimeType(for: trimmed)
+        armTransfer(remote: remote, resetCancel: true)
+        defer { endTransfer() }
         let client = client()
+        if let blocked = prepareTransfer(client: client, serial: serial) { return blocked }
+        if wasCancelled() {
+            removePartial(client: client, remote: remote, serial: serial)
+            return cancelledJob()
+        }
+        let pushed: CommandResult
         do {
-            let pushed = try client.pushFile(localPath: trimmed, remotePath: remote, serial: serial)
-            let pushText = pushed.combined.trimmingCharacters(in: .whitespacesAndNewlines)
-            let pushSentence = FileSend.pushSentence(status: pushed.status, output: pushText)
-            if pushSentence != FileSend.playerSentence {
-                return JobReport(sentence: pushSentence, raw: pushText, isError: true)
+            pushed = try client.pushFile(localPath: trimmed, remotePath: remote, serial: serial)
+        } catch {
+            if wasCancelled() {
+                removePartial(client: client, remote: remote, serial: serial)
+                return cancelledJob()
             }
+            if isTimeout(error) { return failureJob(error) }
+            return JobReport(sentence: "The file didn't reach the TV.", raw: safeDetail(error), isError: true)
+        }
+        if wasCancelled() {
+            removePartial(client: client, remote: remote, serial: serial)
+            return cancelledJob()
+        }
+        let pushText = pushed.combined.trimmingCharacters(in: .whitespacesAndNewlines)
+        let pushSentence = FileSend.pushSentence(status: pushed.status, output: pushText)
+        if pushSentence != FileSend.playerSentence {
+            return JobReport(sentence: pushSentence, raw: pushText, isError: true)
+        }
+        do {
             let opened = try client.openFile(fileURL: FileSend.fileURL(remotePath: remote), mime: mime, serial: serial)
+            if wasCancelled() {
+                removePartial(client: client, remote: remote, serial: serial)
+                return cancelledJob()
+            }
             let openText = opened.combined.trimmingCharacters(in: .whitespacesAndNewlines)
             if AdbOutput.outputIndicatesFailure(openText, status: opened.status) {
                 return JobReport(sentence: FileSend.playerLeftBehind, raw: openText, isError: true)
             }
             return JobReport(sentence: FileSend.playerSentence, raw: "", isError: false)
         } catch {
-            return JobReport(sentence: "The file didn't reach the TV.", raw: errorText(error), isError: true)
+            if wasCancelled() {
+                removePartial(client: client, remote: remote, serial: serial)
+                return cancelledJob()
+            }
+            if isTimeout(error) {
+                return JobReport(sentence: FileSend.stayedOnTV, raw: "", isError: true)
+            }
+            return JobReport(sentence: FileSend.stayedOnTV, raw: safeDetail(error), isError: true)
         }
     }
 
@@ -703,20 +781,105 @@ public final class RemoteSession {
     private func pullScreenshot(client: AdbClient, serial: String) -> (Data, String) {
         let remote = ScreenshotCapture.remotePath
         let local = URL(fileURLWithPath: temporaryDirectory, isDirectory: true)
-            .appendingPathComponent("zapbar-screen.png")
+            .appendingPathComponent("zapbar-screen-\(UUID().uuidString).png")
             .path
+        setTransferRemote(remote)
+        defer {
+            setTransferRemote(nil)
+            try? FileManager.default.removeItem(atPath: local)
+            _ = try? client.removeRemote(remote, serial: serial)
+        }
         var raw = ""
         do {
             let saved = try client.saveScreenshot(remotePath: remote, serial: serial)
             raw += saved.combined
             let pulled = try client.pullFile(remotePath: remote, localPath: local, serial: serial)
             raw += pulled.combined
-            _ = try? client.removeRemote(remote, serial: serial)
             let data = (try? Data(contentsOf: URL(fileURLWithPath: local))) ?? Data()
             return (data, raw.trimmingCharacters(in: .whitespacesAndNewlines))
         } catch {
-            return (Data(), (raw + errorText(error)).trimmingCharacters(in: .whitespacesAndNewlines))
+            return (Data(), (raw + safeDetail(error)).trimmingCharacters(in: .whitespacesAndNewlines))
         }
+    }
+
+    private func prepareTransfer(client: AdbClient, serial: String) -> JobReport? {
+        if wasCancelled() { return cancelledJob() }
+        do {
+            let listed = try client.listDevices()
+            if wasCancelled() { return cancelledJob() }
+            switch AdbOutput.parseDevices(listed.combined, serial: serial) {
+            case .device:
+                return nil
+            case .unauthorized:
+                return JobReport(sentence: Copy.unauthorized(serial: serial), raw: "", isError: true)
+            case .offline, .missing:
+                return JobReport(sentence: Copy.offline(serial: serial), raw: "", isError: true)
+            }
+        } catch {
+            if wasCancelled() { return cancelledJob() }
+            return failureJob(error)
+        }
+    }
+
+    private func failureJob(_ error: Error) -> JobReport {
+        if isTimeout(error) {
+            return JobReport(sentence: Copy.stoppedAnswering, raw: "", isError: true)
+        }
+        if let remote = error as? RemoteError, case .notFound = remote {
+            return JobReport(sentence: Copy.adbMissing(), raw: "", isError: true)
+        }
+        let text = errorText(error)
+        return JobReport(sentence: text, raw: text, isError: true)
+    }
+
+    private func cancelledJob() -> JobReport {
+        JobReport(sentence: "Cancelled.", raw: "", isError: true)
+    }
+
+    private func cancelledScreenshot() -> ScreenshotResult {
+        ScreenshotResult(png: nil, sentence: "Cancelled.", raw: "", isError: true)
+    }
+
+    private func isTimeout(_ error: Error) -> Bool {
+        if let remote = error as? RemoteError, case .timedOut = remote { return true }
+        return false
+    }
+
+    private func safeDetail(_ error: Error) -> String {
+        if isTimeout(error) { return "" }
+        if let remote = error as? RemoteError, case .notFound = remote { return "" }
+        return errorText(error)
+    }
+
+    private func removePartial(client: AdbClient, remote: String, serial: String) {
+        _ = try? client.removeRemote(remote, serial: serial)
+    }
+
+    private func armTransfer(remote: String?, resetCancel: Bool) {
+        lock.lock()
+        if resetCancel { cancelFlag = false }
+        transferRemote = remote
+        lock.unlock()
+    }
+
+    private func endTransfer() {
+        lock.lock()
+        transferRemote = nil
+        lock.unlock()
+    }
+
+    private func setTransferRemote(_ remote: String?) {
+        lock.lock()
+        transferRemote = remote
+        lock.unlock()
+    }
+
+    private func wasCancelled() -> Bool {
+        lock.lock()
+        let value = cancelFlag
+        if value { cancelFlag = false }
+        lock.unlock()
+        return value
     }
 
     private func connectedSerial() -> String? {

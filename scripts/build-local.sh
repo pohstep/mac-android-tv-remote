@@ -80,8 +80,9 @@ if [ "$SANDBOX" = 1 ]; then
   chmod 755 "$APP/Contents/Helpers/adb"
   cp "$NOTICE" "$APP/Contents/Resources/Licenses/adb-NOTICE.txt"
   # Sign the helper first. Do not use --deep: it would replace the helper entitlements.
-  codesign --force --sign "$SIGN" --entitlements macos/PohstepRemote/adb-helper.entitlements "$APP/Contents/Helpers/adb"
-  codesign --force --sign "$SIGN" --entitlements macos/PohstepRemote/Zapbar.entitlements "$APP"
+  # Hardened runtime on both signatures. Entitlements stay as they are.
+  codesign --force --options runtime --sign "$SIGN" --entitlements macos/PohstepRemote/adb-helper.entitlements "$APP/Contents/Helpers/adb"
+  codesign --force --options runtime --sign "$SIGN" --entitlements macos/PohstepRemote/Zapbar.entitlements "$APP"
 else
   codesign --force --deep --sign "$SIGN" "$APP"
 fi

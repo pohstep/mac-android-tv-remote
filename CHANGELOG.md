@@ -13,6 +13,7 @@
 - Paste a web link, or press `⌃⌥L`. Screenshot to the clipboard or a chosen folder. Send a file to Downloads. A black or unreadable screenshot is reported as blocked protected video. Sending a file needs a player on the TV.
 - Clean-up with undo is built and excluded from the release build until Jim says go.
 - The app icon and the menu bar glyph are the approved zap mark. The panel header and the first setup step show the Zapbar wordmark.
+- Transfers run one at a time, with Cancel on an install or a file send. A sandboxed build uses its own adb port and a hardened runtime. A black screenshot is kept, with a note that the TV may block protected video.
 
 ## 1.0.1 — 2026-10-26
 

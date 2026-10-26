@@ -35,6 +35,8 @@
 		<string>_adb-tls-connect._tcp</string>
 		<string>_adb-tls-pairing._tcp</string>
 	</array>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Zapbar looks for TVs on your local network.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSPrincipalClass</key>

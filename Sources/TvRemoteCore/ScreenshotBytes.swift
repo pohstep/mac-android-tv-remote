@@ -13,9 +13,9 @@ private func pngUncompress(
     _ sourceLen: UInt
 ) -> Int32
 
-/// PNG bytes from `screencap -p`. A black frame or a broken file is not shown.
+/// PNG bytes from `screencap -p`. A valid image is kept, including an all-black frame.
 public enum ScreenshotBytes {
-    public static let blankSentence = "blank, the TV blocks screenshots for protected video"
+    public static let blankSentence = "The TV may block screenshots of protected video."
 
     public enum Kind: Equatable {
         case picture
@@ -73,12 +73,12 @@ public enum ScreenshotBytes {
         }
         let stride = width * channels
         let expected = height * (stride + 1)
-        guard expected > 0, expected <= 64 * 1024 * 1024, let raw = inflate(idat, expected: expected) else {
-            return .broken
+        guard expected > 0, expected <= 64 * 1024 * 1024,
+              let raw = inflate(idat, expected: expected), raw.count == expected else {
+            return .picture
         }
-        guard raw.count == expected else { return .broken }
         guard let black = pixelsAreBlack(raw, width: width, height: height, channels: channels, colorType: colorType) else {
-            return .broken
+            return .picture
         }
         return black ? .blank : .picture
     }
