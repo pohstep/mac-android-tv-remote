@@ -73,43 +73,31 @@ struct RemotePanel: View {
         .fixedSize(horizontal: false, vertical: true)
     }
 
+    private enum Chrome {
+        case connected
+        case searching
+        case offline
+    }
+
+    /// Connected while the TV answers, demo is on, or a saved TV is still being reached.
+    /// No saved TV uses the searching screen. A saved TV that is not answering uses offline.
+    private var chrome: Chrome {
+        if model.demoOn || tvIsOn || model.status.isConnected { return .connected }
+        if case .connecting = model.status, !model.settings.devices.isEmpty { return .connected }
+        if model.settings.devices.isEmpty { return .searching }
+        return .offline
+    }
+
     private var panel: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Group {
-                ZapbarWordmark()
-                gap(10)
-                status
-                gap(10)
-                dpad
-                gap(10)
-                volume
-                gap(8)
-                input
-                if showsNowPlaying {
-                    gap(10)
-                    nowPlaying
-                }
+        VStack(alignment: .leading, spacing: GlassMetrics.sectionGap) {
+            switch chrome {
+            case .connected:
+                connectedChrome
+            case .searching:
+                searchingChrome
+            case .offline:
+                offlineChrome
             }
-            Group {
-                hairline
-                apps
-                hairline
-                typeRow
-                macTools
-                #if ZAPBAR_ADVANCED
-                gap(8)
-                AdvancedCleanupSection(model: model)
-                #endif
-                if model.allowsKeyboardCapture {
-                    gap(8)
-                    keyboard
-                }
-            }
-            if model.allowsKeyboardCapture && model.keyboardMode {
-                gap(8)
-                legend
-            }
-            hairline
             footer
         }
         .padding(.horizontal, GlassMetrics.padX)
@@ -119,81 +107,289 @@ struct RemotePanel: View {
         .background(GlassPlate())
     }
 
-    private var status: some View {
-        VStack(alignment: .leading, spacing: 2) {
+    private var connectedChrome: some View {
+        VStack(alignment: .leading, spacing: GlassMetrics.sectionGap) {
             if model.demoOn {
-                HStack(spacing: 8) {
-                    Text(DemoCopy.mode)
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(Palette.text)
-                    Spacer(minLength: 8)
-                    Button(DemoCopy.leave) { model.leaveDemo() }
-                        .font(.system(size: 11))
-                }
-                if !model.demoNote.isEmpty {
-                    Text(model.demoNote)
-                        .font(.system(size: 12))
-                        .foregroundColor(Palette.muted)
-                }
+                demoBanner
             }
-            HStack(alignment: .center, spacing: 8) {
-                Circle()
-                    .fill(statusDot)
-                    .frame(width: 8, height: 8)
-                    .accessibilityHidden(true)
-                Text(statusTitle)
-                    .font(.system(size: 13, weight: .semibold))
+            header(status: liveStatusLine, dot: liveStatusDot, showsPower: true)
+            failureLine
+            remoteBody
+        }
+    }
+
+    private var searchingChrome: some View {
+        VStack(alignment: .leading, spacing: GlassMetrics.sectionGap) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("TV Remote")
+                    .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(Palette.text)
-                Spacer(minLength: 8)
-                powerControl
-            }
-            Text(statusSubtitle)
-                .font(.system(size: 13))
-                .foregroundColor(secondaryInk)
-                .fixedSize(horizontal: false, vertical: true)
-            if model.bannerIsError && !model.banner.isEmpty {
-                Text(model.banner)
-                    .font(.system(size: 11))
-                    .foregroundColor(Palette.text)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            if model.settings.devices.count > 1 {
-                Picker("TV", selection: deviceSelection) {
-                    ForEach(model.settings.devices) { device in
-                        Text(device.name).tag(device.id)
+                    .folioTextShadow()
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(searchingDot)
+                        .frame(width: 8, height: 8)
+                        .accessibilityHidden(true)
+                    Text(searchingLine)
+                        .font(.system(size: 11.5))
+                        .foregroundColor(secondaryInk)
+                        .folioTextShadow()
+                    if model.discovering || isConnecting {
+                        ProgressView()
+                            .controlSize(.small)
+                            .scaleEffect(0.85)
+                            .accessibilityLabel("Searching")
                     }
                 }
-                .labelsHidden()
-                .frame(maxWidth: 200)
+            }
+            if !model.discovered.isEmpty {
+                discoveredList
+            }
+            Button(action: { model.showWizard() }) {
+                HStack(spacing: 7) {
+                    Image(systemName: "plus.circle")
+                    Text("Set up a new TV")
+                }
+            }
+            .buttonStyle(FolioPrimaryStyle(expands: true))
+            Text("Remote available once connected")
+                .font(.system(size: 11.5))
+                .foregroundColor(secondaryInk)
+                .frame(maxWidth: .infinity)
+        }
+    }
+
+    private var offlineChrome: some View {
+        VStack(alignment: .leading, spacing: GlassMetrics.sectionGap) {
+            header(status: offlineStatus, dot: Palette.dotOffline, showsPower: false)
+            failureLine
+            VStack(spacing: 8) {
+                Button(action: { model.refreshNow() }) {
+                    HStack(spacing: 7) {
+                        Image(systemName: "arrow.clockwise")
+                        Text("Retry")
+                    }
+                }
+                .buttonStyle(FolioPrimaryStyle(expands: true))
+                Button(action: { model.wake() }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "power")
+                            .font(.system(size: 13))
+                        Text("Turn on with Wake-on-LAN")
+                            .font(.system(size: 12))
+                            .underline()
+                    }
+                    .foregroundColor(secondaryInk)
+                    .frame(height: 28)
+                }
+                .buttonStyle(.plain)
+                .frame(maxWidth: .infinity)
+            }
+            remoteBody
+                .opacity(0.45)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
+    }
+
+    private var demoBanner: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 8) {
+                Text(DemoCopy.mode)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(Palette.text)
+                Spacer(minLength: 8)
+                Button(DemoCopy.leave) { model.leaveDemo() }
+                    .font(.system(size: 11))
+            }
+            if !model.demoNote.isEmpty {
+                Text(model.demoNote)
+                    .font(.system(size: 12))
+                    .foregroundColor(Palette.muted)
             }
         }
     }
 
-    private var deviceSelection: Binding<String> {
-        Binding(
-            get: { model.settings.activeDeviceID },
-            set: { model.selectDevice($0) }
+    private func header(status: String, dot: Color, showsPower: Bool) -> some View {
+        HStack(alignment: .center, spacing: 8) {
+            VStack(alignment: .leading, spacing: 2) {
+                Button(action: showDeviceMenu) {
+                    HStack(spacing: 5) {
+                        Text(headerTitle)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(Palette.text)
+                            .folioTextShadow()
+                            .lineLimit(1)
+                        if !model.settings.devices.isEmpty {
+                            Image(systemName: "chevron.up.chevron.down")
+                                .font(.system(size: 13))
+                                .foregroundColor(secondaryInk)
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
+                .disabled(model.settings.devices.isEmpty)
+                .accessibilityLabel("TV")
+                .accessibilityValue(headerTitle)
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(dot)
+                        .frame(width: 8, height: 8)
+                        .accessibilityHidden(true)
+                    Text(status)
+                        .font(.system(size: 11.5))
+                        .foregroundColor(secondaryInk)
+                        .folioTextShadow()
+                        .lineLimit(1)
+                }
+            }
+            Spacer(minLength: 8)
+            if showsPower {
+                powerControl
+            }
+        }
+        .frame(minHeight: 36)
+    }
+
+    private var discoveredList: some View {
+        VStack(spacing: 0) {
+            ForEach(Array(model.discovered.enumerated()), id: \.offset) { index, tv in
+                Button(action: { model.sendWizard(.pick(tv)) }) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "tv")
+                            .font(.system(size: 15))
+                            .foregroundColor(secondaryInk)
+                        Text(tv.name)
+                            .font(.system(size: 13))
+                            .foregroundColor(Palette.text)
+                            .lineLimit(1)
+                        Spacer(minLength: 8)
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(secondaryInk)
+                    }
+                    .padding(.horizontal, 12)
+                    .frame(maxWidth: .infinity, minHeight: 42, alignment: .leading)
+                }
+                .buttonStyle(.plain)
+                if index < model.discovered.count - 1 {
+                    Rectangle()
+                        .fill(Color.white.opacity(0.18))
+                        .frame(height: 1)
+                }
+            }
+        }
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color.white.opacity(0.10))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(Color.white.opacity(contrast == .increased ? 0.55 : 0.22), lineWidth: 1)
         )
     }
 
-    private var typeRow: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            TextField("Type to the TV", text: $typeDraft)
-                .folioFieldChrome(focused: typeFocused)
-                .focused($typeFocused)
-                .onSubmit {
-                    let text = typeDraft
-                    typeDraft = ""
-                    model.sendTypedText(text)
-                }
-            Text("Type, Return sends")
+    @ViewBuilder
+    private var failureLine: some View {
+        if let detail = failureDetail {
+            Text(detail)
+                .font(.system(size: 11.5))
+                .foregroundColor(secondaryInk)
+                .fixedSize(horizontal: false, vertical: true)
+        } else if model.bannerIsError && !model.banner.isEmpty {
+            Text(model.banner)
                 .font(.system(size: 11))
-                .foregroundColor(tertiaryInk)
+                .foregroundColor(Palette.text)
+                .fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    private var remoteBody: some View {
+        VStack(alignment: .leading, spacing: GlassMetrics.sectionGap) {
+            dpad
+            transport
+            volume
+            if showsNowPlaying {
+                nowPlaying
+            }
+            apps
+            typeRow
+            macTools
+            #if ZAPBAR_ADVANCED
+            AdvancedCleanupSection(model: model)
+            #endif
+            if model.allowsKeyboardCapture {
+                keyboard
+            }
+            if model.allowsKeyboardCapture && model.keyboardMode {
+                legend
+            }
+        }
+    }
+
+    private var typeRow: some View {
+        let focused = typeFocused
+        let strong = contrast == .increased
+        let border: CGFloat = focused ? 1.5 : (strong ? 1.5 : 1)
+        let borderOpacity = focused ? 1.0 : (strong ? 0.55 : 0.28)
+        return HStack(spacing: 7) {
+            Image(systemName: "keyboard")
+                .font(.system(size: 15))
+                .foregroundColor(secondaryInk)
+            TextField(
+                "",
+                text: $typeDraft,
+                prompt: Text("Type, Return sends").foregroundColor(secondaryInk)
+            )
+            .textFieldStyle(.plain)
+            .font(.system(size: 13))
+            .foregroundColor(Palette.text)
+            .focused($typeFocused)
+            .onSubmit {
+                let text = typeDraft
+                typeDraft = ""
+                model.sendTypedText(text)
+            }
+            if focused {
+                Text("Return to send")
+                    .font(.system(size: 11))
+                    .foregroundColor(Palette.text)
+                    .folioTextShadow()
+                    .lineLimit(1)
+            } else {
+                Text(model.typeHotkey.display)
+                    .font(.system(size: 11))
+                    .foregroundColor(Palette.text)
+                    .lineLimit(1)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 1)
+                    .background(
+                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            .fill(Palette.keyCap)
+                    )
+                    .accessibilityLabel("Hotkey \(model.typeHotkey.display)")
+            }
+        }
+        .padding(.horizontal, focused ? 8.5 : 9)
+        .frame(height: GlassMetrics.inputHeight)
+        .background(
+            RoundedRectangle(cornerRadius: GlassMetrics.fieldRadius, style: .continuous)
+                .fill(Palette.fieldFill)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: GlassMetrics.fieldRadius, style: .continuous)
+                .strokeBorder(Color.white.opacity(borderOpacity), lineWidth: border)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: GlassMetrics.fieldRadius + 3, style: .continuous)
+                .stroke(Color.white.opacity(focused ? 0.25 : 0), lineWidth: 3)
+                .padding(-2)
+        )
     }
 
     private var macTools: some View {
         VStack(alignment: .leading, spacing: 6) {
+            input
             TextField("Paste a link", text: $linkDraft)
                 .folioFieldChrome(focused: linkFocused)
                 .focused($linkFocused)
@@ -313,14 +509,25 @@ struct RemotePanel: View {
     }
 
     private var dpad: some View {
-        HStack(alignment: .center, spacing: 0) {
-            sideControl("chevron.backward", "Back") { model.press(.back) }
-            Spacer(minLength: 0)
-            ring
-            Spacer(minLength: 0)
-            sideControl("house", "Home") { model.press(.home) }
+        ring
+            .frame(maxWidth: .infinity)
+    }
+
+    private var transport: some View {
+        HStack(spacing: GlassMetrics.transportGap) {
+            circleControl("arrow.uturn.backward", "Back") { model.press(.back) }
+            circleControl("house", "Home") { model.press(.home) }
+            circleControl("playpause.fill", "Play") { model.press(.mediaPlayPause) }
         }
-        .frame(height: GlassMetrics.ring)
+        .frame(maxWidth: .infinity)
+    }
+
+    private func circleControl(_ symbol: String, _ title: String, action: @escaping () -> Void) -> some View {
+        Chip(width: GlassMetrics.side, height: GlassMetrics.side, corner: GlassMetrics.side / 2, action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 15, weight: .regular))
+        }
+        .accessibilityLabel(title)
     }
 
     private var ring: some View {
@@ -338,7 +545,8 @@ struct RemotePanel: View {
             ringZone("chevron.left", "Left", from: 135, to: 225, glyph: .leading) { model.press(.dpadLeft) }
             Chip(width: GlassMetrics.ok, height: GlassMetrics.ok, corner: GlassMetrics.ok / 2, prominent: true, action: { model.press(.dpadCenter) }) {
                 Text("OK")
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.system(size: 17, weight: .bold))
+                    .folioTextShadow()
             }
             .accessibilityLabel("OK")
         }
@@ -360,9 +568,9 @@ struct RemotePanel: View {
                 RingWedge(from: from, to: to)
                     .fill(Color.white.opacity(0.001))
                 Image(systemName: symbol)
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.system(size: 17, weight: .regular))
                     .foregroundColor(Palette.text)
-                    .padding(14)
+                    .padding(12)
             }
             .frame(width: GlassMetrics.ring, height: GlassMetrics.ring)
             .contentShape(RingWedge(from: from, to: to))
@@ -371,26 +579,15 @@ struct RemotePanel: View {
         .accessibilityLabel(label)
     }
 
-    private func sideControl(_ symbol: String, _ title: String, action: @escaping () -> Void) -> some View {
-        VStack(spacing: 2) {
-            Chip(width: GlassMetrics.side, height: GlassMetrics.side, corner: GlassMetrics.side / 2, action: action) {
-                Image(systemName: symbol)
-                    .font(.system(size: 16, weight: .medium))
-            }
-            Text(title)
-                .font(.system(size: 11))
-                .foregroundColor(secondaryInk)
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(title)
-    }
-
     private var volume: some View {
-        HStack(spacing: 6) {
-            smallIcon(model.picture.muted ? "speaker.slash.fill" : "speaker.wave.2", "Mute") {
+        HStack(spacing: 10) {
+            smallIcon(
+                model.picture.muted ? "speaker.slash.fill" : "speaker.wave.2.fill",
+                "Mute",
+                symbolSize: 14
+            ) {
                 model.press(.volumeMute)
             }
-            smallIcon("minus", "Volume down") { nudgeVolume(-1) }
             VolumeSlider(
                 value: volumeBinding,
                 range: 0...Double(max(model.picture.maxVolume, 1)),
@@ -404,12 +601,11 @@ struct RemotePanel: View {
                     model.setVolume(level)
                 }
             )
-            smallIcon("plus", "Volume up") { nudgeVolume(1) }
-            Text(volumeLabel)
-                .font(.system(size: 13, weight: .semibold))
-                .monospacedDigit()
-                .foregroundColor(Palette.text)
-                .frame(width: 28, alignment: .trailing)
+            Image(systemName: "speaker.wave.2.fill")
+                .font(.system(size: 14))
+                .foregroundColor(secondaryInk)
+                .frame(width: GlassMetrics.small, height: GlassMetrics.small)
+                .accessibilityHidden(true)
         }
         .frame(minHeight: GlassMetrics.smallHit)
     }
@@ -525,14 +721,16 @@ struct RemotePanel: View {
 
     private var apps: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                Text(model.appsCaption)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(secondaryInk)
-                if model.appsLoading {
-                    ProgressView()
-                        .controlSize(.small)
-                        .accessibilityLabel("Loading apps")
+            if model.appsCaption != AppListCaption.liveTitle {
+                HStack(spacing: 6) {
+                    Text(model.appsCaption)
+                        .font(.system(size: 11.5))
+                        .foregroundColor(secondaryInk)
+                    if model.appsLoading {
+                        ProgressView()
+                            .controlSize(.small)
+                            .accessibilityLabel("Loading apps")
+                    }
                 }
             }
             if model.shownApps.isEmpty && model.appsLoading {
@@ -541,7 +739,7 @@ struct RemotePanel: View {
                 Text("No apps from the TV yet.")
                     .font(.system(size: 13))
                     .foregroundColor(secondaryInk)
-                    .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
+                    .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
             } else {
                 appGrid
             }
@@ -549,45 +747,57 @@ struct RemotePanel: View {
     }
 
     private var loadingTiles: some View {
-        HStack(spacing: 1) {
-            ForEach(0..<6, id: \.self) { _ in
-                VStack(spacing: 4) {
-                    RoundedRectangle(cornerRadius: GlassMetrics.tileRadius, style: .continuous)
-                        .fill(Color.white.opacity(0.08))
-                        .frame(width: GlassMetrics.tile, height: GlassMetrics.tile)
-                    RoundedRectangle(cornerRadius: 2, style: .continuous)
-                        .fill(Color.white.opacity(0.08))
-                        .frame(width: 32, height: 6)
-                }
-                .frame(width: GlassMetrics.tileHitWidth, height: GlassMetrics.tileHitHeight)
+        HStack(spacing: GlassMetrics.tileGap) {
+            ForEach(0..<GlassMetrics.pinnedApps, id: \.self) { _ in
+                RoundedRectangle(cornerRadius: GlassMetrics.tileRadius, style: .continuous)
+                    .fill(Color.white.opacity(0.08))
+                    .frame(width: GlassMetrics.tile, height: GlassMetrics.tile)
             }
         }
         .accessibilityLabel("Loading apps")
     }
 
     private var appGrid: some View {
-        let columns = Array(repeating: GridItem(.fixed(GlassMetrics.tileHitWidth), spacing: 1), count: 6)
         let all = model.shownApps
         let pinned = Array(all.prefix(GlassMetrics.pinnedApps))
-        let grid = { (list: [TvApp]) in
-            LazyVGrid(columns: columns, alignment: .leading, spacing: 4) {
-                ForEach(Array(list.enumerated()), id: \.element.id) { index, app in
-                    AppTile(app: app, tintIndex: index, selected: app.matches(package: model.picture.foregroundPackage)) {
-                        model.launch(app)
+        let rest = Array(all.dropFirst(GlassMetrics.pinnedApps))
+        let columns = Array(repeating: GridItem(.fixed(GlassMetrics.tile), spacing: GlassMetrics.tileGap), count: 4)
+        return VStack(alignment: .leading, spacing: GlassMetrics.tileGap) {
+            HStack(spacing: GlassMetrics.tileGap) {
+                ForEach(Array(pinned.enumerated()), id: \.element.id) { index, app in
+                    appTile(app, index: index)
+                }
+                Spacer(minLength: 0)
+                if !rest.isEmpty {
+                    Button(action: {
+                        model.appsExpanded.toggle()
+                        DispatchQueue.main.async { model.onChromeChanged?() }
+                    }) {
+                        HStack(spacing: 2) {
+                            Text(model.appsExpanded ? "Fewer" : "More")
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 11, weight: .semibold))
+                        }
+                        .font(.system(size: 13))
+                        .foregroundColor(secondaryInk)
+                        .frame(height: 28)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            if model.appsExpanded && !rest.isEmpty {
+                LazyVGrid(columns: columns, alignment: .leading, spacing: GlassMetrics.tileGap) {
+                    ForEach(Array(rest.enumerated()), id: \.element.id) { offset, app in
+                        appTile(app, index: offset + GlassMetrics.pinnedApps)
                     }
                 }
             }
         }
-        return VStack(alignment: .leading, spacing: 4) {
-            grid(model.appsExpanded ? all : pinned)
-            if all.count > pinned.count {
-                Button(model.appsExpanded ? "Fewer apps" : "More apps… (\(all.count - pinned.count))") {
-                    model.appsExpanded.toggle()
-                    DispatchQueue.main.async { model.onChromeChanged?() }
-                }
-                .buttonStyle(.link)
-                .font(.system(size: 11))
-            }
+    }
+
+    private func appTile(_ app: TvApp, index: Int) -> some View {
+        AppTile(app: app, tintIndex: index, selected: app.matches(package: model.picture.foregroundPackage)) {
+            model.launch(app)
         }
     }
 
@@ -648,18 +858,49 @@ struct RemotePanel: View {
     }
 
     private var footer: some View {
-        HStack(spacing: 8) {
-            Text(footerLine)
-                .font(.system(size: 11))
-                .foregroundColor(tertiaryInk)
-                .lineLimit(1)
-            Spacer(minLength: 4)
-            Button("Settings…") { model.showSettings() }
+        VStack(spacing: 0) {
+            Rectangle()
+                .fill(Color.white.opacity(contrast == .increased ? 0.55 : 0.20))
+                .frame(height: 1)
+                .padding(.horizontal, -GlassMetrics.padX)
+            HStack(spacing: 4) {
+                Button(action: { model.showSettings() }) {
+                    HStack(spacing: 5) {
+                        Image(systemName: "gearshape")
+                            .font(.system(size: 14))
+                        Text("Settings")
+                            .font(.system(size: 13))
+                    }
+                    .foregroundColor(Palette.text)
+                    .frame(height: GlassMetrics.footerHeight)
+                    .padding(.horizontal, 8)
+                }
+                .buttonStyle(.plain)
                 .keyboardShortcut(",", modifiers: .command)
-                .font(.system(size: 11))
-            Button("Quit") { NSApp.terminate(nil) }
+                Spacer(minLength: 0)
+                Button(action: { model.showWizard() }) {
+                    Text("Setup")
+                        .font(.system(size: 13))
+                        .foregroundColor(Palette.text)
+                        .frame(height: GlassMetrics.footerHeight)
+                        .padding(.horizontal, 8)
+                }
+                .buttonStyle(.plain)
+                Button(action: { NSApp.terminate(nil) }) {
+                    HStack(spacing: 4) {
+                        Text("Quit")
+                            .foregroundColor(Palette.text)
+                        Text("⌘Q")
+                            .foregroundColor(secondaryInk)
+                    }
+                    .font(.system(size: 13))
+                    .frame(height: GlassMetrics.footerHeight)
+                    .padding(.horizontal, 8)
+                }
+                .buttonStyle(.plain)
                 .keyboardShortcut("q", modifiers: .command)
-                .font(.system(size: 11))
+            }
+            .padding(.horizontal, -8)
         }
     }
 
@@ -679,7 +920,7 @@ struct RemotePanel: View {
         .accessibilityLabel(text)
     }
 
-    private func smallIcon(_ symbol: String, _ label: String, action: @escaping () -> Void) -> some View {
+    private func smallIcon(_ symbol: String, _ label: String, symbolSize: CGFloat = 11, action: @escaping () -> Void) -> some View {
         Chip(
             width: GlassMetrics.small,
             height: GlassMetrics.small,
@@ -688,22 +929,9 @@ struct RemotePanel: View {
             action: action
         ) {
             Image(systemName: symbol)
-                .font(.system(size: 11, weight: .semibold))
+                .font(.system(size: symbolSize, weight: .regular))
         }
         .accessibilityLabel(label)
-    }
-
-    private func hairlineRow() -> some View {
-        Rectangle()
-            .fill(Palette.hairline)
-            .frame(height: contrast == .increased ? 1 : 0.5)
-            .padding(.vertical, GlassMetrics.hairlineGap)
-    }
-
-    private var hairline: some View { hairlineRow() }
-
-    private func gap(_ value: CGFloat) -> some View {
-        Color.clear.frame(height: value)
     }
 
     private var volumeBinding: Binding<Double> {
@@ -713,25 +941,86 @@ struct RemotePanel: View {
         )
     }
 
-    private func nudgeVolume(_ delta: Int) {
-        let ceiling = max(model.picture.maxVolume, 1)
-        let base = model.picture.volume ?? Int(volumeDraft.rounded())
-        let next = min(max(base + delta, 0), ceiling)
-        volumeDraft = Double(next)
-        model.showVolumeHUD("Volume \(next)")
-        model.press(delta > 0 ? .volumeUp : .volumeDown)
+    private static let lastSeenFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short
+        formatter.dateStyle = .none
+        return formatter
+    }()
+
+    private var activeDevice: StoredTV? {
+        if let match = model.settings.devices.first(where: { $0.id == model.settings.activeDeviceID }) {
+            return match
+        }
+        return model.settings.devices.first
     }
 
-    private var volumeLabel: String {
-        if model.picture.volume == nil && !volumeIsLive { return "—" }
-        return "\(Int(volumeDraft.rounded()))"
+    private var headerTitle: String {
+        if model.demoOn { return DemoCopy.name }
+        if let name = activeDevice?.name, !name.isEmpty { return name }
+        return "TV Remote"
     }
 
-    private var statusDot: Color {
-        if model.demoOn { return Palette.dotConnected }
-        if case .connecting = model.status { return Palette.dotSearching }
-        if tvIsOn { return Palette.dotConnected }
+    private var offlineStatus: String {
+        guard let seen = activeDevice?.lastSeen else { return "Offline" }
+        return "Offline · last seen \(Self.lastSeenFormatter.string(from: seen))"
+    }
+
+    private var liveStatusLine: String {
+        if case .connecting = model.status, !tvIsOn, !model.demoOn { return "Connecting" }
+        return "Connected"
+    }
+
+    private var liveStatusDot: Color {
+        if case .connecting = model.status, !tvIsOn, !model.demoOn { return Palette.dotSearching }
+        return Palette.dotConnected
+    }
+
+    private var isConnecting: Bool {
+        if case .connecting = model.status { return true }
+        return false
+    }
+
+    private var searchingDot: Color {
+        if model.discovering || isConnecting { return Palette.dotSearching }
         return Palette.dotOffline
+    }
+
+    private var searchingLine: String {
+        if model.discovering || isConnecting { return "Searching for your TV…" }
+        if model.status.detail.isEmpty { return model.status.title }
+        return model.status.detail
+    }
+
+    private var failureDetail: String? {
+        switch model.status {
+        case .idle, .connecting, .connected:
+            return nil
+        case .adbMissing, .helperDown, .unauthorized, .refused, .unreachable, .offline, .failed:
+            let detail = model.status.detail
+            return detail.isEmpty ? nil : detail
+        }
+    }
+
+    private func showDeviceMenu() {
+        let devices = model.settings.devices
+        guard !devices.isEmpty else { return }
+        let menu = NSMenu()
+        let target = DeviceMenuTarget { model.selectDevice($0) }
+        for device in devices {
+            let entry = NSMenuItem(title: device.name.isEmpty ? device.host : device.name,
+                                   action: #selector(DeviceMenuTarget.pick(_:)),
+                                   keyEquivalent: "")
+            entry.target = target
+            entry.representedObject = device.id as NSString
+            entry.state = device.id == model.settings.activeDeviceID ? .on : .off
+            menu.addItem(entry)
+        }
+        guard let event = NSApp.currentEvent, let view = event.window?.contentView else { return }
+        let point = view.convert(event.locationInWindow, from: nil)
+        withExtendedLifetime(target) {
+            menu.popUp(positioning: nil, at: point, in: view)
+        }
     }
 
     private var tvIsOn: Bool {
@@ -746,39 +1035,6 @@ struct RemotePanel: View {
     }
 
     private var showsWake: Bool { !tvIsOn }
-
-    private var statusTitle: String {
-        if model.demoOn { return DemoCopy.name }
-        switch model.picture.power {
-        case .on, .reachableOnly:
-            return "TV on"
-        case .off:
-            return "TV off"
-        case .unknown:
-            if model.status.isConnected { return "TV on" }
-            if case .connecting = model.status { return "Connecting" }
-            if case .offline = model.status { return "TV off" }
-            return model.status.title
-        }
-    }
-
-    private var statusSubtitle: String {
-        if model.demoOn { return "Connected" }
-        if !tvIsOn {
-            if case .connecting = model.status { return model.status.detail }
-            if case .idle = model.status { return model.status.detail }
-            if case .adbMissing = model.status { return model.status.detail }
-            if case .helperDown = model.status { return model.status.detail }
-            if case .unauthorized = model.status { return model.status.detail }
-            if case .refused = model.status { return model.status.detail }
-            if case .unreachable = model.status { return model.status.detail }
-            if case .failed = model.status { return model.status.detail }
-            return "Sleeping · tap power to wake"
-        }
-        let parts = [appName, model.picture.inputTitle].compactMap { $0 }.filter { !$0.isEmpty }
-        if parts.isEmpty { return model.status.detail }
-        return parts.joined(separator: " · ")
-    }
 
     private var appName: String? {
         guard let package = model.picture.foregroundPackage else { return nil }
@@ -831,21 +1087,6 @@ struct RemotePanel: View {
         return "Input"
     }
 
-    private var footerLine: String {
-        switch model.settings.brand {
-        case .sony where model.picture.sonyReady:
-            return "Sony · IP control"
-        case .sony where model.status.isConnected:
-            return "Sony · network debugging"
-        case .sony:
-            return "Sony"
-        case .xiaomi:
-            return "Xiaomi"
-        case .generic:
-            return model.status.isConnected ? "Connected" : "Not connected"
-        }
-    }
-
     private var secondaryInk: Color {
         Palette.ink(Palette.secondary, increasedContrast: contrast == .increased)
     }
@@ -865,33 +1106,23 @@ private struct AppTile: View {
 
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 3) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: GlassMetrics.tileRadius, style: .continuous)
-                        .fill(Folio.tilePair(index: tintIndex))
-                    RoundedRectangle(cornerRadius: GlassMetrics.tileRadius, style: .continuous)
-                        .fill(Folio.ink.opacity(0.18))
-                    tileMark
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundColor(Palette.text)
-                }
-                .frame(width: GlassMetrics.tile, height: GlassMetrics.tile)
-                .overlay {
-                    if selected {
-                        RoundedRectangle(cornerRadius: GlassMetrics.tileRadius, style: .continuous)
-                            .strokeBorder(Color.white, lineWidth: 1.5)
-                    }
-                }
-                Text(app.name)
-                    .font(.system(size: 11))
-                    .foregroundColor(Palette.secondary)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.center)
-                    .truncationMode(.tail)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(width: GlassMetrics.tileHitWidth)
+            ZStack {
+                RoundedRectangle(cornerRadius: GlassMetrics.tileRadius, style: .continuous)
+                    .fill(Folio.tilePair(index: tintIndex))
+                RoundedRectangle(cornerRadius: GlassMetrics.tileRadius, style: .continuous)
+                    .fill(Folio.ink.opacity(0.18))
+                tileMark
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundColor(Palette.text)
+                    .folioTextShadow()
             }
-            .frame(width: GlassMetrics.tileHitWidth, height: GlassMetrics.tileHitHeight)
+            .frame(width: GlassMetrics.tile, height: GlassMetrics.tile)
+            .overlay {
+                if selected {
+                    RoundedRectangle(cornerRadius: GlassMetrics.tileRadius, style: .continuous)
+                        .strokeBorder(Color.white, lineWidth: 1.5)
+                }
+            }
             .overlay {
                 if focused {
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
@@ -929,8 +1160,8 @@ private struct AppTile: View {
         if app.name.lowercased().contains("spotify") || app.name.lowercased().contains("music") {
             Image(systemName: "music.note")
         } else {
-            Text(String(app.name.filter { $0.isLetter || $0.isNumber }.prefix(2)).uppercased())
-                .font(.system(size: 13, weight: .bold))
+            Text(String(app.name.filter { $0.isLetter || $0.isNumber }.prefix(1)).uppercased())
+                .font(.system(size: 15, weight: .bold))
         }
     }
 }
@@ -1004,6 +1235,14 @@ struct VolumeSlider: View {
         let usable = max(width - GlassMetrics.knob, 1)
         let fraction = min(max((x - GlassMetrics.knob / 2) / usable, 0), 1)
         return range.lowerBound + fraction * span
+    }
+}
+
+private final class DeviceMenuTarget: NSObject {
+    let onPick: (String) -> Void
+    init(_ onPick: @escaping (String) -> Void) { self.onPick = onPick }
+    @objc func pick(_ sender: NSMenuItem) {
+        if let id = sender.representedObject as? String { onPick(id) }
     }
 }
 

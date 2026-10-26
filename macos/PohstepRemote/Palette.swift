@@ -19,12 +19,12 @@ enum Palette {
     static let sliderFill = Color.white
     static let knob = Color.white
     static let knobPressed = Color.white.opacity(0.88)
-    static let chip = Color.white.opacity(0.13)
+    static let chip = Color.white.opacity(0.14)
     static let chipHover = Color.white.opacity(0.18)
     static let chipPressed = Color.white.opacity(0.08)
     static let fieldFill = Color.white.opacity(0.10)
-    static let keyCap = chip
-    static let ring = chip
+    static let keyCap = Color(red: 0x06 / 255, green: 0x06 / 255, blue: 0x3A / 255).opacity(0.30)
+    static let ring = Color.white.opacity(0.12)
     static let nsAccent = NSColor.white
 
     static func ink(_ color: Color, increasedContrast: Bool) -> Color {
@@ -32,7 +32,7 @@ enum Palette {
     }
 }
 
-/// Flat-glass colours from the approved panel. Diagonal runs bottom-left to top-right.
+/// Flat-glass colours from the approved panel. 135° runs top-left to bottom-right.
 enum Folio {
     static let cyan = Color(red: 0x36 / 255, green: 0xD1 / 255, blue: 0xDC / 255)
     static let blue = Color(red: 0x5B / 255, green: 0x5B / 255, blue: 0xF0 / 255)
@@ -40,8 +40,10 @@ enum Folio {
     static let amber = Color(red: 0xFF / 255, green: 0xB8 / 255, blue: 0x6B / 255)
     static let ink = Color(red: 0x0A / 255, green: 0x06 / 255, blue: 0x3C / 255)
     static let scrim = Color(red: 0x06 / 255, green: 0x08 / 255, blue: 0x3A / 255)
-    /// Middle of the .38–.42 tint range.
-    static let tintAlpha = 0.40
+    static let textShadow = Color(red: 0, green: 0, blue: 40.0 / 255).opacity(0.25)
+    static let shadow = Color(red: 0, green: 0, blue: 30.0 / 255).opacity(0.25)
+    /// Approved mock panel tint. The layers table's .38 is the older note.
+    static let tintAlpha = 0.42
 
     static let stops: [Gradient.Stop] = [
         .init(color: cyan, location: 0),
@@ -51,7 +53,21 @@ enum Folio {
     ]
 
     static var diagonal: LinearGradient {
-        LinearGradient(stops: stops, startPoint: .bottomLeading, endPoint: .topTrailing)
+        LinearGradient(stops: stops, startPoint: .topLeading, endPoint: .bottomTrailing)
+    }
+
+    /// OK shifts the same stops so the circle does not repeat the panel wash.
+    static var okGradient: LinearGradient {
+        LinearGradient(
+            stops: [
+                .init(color: cyan, location: 0.10),
+                .init(color: blue, location: 0.42),
+                .init(color: magenta, location: 0.74),
+                .init(color: amber, location: 1.10)
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
     }
 
     static var scrimWash: LinearGradient {
@@ -69,17 +85,28 @@ enum Folio {
 
     static var edge: LinearGradient {
         LinearGradient(
-            colors: [Color.white.opacity(0.35), Color.white.opacity(0.10)],
-            startPoint: .bottomLeading,
-            endPoint: .topTrailing
+            stops: [
+                .init(color: Color.white.opacity(0.65), location: 0),
+                .init(color: Color.white.opacity(0.20), location: 0.35),
+                .init(color: Color.white.opacity(0.12), location: 0.70),
+                .init(color: Color.white.opacity(0.30), location: 1)
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
         )
     }
 
+    /// Letter-tile pairs from the connected mock, in order.
+    static let tilePairs: [(Color, Color)] = [
+        (Color(red: 0x1A / 255, green: 0x93 / 255, blue: 0xA8 / 255), Color(red: 0x4B / 255, green: 0x4B / 255, blue: 0xE0 / 255)),
+        (Color(red: 0x5B / 255, green: 0x5B / 255, blue: 0xF0 / 255), Color(red: 0xB8 / 255, green: 0x3A / 255, blue: 0xD0 / 255)),
+        (Color(red: 0xC9 / 255, green: 0x3B / 255, blue: 0xDD / 255), Color(red: 0x5B / 255, green: 0x5B / 255, blue: 0xF0 / 255)),
+        (Color(red: 0xD9 / 255, green: 0x7A / 255, blue: 0x35 / 255), Color(red: 0xB8 / 255, green: 0x3A / 255, blue: 0xC8 / 255))
+    ]
+
     static func tilePair(index: Int) -> LinearGradient {
-        let colors = [cyan, blue, magenta, amber]
-        let start = colors[index % colors.count]
-        let end = colors[(index + 1) % colors.count]
-        return LinearGradient(colors: [start, end], startPoint: .bottomLeading, endPoint: .topTrailing)
+        let pair = tilePairs[index % tilePairs.count]
+        return LinearGradient(colors: [pair.0, pair.1], startPoint: .topLeading, endPoint: .bottomTrailing)
     }
 }
 
@@ -106,10 +133,10 @@ enum AppearanceLock {
 enum GlassMetrics {
     static let panelWidth: CGFloat = 320
     static let panelCorner: CGFloat = 20
-    static let padX: CGFloat = 16
-    static let padTop: CGFloat = 12
-    static let padBottom: CGFloat = 8
-    static let hairlineGap: CGFloat = 10
+    static let padX: CGFloat = 18
+    static let padTop: CGFloat = 18
+    static let padBottom: CGFloat = 10
+    static let sectionGap: CGFloat = 12
     static let ring: CGFloat = 176
     static let ok: CGFloat = 72
     static let side: CGFloat = 44
@@ -120,18 +147,23 @@ enum GlassMetrics {
     static let sliderRow: CGFloat = 22
     static let knob: CGFloat = 16
     static let track: CGFloat = 4
-    static let inputHeight: CGFloat = 30
+    static let inputHeight: CGFloat = 32
     static let fieldRadius: CGFloat = 12
     static let tile: CGFloat = 36
     static let tileRadius: CGFloat = 10
-    static let tileHitWidth: CGFloat = 47
-    static let tileHitHeight: CGFloat = 64
+    static let tileGap: CGFloat = 10
+    static let transportGap: CGFloat = 20
+    static let footerHeight: CGFloat = 28
+    static let primaryHeight: CGFloat = 38
+    static let primaryRadius: CGFloat = 12
+    static let wizardPrimaryHeight: CGFloat = 34
+    static let wizardPrimaryRadius: CGFloat = 10
     static let toggleWidth: CGFloat = 32
     static let toggleHeight: CGFloat = 18
     static let menuWidth: CGFloat = 248
     static let menuRow: CGFloat = 26
     static let keyCapHeight: CGFloat = 20
-    static let pinnedApps = 12
+    static let pinnedApps = 4
 }
 
 struct GlassBackdrop: NSViewRepresentable {
@@ -179,7 +211,7 @@ struct GlassPlate: View {
                 .strokeBorder(Folio.edge, lineWidth: strong ? 1.5 : 1)
         )
         .shadow(
-            color: Color.black.opacity(castsShadow ? 0.25 : 0),
+            color: castsShadow ? Folio.shadow : Color.clear,
             radius: castsShadow ? 80 : 0,
             x: 0,
             y: castsShadow ? 30 : 0
@@ -238,7 +270,7 @@ private struct ChipStyle: ButtonStyle {
             .background {
                 ZStack {
                     if prominent {
-                        Folio.diagonal
+                        Folio.okGradient
                         Folio.ink.opacity(0.20)
                     } else {
                         fill
@@ -265,20 +297,37 @@ private struct ChipStyle: ButtonStyle {
 }
 
 struct FolioPrimaryStyle: ButtonStyle {
+    var wizard: Bool = false
+    var expands: Bool = false
+
     func makeBody(configuration: Configuration) -> some View {
+        FolioPrimaryBody(configuration: configuration, wizard: wizard, expands: expands)
+    }
+}
+
+private struct FolioPrimaryBody: View {
+    let configuration: ButtonStyleConfiguration
+    var wizard: Bool
+    var expands: Bool
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        let height = wizard ? GlassMetrics.wizardPrimaryHeight : GlassMetrics.primaryHeight
+        let radius = wizard ? GlassMetrics.wizardPrimaryRadius : GlassMetrics.primaryRadius
         configuration.label
+            .font(.system(size: wizard ? 13 : 14, weight: .semibold))
             .foregroundColor(Palette.text)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 6)
-            .frame(minHeight: 32)
+            .frame(maxWidth: expands ? .infinity : nil)
+            .frame(minHeight: height)
+            .padding(.horizontal, expands ? 12 : 18)
             .background(
                 ZStack {
                     Folio.diagonal
                     Folio.ink.opacity(0.30)
                 }
             )
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .brightness(configuration.isPressed ? -0.06 : 0)
+            .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
+            .opacity(isEnabled ? (configuration.isPressed ? 0.86 : 1) : 0.45)
     }
 }
 
@@ -313,6 +362,10 @@ private struct FolioFieldChrome: ViewModifier {
 extension View {
     func folioFieldChrome(focused: Bool) -> some View {
         modifier(FolioFieldChrome(focused: focused))
+    }
+
+    func folioTextShadow() -> some View {
+        shadow(color: Folio.textShadow, radius: 1, x: 0, y: 0.5)
     }
 }
 

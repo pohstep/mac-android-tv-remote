@@ -21,8 +21,13 @@ struct SetupWizardView: View {
 
     private var wizardStack: some View {
         VStack(alignment: .leading, spacing: 14) {
+            Text("Step \(progressIndex + 1) of 5")
+                .font(.system(size: 11.5))
+                .foregroundColor(Palette.text)
             WizardProgress(index: progressIndex)
-            WizardPicture(symbol: pictureSymbol)
+            if showsPicture {
+                WizardPicture(symbol: pictureSymbol)
+            }
             if model.wizard.phase == .pickBrand {
                 ZapbarWordmark(wordSize: 22)
             }
@@ -42,9 +47,16 @@ struct SetupWizardView: View {
                     .accessibilityIdentifier(line.key)
             }
             content
+            Rectangle()
+                .fill(Color.white.opacity(0.20))
+                .frame(height: 1)
             HStack {
-                if model.wizard.phase != .pickBrand && model.wizard.phase != .done {
+                if model.wizard.phase == .pickBrand {
+                    Button("Cancel") { model.closeWizard() }
+                        .foregroundColor(Palette.text)
+                } else if model.wizard.phase != .done {
                     Button("Back") { model.sendWizard(.back) }
+                        .foregroundColor(Palette.text)
                 }
                 Spacer()
             }
@@ -74,6 +86,15 @@ struct SetupWizardView: View {
             return 3
         case .done:
             return 4
+        }
+    }
+
+    private var showsPicture: Bool {
+        switch model.wizard.phase {
+        case .debugging, .pair, .allow:
+            return true
+        case .pickBrand, .find, .manual, .sonyTyping, .sonyKey, .remember, .done:
+            return false
         }
     }
 
@@ -112,11 +133,11 @@ struct SetupWizardView: View {
         switch model.wizard.phase {
         case .pickBrand:
             Button("Sony") { model.sendWizard(.choose(.sony)) }
-                .buttonStyle(FolioPrimaryStyle())
+                .buttonStyle(FolioPrimaryStyle(wizard: true))
             Button("Xiaomi") { model.sendWizard(.choose(.xiaomi)) }
-                .buttonStyle(FolioPrimaryStyle())
+                .buttonStyle(FolioPrimaryStyle(wizard: true))
             Button("Other TV") { model.sendWizard(.choose(.generic)) }
-                .buttonStyle(FolioPrimaryStyle())
+                .buttonStyle(FolioPrimaryStyle(wizard: true))
         case .find:
             if model.discovering {
                 Text("Looking on the local network…")
@@ -124,14 +145,14 @@ struct SetupWizardView: View {
             }
             ForEach(Array(model.discovered.enumerated()), id: \.offset) { _, tv in
                 Button("\(tv.name) · \(tv.host)") { model.sendWizard(.pick(tv)) }
-                    .buttonStyle(FolioPrimaryStyle())
+                    .buttonStyle(FolioPrimaryStyle(wizard: true))
             }
             if DemoOffer.showWhenNoneFound(searching: model.discovering, matchCount: model.discovered.count) {
                 Text(DemoCopy.noneFound)
                     .font(.system(size: 12))
                     .foregroundColor(Palette.muted)
                 Button(DemoCopy.tryIt) { model.startDemo() }
-                    .buttonStyle(FolioPrimaryStyle())
+                    .buttonStyle(FolioPrimaryStyle(wizard: true))
             }
             Button("Enter an address") { model.sendWizard(.wantManual) }
         case .manual:
@@ -143,26 +164,27 @@ struct SetupWizardView: View {
                 let port = Int(manualPort.trimmingCharacters(in: .whitespacesAndNewlines))
                 model.sendWizard(.submitManual(host: manualHost, port: port))
             }
-            .buttonStyle(FolioPrimaryStyle())
+            .buttonStyle(FolioPrimaryStyle(wizard: true))
         case .sonyTyping:
             Button("Skip typing") { model.sendWizard(.typing(false)) }
             Button("I want to type") { model.sendWizard(.typing(true)) }
-                .buttonStyle(FolioPrimaryStyle())
+                .buttonStyle(FolioPrimaryStyle(wizard: true))
         case .debugging:
             Button("Pair with a code") { model.sendWizard(.chooseWireless) }
-                .buttonStyle(FolioPrimaryStyle())
+                .buttonStyle(FolioPrimaryStyle(wizard: true))
             Button("Use port 5555") { model.sendWizard(.chooseLegacy) }
-                .buttonStyle(FolioPrimaryStyle())
+                .buttonStyle(FolioPrimaryStyle(wizard: true))
         case .pair:
             TextField("Pairing port", text: $pairPort)
                 .folioFieldChrome(focused: false)
             TextField("Pairing code", text: $pairCode)
                 .folioFieldChrome(focused: false)
             Button("Pair") { model.sendWizard(.submitPair(port: pairPort, code: pairCode)) }
-                .buttonStyle(FolioPrimaryStyle())
+                .buttonStyle(FolioPrimaryStyle(wizard: true))
+                .disabled(pairCode.trimmingCharacters(in: .whitespacesAndNewlines).count != 6)
         case .allow:
             Button("Check again") { model.retryAllow() }
-                .buttonStyle(FolioPrimaryStyle())
+                .buttonStyle(FolioPrimaryStyle(wizard: true))
         case .sonyKey:
             SecureField("Pre-shared key", text: $psk)
                 .folioFieldChrome(focused: false)
@@ -171,7 +193,7 @@ struct SetupWizardView: View {
                     model.stagePreSharedKey(psk)
                     model.sendWizard(.continueAhead)
                 }
-                .buttonStyle(FolioPrimaryStyle())
+                .buttonStyle(FolioPrimaryStyle(wizard: true))
                 Button("Skip") { model.sendWizard(.continueAhead) }
             }
         case .remember:
@@ -181,38 +203,38 @@ struct SetupWizardView: View {
                 model.stagePreSharedKey(psk)
                 model.sendWizard(.remember(name: deviceName))
             }
-            .buttonStyle(FolioPrimaryStyle())
+            .buttonStyle(FolioPrimaryStyle(wizard: true))
         case .done:
             Button("Close") { model.closeWizard() }
-                .buttonStyle(FolioPrimaryStyle())
+                .buttonStyle(FolioPrimaryStyle(wizard: true))
         }
     }
 }
 
-/// Five segments cut from one diagonal gradient. Empty segments stay a flat white fill.
+/// Five segments cut from one diagonal gradient. Empty segments stay white at 22%.
 private struct WizardProgress: View {
     var index: Int
 
     var body: some View {
         GeometryReader { proxy in
-            let gap: CGFloat = 4
+            let gap: CGFloat = 3
             let count: CGFloat = 5
             let segment = max((proxy.size.width - gap * (count - 1)) / count, 1)
             ZStack(alignment: .leading) {
                 HStack(spacing: gap) {
                     ForEach(0..<5, id: \.self) { _ in
                         Capsule()
-                            .fill(Color.white.opacity(0.12))
-                            .frame(height: 4)
+                            .fill(Color.white.opacity(0.22))
+                            .frame(height: 3)
                     }
                 }
                 Folio.diagonal
-                    .frame(width: proxy.size.width, height: 4)
+                    .frame(width: proxy.size.width, height: 3)
                     .mask(
                         HStack(spacing: gap) {
                             ForEach(0..<5, id: \.self) { slot in
                                 Capsule()
-                                    .frame(width: segment, height: 4)
+                                    .frame(width: segment, height: 3)
                                     .opacity(slot <= index ? 1 : 0)
                             }
                         }
@@ -220,30 +242,34 @@ private struct WizardProgress: View {
                     )
             }
         }
-        .frame(height: 4)
+        .frame(height: 3)
         .accessibilityLabel("Setup step \(index + 1) of 5")
     }
 }
 
-/// Flat framed stand-in. The approved pictures were not in this tree.
+/// Flat frame for steps that show a picture. The TV-settings drawings are not in this tree,
+/// so the frame stays empty of a fake settings screen.
 private struct WizardPicture: View {
     var symbol: String
 
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color.white.opacity(0.10))
-            Folio.diagonal.opacity(0.40)
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color.white.opacity(0.06))
             Image(systemName: symbol)
-                .font(.system(size: 36, weight: .medium))
-                .foregroundColor(Palette.text)
+                .font(.system(size: 28, weight: .regular))
+                .foregroundColor(Palette.secondary)
         }
-        .frame(maxWidth: .infinity)
-        .frame(height: 132)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .frame(width: 288, height: 162)
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .padding(4)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.white.opacity(0.08))
+        )
         .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.28), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.32), lineWidth: 1)
         )
         .accessibilityHidden(true)
     }
