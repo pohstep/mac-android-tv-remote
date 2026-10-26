@@ -179,7 +179,11 @@ public struct Settings: Codable, Equatable {
             devices = stored
             activeDeviceID = try container.decodeIfPresent(String.self, forKey: .activeDeviceID) ?? stored.first?.id ?? ""
         } else {
+            #if ZAPBAR_MIGRATE_V1 && !SANDBOX_BUILD
             devices = StoredTV.migrateLegacy(host: host, port: port, macAddress: macAddress, controlPort: sonyPort)
+            #else
+            devices = []
+            #endif
             activeDeviceID = devices.first?.id ?? ""
         }
         brand = try container.decodeIfPresent(TvBrand.self, forKey: .brand) ?? devices.first?.brand ?? .sony
@@ -207,17 +211,23 @@ public struct Settings: Codable, Equatable {
         settingsFile(homeDirectory: homeDirectory, folder: "Zapbar")
     }
 
-    /// v1.0 wrote settings here. Still read when the Zapbar file is absent.
+    #if ZAPBAR_MIGRATE_V1 && !SANDBOX_BUILD
+    /// v1.0 wrote settings here. The dev build still reads this when the Zapbar file is absent.
     public static func legacyApplicationSupportURL(homeDirectory: String = NSHomeDirectory()) -> URL {
         settingsFile(homeDirectory: homeDirectory, folder: "Pohstep Remote")
     }
+    #endif
 
     public static func resolvedSettingsURL(homeDirectory: String = NSHomeDirectory()) -> URL {
         let modern = applicationSupportURL(homeDirectory: homeDirectory)
+        #if ZAPBAR_MIGRATE_V1 && !SANDBOX_BUILD
         if FileManager.default.fileExists(atPath: modern.path) { return modern }
         let legacy = legacyApplicationSupportURL(homeDirectory: homeDirectory)
         if FileManager.default.fileExists(atPath: legacy.path) { return legacy }
         return modern
+        #else
+        return modern
+        #endif
     }
 
     private static func settingsFile(homeDirectory: String, folder: String) -> URL {

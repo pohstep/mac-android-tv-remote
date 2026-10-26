@@ -49,6 +49,41 @@ final class ReviewFixesTests: XCTestCase {
         XCTAssertFalse(sandbox.contains("adbBinding"), sandbox)
     }
 
+    func testReleaseAndSandboxSkipV1Migration() throws {
+        let root = repoRoot()
+        let releaseScript = try String(contentsOf: root.appendingPathComponent("scripts/build-local.sh"), encoding: .utf8)
+        let devScript = try String(contentsOf: root.appendingPathComponent("scripts/build-dev.sh"), encoding: .utf8)
+        XCTAssertTrue(releaseScript.contains("ZAPBAR_MIGRATE_V1:-0"))
+        XCTAssertTrue(devScript.contains("ZAPBAR_MIGRATE_V1=1"))
+
+        let files = [
+            "macos/PohstepRemote/AppModel.swift",
+            "macos/PohstepRemote/KeychainStore.swift",
+            "Sources/TvRemoteCore/Settings.swift"
+        ]
+        for relative in files {
+            let source = try String(contentsOf: root.appendingPathComponent(relative), encoding: .utf8)
+            let gates = source.components(separatedBy: "\n").filter { $0.contains("#if ZAPBAR_MIGRATE_V1") }
+            XCTAssertFalse(gates.isEmpty, relative)
+            for gate in gates {
+                XCTAssertTrue(gate.contains("!SANDBOX_BUILD"), gate)
+            }
+            let release = releaseSource(droppingMigrateFlag: source)
+            XCTAssertFalse(release.contains("bravia-psk"), relative)
+            XCTAssertFalse(release.contains("legacyAccount"), relative)
+            XCTAssertFalse(release.contains("Pohstep Remote"), relative)
+            XCTAssertFalse(release.contains("secrets.load()"), relative)
+            XCTAssertFalse(release.contains("secrets.clear()"), relative)
+            XCTAssertFalse(release.contains("migrateLegacy"), relative)
+            XCTAssertFalse(release.contains("legacyApplicationSupportURL"), relative)
+        }
+
+        let app = try String(contentsOf: root.appendingPathComponent("macos/PohstepRemote/AppModel.swift"), encoding: .utf8)
+        let releaseApp = releaseSource(droppingMigrateFlag: app)
+        XCTAssertTrue(releaseApp.contains("guard !trimmed.isEmpty, trimmed != \"legacy\" else { return \"\" }"))
+        XCTAssertFalse(releaseApp.contains("secrets.load()\n"))
+    }
+
     func testNormalBuildDoesNotStopTheSharedAdbServer() throws {
         let source = try String(contentsOf: repoRoot().appendingPathComponent("macos/PohstepRemote/PohstepRemoteApp.swift"), encoding: .utf8)
         let start = try XCTUnwrap(source.range(of: "func applicationWillTerminate"))
@@ -320,6 +355,24 @@ final class ReviewFixesTests: XCTestCase {
             }
         }
         XCTAssertTrue(finished)
+    }
+
+    /// Release text: drop `#if ZAPBAR_MIGRATE_V1` blocks and keep their `#else` branch.
+    private func releaseSource(droppingMigrateFlag source: String) -> String {
+        let marker = "#if ZAPBAR_MIGRATE_V1"
+        var rest = source
+        var kept = ""
+        while let start = rest.range(of: marker) {
+            kept += rest[..<start.lowerBound]
+            guard let end = rest.range(of: "#endif", range: start.upperBound..<rest.endIndex) else { break }
+            let block = rest[start.upperBound..<end.lowerBound]
+            if let elseRange = block.range(of: "#else") {
+                kept += block[elseRange.upperBound...]
+            }
+            rest = String(rest[end.upperBound...])
+        }
+        kept += rest
+        return kept
     }
 
     /// Drops each `#if` block opened by `marker`, leaving the text compiled when that condition is false.

@@ -12,6 +12,9 @@
 #   PLATFORM_TOOLS  directory that contains adb and NOTICE.txt (default ./platform-tools)
 #   ADB_BINARY      adb executable (default $PLATFORM_TOOLS/adb)
 #   ZAPBAR_ADVANCED  default 0. Leave unset for a release build. scripts/build-dev.sh sets it to 1.
+#   ZAPBAR_MIGRATE_V1  default 0. Release and sandbox builds do not read the v1.0 settings
+#                   folder or the old keychain item. scripts/build-dev.sh sets it to 1.
+#                   A sandbox compile still skips that migration.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"; cd "$ROOT"
 APP_NAME="${APP_NAME:-Zapbar}"
@@ -56,6 +59,9 @@ fi
 # Release builds leave this unset, so clean-up is not compiled into the app.
 if [ "${ZAPBAR_ADVANCED:-0}" = 1 ]; then
   SWIFT_FLAGS+=(-DZAPBAR_ADVANCED)
+fi
+if [ "${ZAPBAR_MIGRATE_V1:-0}" = 1 ]; then
+  SWIFT_FLAGS+=(-DZAPBAR_MIGRATE_V1)
 fi
 swiftc "${SWIFT_FLAGS[@]}" Sources/TvRemoteCore/*.swift macos/PohstepRemote/*.swift -lz -o dist/PohstepRemote
 
