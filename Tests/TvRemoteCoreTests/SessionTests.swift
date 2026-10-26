@@ -86,7 +86,85 @@ final class SessionTests: XCTestCase {
         XCTAssertEqual(serial, "192.0.2.20:5555")
         XCTAssertTrue(detail.contains("refused"))
         XCTAssertTrue(detail.contains("192.0.2.20:5555"))
-        XCTAssertEqual(fake.calls.first?.arguments, ["connect", "192.0.2.20:5555"])
+        XCTAssertEqual(fake.calls.first?.arguments, ["-P", "5037", "connect", "192.0.2.20:5555"])
+    }
+
+    func testRefreshReportsUnreachableWhenTheConnectIsNotARefusal() {
+        let blocked = [
+            "failed to connect to 192.0.2.20:5555: Operation timed out",
+            "cannot connect to 192.0.2.20:5555: No route to host",
+            "cannot connect to 192.0.2.20:5555"
+        ]
+        for stderr in blocked {
+            let status = refresh(stderr: stderr)
+            guard case .unreachable(let serial) = status else {
+                return XCTFail("expected unreachable for \(stderr), got \(status)")
+            }
+            XCTAssertEqual(serial, "192.0.2.20:5555")
+            XCTAssertEqual(status.title, "Couldn't reach the TV")
+            XCTAssertEqual(status.detail, Copy.unreachable(serial: serial))
+            XCTAssertFalse(status.detail.localizedCaseInsensitiveContains("refused"))
+            XCTAssertFalse(status.detail.contains("Local Network"))
+        }
+
+        let timedOut = refresh(error: RemoteError.timedOut("/usr/local/bin/adb"))
+        guard case .unreachable(let serial) = timedOut else {
+            return XCTFail("expected unreachable for a timeout, got \(timedOut)")
+        }
+        XCTAssertEqual(timedOut.detail, Copy.unreachable(serial: serial))
+    }
+
+    func testRefreshReportsHelperDownWhenTheDaemonDoesNotStart() {
+        let outputs = [
+            "cannot start server on remote host\nfailed to connect to 127.0.0.1:5038",
+            "cannot connect to daemon",
+            "cannot start server on remote host: Connection refused"
+        ]
+        for stderr in outputs {
+            let status = refresh(stderr: stderr)
+            guard case .helperDown = status else {
+                return XCTFail("expected helper down for \(stderr), got \(status)")
+            }
+            XCTAssertEqual(status.detail, Copy.helperDidNotStart)
+            XCTAssertEqual(status.detail, "Zapbar's helper couldn't start. Quit and reopen Zapbar.")
+            XCTAssertEqual(status.title, "Helper didn't start")
+            XCTAssertNotEqual(status.title, "The TV refused the connection")
+            XCTAssertFalse(status.detail.localizedCaseInsensitiveContains("refused"))
+            XCTAssertNotEqual(status, .unreachable(serial: "192.0.2.20:5555"))
+        }
+
+        let thrown = refresh(error: RemoteError.commandFailed("cannot connect to daemon"))
+        guard case .helperDown = thrown else {
+            return XCTFail("expected helper down for a thrown daemon error, got \(thrown)")
+        }
+        XCTAssertEqual(thrown.detail, Copy.helperDidNotStart)
+    }
+
+    private func refresh(stderr: String) -> LinkStatus {
+        refresh(connect: .success(CommandResult(status: 1, stdout: "", stderr: stderr)))
+    }
+
+    private func refresh(error: Error) -> LinkStatus {
+        refresh(connect: .failure(error))
+    }
+
+    private func refresh(connect: Result<CommandResult, Error>) -> LinkStatus {
+        var settings = Settings.factoryDefaults()
+        settings.host = "192.0.2.20"
+        settings.port = 5555
+        let fake = FakeRunner()
+        fake.script = [
+            connect,
+            .success(CommandResult(status: 0, stdout: "List of devices attached\n", stderr: ""))
+        ]
+        let session = RemoteSession(
+            settings: settings,
+            runner: fake,
+            fileExists: { $0 == "/usr/local/bin/adb" },
+            pathEnvironment: "",
+            homeDirectory: "/Users/tester"
+        )
+        return session.refresh()
     }
 
     func testRefreshReportsUnauthorized() {
@@ -133,7 +211,7 @@ final class SessionTests: XCTestCase {
         _ = session.refresh()
         let wakeReport = session.pressPower()
         XCTAssertEqual(wakeReport.title, "Sent wake")
-        XCTAssertEqual(fake.calls.last?.arguments, AdbCommands.keyEvent(serial: "192.0.2.20:5555", key: .wakeup))
+        XCTAssertEqual(fake.calls.last?.arguments, ["-P", "5037"] + AdbCommands.keyEvent(serial: "192.0.2.20:5555", key: .wakeup))
         XCTAssertTrue(wake.sent.isEmpty)
 
         let asleep = RemoteSession(settings: settings, runner: FakeRunner(), wol: wake, fileExists: { _ in false })
@@ -194,7 +272,18 @@ final class SessionTests: XCTestCase {
         XCTAssertEqual(policy.delay(for: .refused(serial: "a:5555", detail: "no"), failures: 0), 5)
         XCTAssertEqual(policy.delay(for: .refused(serial: "a:5555", detail: "no"), failures: 1), 10)
         XCTAssertEqual(policy.delay(for: .refused(serial: "a:5555", detail: "no"), failures: 3), 30)
+        XCTAssertEqual(policy.delay(for: .unreachable(serial: "a:5555"), failures: 0), 5)
         XCTAssertEqual(policy.delay(for: .adbMissing(message: "x"), failures: 9), 10)
+    }
+
+    func testUnreachableCopy() {
+        let serial = "192.0.2.8:5555"
+        XCTAssertEqual(
+            Copy.unreachable(serial: serial),
+            "Couldn't reach the TV at \(serial). Check that it is on, on the same network, and that network debugging is enabled."
+        )
+        XCTAssertFalse(Copy.unreachable(serial: serial).contains("Local Network"))
+        XCTAssertFalse(Copy.unreachable(serial: serial).localizedCaseInsensitiveContains("android"))
     }
 
     func testDefaultApps() {

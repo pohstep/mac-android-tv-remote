@@ -159,12 +159,21 @@ public enum AdbOutput {
         return .failed(trimmed)
     }
 
+    /// A TV refusal, such as "Connection refused" for that TV's host and port.
+    /// "failed to connect to", "cannot connect to daemon", and "cannot start server"
+    /// are the helper failing to start, not the TV turning the Mac away.
     public static func isRefusal(_ text: String) -> Bool {
         let lower = text.lowercased()
+        if isDaemonFailure(lower) || lower.contains("failed to connect to") {
+            return false
+        }
         return lower.contains("refused")
-            || lower.contains("failed to connect")
-            || lower.contains("cannot connect")
-            || lower.contains("connection refused")
+    }
+
+    /// The helper never started its own server, so the TV was not contacted.
+    public static func isDaemonFailure(_ text: String) -> Bool {
+        let lower = text.lowercased()
+        return lower.contains("cannot connect to daemon") || lower.contains("cannot start server")
     }
 
     public static func parseDevices(_ text: String, serial: String) -> DeviceState {

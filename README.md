@@ -13,7 +13,7 @@ A macOS menu bar remote: D-pad, apps, inputs, volume, power, and typing on the T
 - **Apps** read from the TV, with **More apps…** for the rest of the list.
 - **Inputs** with the names the TV reports.
 - **Power on from standby** where the TV allows it: Sony IP control, then Wake-on-LAN, then a wake key, then a status check. Power off asks for a second click.
-- **Several TVs.** The last one reconnects on launch. Wake is in the menu bar. A v1.0 settings file becomes the first saved TV, including the pre-shared key already in the Keychain.
+- **Several TVs.** The last one reconnects on launch. Wake is in the menu bar. Release and sandbox builds leave a v1.0 settings file and the old keychain item unread, so the first launch does not ask for Keychain access. `scripts/build-dev.sh` sets `ZAPBAR_MIGRATE_V1` and can bring that TV and key across.
 - **Setup** walks through brand, finding the TV (or typing an address), debugging, pairing or Allow, and saving.
 - **Type on the TV.** A field in the panel sends on Return. `⌃⌥T` opens the panel and focuses it. Plain letters go over the debugging connection. If a route can't type, the panel says so.
 - **Try demo TV** opens a connected panel with no TV on the network. It is on the find step when nothing is found, and in Settings. Leave demo returns to a saved TV. Demo mode is not saved.
@@ -107,7 +107,7 @@ With an explicit directory and a signing identity:
 SANDBOX=1 PLATFORM_TOOLS="$HOME/platform-tools" SIGN_IDENTITY="-" NO_INSTALL=1 scripts/build-local.sh
 ```
 
-The host is signed with `macos/PohstepRemote/Zapbar.entitlements` (`app-sandbox`, `network.client`, `network.server`) and the hardened runtime. The helper at `Contents/Helpers/adb` is signed with `macos/PohstepRemote/adb-helper.entitlements` (`app-sandbox` and `inherit` only) and the hardened runtime. Every `adb` launch sets `TMPDIR` to the app temporary directory. A sandboxed build sets `ADB_SERVER_SOCKET` to `tcp:127.0.0.1:5038` so it does not attach to another adb server. The other build uses `tcp:localhost:5037`. The non-sandbox build still looks for a user-installed `adb` when the helper is absent.
+The host is signed with `macos/PohstepRemote/Zapbar.entitlements` (`app-sandbox`, `network.client`, `network.server`) and the hardened runtime. The helper at `Contents/Helpers/adb` is signed with `macos/PohstepRemote/adb-helper.entitlements` (`app-sandbox` and `inherit` only) and the hardened runtime. Every `adb` launch sets `TMPDIR` to the app temporary directory. A sandboxed build sets `ADB_SERVER_SOCKET` to `tcp:localhost:5038` and passes `-P 5038`, so the helper starts its own server. The other build uses `tcp:localhost:5037` and `-P 5037`. The non-sandbox build still looks for a user-installed `adb` when the helper is absent.
 
 See [docs/adb-notice.md](docs/adb-notice.md) for the Apache-2.0 notice.
 

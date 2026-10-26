@@ -2,6 +2,7 @@ import Foundation
 
 public enum Copy {
     public static let helperMissing = "Zapbar's built-in helper is missing. Reinstall Zapbar."
+    public static let helperDidNotStart = "Zapbar's helper couldn't start. Quit and reopen Zapbar."
     public static let stoppedAnswering = "The TV stopped answering."
 
     public static func adbMissing() -> String {
@@ -27,6 +28,10 @@ public enum Copy {
 
     public static func refused(serial: String) -> String {
         "The TV refused the connection to \(serial). Turn on network debugging and check the address."
+    }
+
+    public static func unreachable(serial: String) -> String {
+        "Couldn't reach the TV at \(serial). Check that it is on, on the same network, and that network debugging is enabled."
     }
 
     public static func unauthorized(serial: String) -> String {

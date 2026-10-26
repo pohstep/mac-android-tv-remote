@@ -11,6 +11,13 @@ struct SetupWizardView: View {
     @State private var psk = ""
 
     var body: some View {
+        ScrollView {
+            wizardStack
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private var wizardStack: some View {
         VStack(alignment: .leading, spacing: 14) {
             if model.wizard.phase == .pickBrand {
                 ZapbarWordmark(wordSize: 22)

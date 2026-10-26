@@ -5,8 +5,10 @@ public enum LinkStatus: Equatable {
     case connecting(serial: String)
     case connected(serial: String)
     case adbMissing(message: String)
+    case helperDown
     case unauthorized(serial: String)
     case refused(serial: String, detail: String)
+    case unreachable(serial: String)
     case offline(serial: String)
     case failed(message: String)
 
@@ -14,9 +16,9 @@ public enum LinkStatus: Equatable {
         switch self {
         case .connecting(let serial), .connected(let serial), .unauthorized(let serial), .offline(let serial):
             return serial
-        case .refused(let serial, _):
+        case .refused(let serial, _), .unreachable(let serial):
             return serial
-        case .idle, .adbMissing, .failed:
+        case .idle, .adbMissing, .helperDown, .failed:
             return nil
         }
     }
@@ -32,8 +34,10 @@ public enum LinkStatus: Equatable {
         case .connecting: return "Connecting"
         case .connected: return "Connected"
         case .adbMissing: return "adb isn't installed"
+        case .helperDown: return "Helper didn't start"
         case .unauthorized: return "Waiting for the TV"
         case .refused: return "The TV refused the connection"
+        case .unreachable: return "Couldn't reach the TV"
         case .offline: return "TV is offline"
         case .failed: return "Couldn't connect"
         }
@@ -49,10 +53,14 @@ public enum LinkStatus: Equatable {
             return serial
         case .adbMissing(let message):
             return message
+        case .helperDown:
+            return Copy.helperDidNotStart
         case .unauthorized(let serial):
             return Copy.unauthorized(serial: serial)
         case .refused(_, let detail):
             return detail
+        case .unreachable(let serial):
+            return Copy.unreachable(serial: serial)
         case .offline(let serial):
             return Copy.offline(serial: serial)
         case .failed(let message):
@@ -83,11 +91,11 @@ public struct ReconnectPolicy {
             return 15
         case .idle:
             return 20
-        case .adbMissing:
+        case .adbMissing, .helperDown:
             return 10
         case .connecting:
             return 5
-        case .unauthorized, .refused, .offline, .failed:
+        case .unauthorized, .refused, .unreachable, .offline, .failed:
             let clamped = min(max(failures, 0), 3)
             let multiplier = 1 << clamped
             return min(5 * Double(multiplier), 30)

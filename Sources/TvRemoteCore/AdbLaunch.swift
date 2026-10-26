@@ -7,12 +7,23 @@ public enum AdbLaunch {
     /// Shared port used by a normal adb install. A sandboxed app must not use it.
     public static let publicServerSocket = "tcp:localhost:5037"
     /// Private loopback port so a sandboxed Zapbar never attaches to someone else's server.
-    public static let privateServerSocket = "tcp:127.0.0.1:5038"
+    /// `localhost` plus `-P` lets the helper start that server. A numeric address alone
+    /// makes adb treat the server as remote and refuse to start it.
+    public static let privateServerSocket = "tcp:localhost:5038"
     /// Quit waits at most this long for `adb kill-server`, then gives up.
     public static let quitWait: TimeInterval = 2
 
     public static func serverSocket(sandboxed: Bool) -> String {
         sandboxed ? privateServerSocket : publicServerSocket
+    }
+
+    /// Numeric port at the end of `tcp:host:port`. Nil when the socket has none.
+    public static func serverPort(socket: String) -> String? {
+        let trimmed = socket.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let colon = trimmed.lastIndex(of: ":") else { return nil }
+        let port = String(trimmed[trimmed.index(after: colon)...])
+        guard !port.isEmpty, port.allSatisfy({ $0.isNumber }) else { return nil }
+        return port
     }
 
     #if SANDBOX_BUILD

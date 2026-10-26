@@ -203,27 +203,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func sizePanelToFit() {
-        // Measure the non-scrolling stack in a throwaway view, so the panel gets its full height.
+        // Measure the non-scrolling stack, then use that height until it would
+        // pass the visible screen. A shorter screen scrolls inside the popover.
+        let width = CGFloat(PanelLayout.width)
         let probe = NSHostingView(rootView: RemotePanel(model: model, measuring: true))
-        probe.frame = NSRect(x: 0, y: 0, width: GlassMetrics.panelWidth + 56, height: 2000)
+        probe.frame = NSRect(x: 0, y: 0, width: width, height: 4000)
         probe.layoutSubtreeIfNeeded()
         let size = probe.fittingSize
-        let width = max(size.width, GlassMetrics.panelWidth)
+        let fittedWidth = max(size.width, width)
         let screen = statusItem?.button?.window?.screen ?? NSScreen.main
-        let maxHeight = (screen?.visibleFrame.height ?? 800) - 12
-        // 600 pt cap when collapsed; expanded (More apps) is capped only by the screen.
-        let cap = model.appsExpanded ? maxHeight : min(maxHeight, GlassMetrics.panelMaxHeight)
-        let height = min(max(size.height, 200), cap)
+        let visible = Double(screen?.visibleFrame.height ?? 800)
+        let height = CGFloat(PanelLayout.height(content: Double(size.height), visibleScreen: visible))
         let old = panel.frame
-        let contentRect = panel.frameRect(forContentRect: NSRect(x: 0, y: 0, width: width, height: height))
+        let contentRect = panel.frameRect(forContentRect: NSRect(x: 0, y: 0, width: fittedWidth, height: height))
         if panel.isVisible && old.height != contentRect.height {
             // Keep the top edge under the menu bar, animate the grow/shrink.
             let frame = NSRect(x: old.minX, y: old.maxY - contentRect.height, width: contentRect.width, height: contentRect.height)
             panel.setFrame(frame, display: true, animate: true)
         } else {
-            panel.setContentSize(NSSize(width: width, height: height))
+            panel.setContentSize(NSSize(width: fittedWidth, height: height))
         }
-        let line = "\(Date()) fitting=\(size.height) cap=\(cap) panel=\(height) expanded=\(model.appsExpanded)\n"
+        hosting.frame = NSRect(x: 0, y: 0, width: fittedWidth, height: height)
+        let line = "\(Date()) content=\(size.height) visible=\(visible) panel=\(height) expanded=\(model.appsExpanded)\n"
         let url = URL(fileURLWithPath: NSHomeDirectory() + "/Library/Logs/Zapbar/panel-size.log")
         try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         if let h = try? FileHandle(forWritingTo: url) { h.seekToEndOfFile(); h.write(line.data(using: .utf8)!); try? h.close() }

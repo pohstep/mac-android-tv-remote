@@ -32,6 +32,21 @@ final class AdbLayerTests: XCTestCase {
         let refused = "cannot connect to 10.0.0.8:5555: Connection refused"
         XCTAssertEqual(AdbOutput.parseConnect(refused), .failed(refused))
         XCTAssertTrue(AdbOutput.isRefusal(refused))
+        XCTAssertTrue(AdbOutput.isRefusal("connection refused"))
+        XCTAssertFalse(AdbOutput.isRefusal("failed to connect to 10.0.0.8:5555"))
+        XCTAssertFalse(AdbOutput.isRefusal("cannot connect to 10.0.0.8:5555: No route to host"))
+        XCTAssertFalse(AdbOutput.isRefusal("cannot connect to 10.0.0.8:5555"))
+        XCTAssertFalse(AdbOutput.isRefusal(""))
+        XCTAssertFalse(AdbOutput.isRefusal("failed to connect to 127.0.0.1:5038"))
+        XCTAssertFalse(AdbOutput.isRefusal("cannot connect to daemon"))
+        XCTAssertFalse(AdbOutput.isRefusal("cannot start server on remote host"))
+        XCTAssertFalse(AdbOutput.isRefusal("cannot start server on remote host\nfailed to connect to 127.0.0.1:5038\nConnection refused"))
+        XCTAssertFalse(AdbOutput.isRefusal("cannot connect to daemon: Connection refused"))
+        XCTAssertTrue(AdbOutput.isDaemonFailure("cannot start server on remote host"))
+        XCTAssertTrue(AdbOutput.isDaemonFailure("cannot connect to daemon"))
+        XCTAssertTrue(AdbOutput.isDaemonFailure("cannot start server on remote host\nfailed to connect to 127.0.0.1:5038"))
+        XCTAssertFalse(AdbOutput.isDaemonFailure(refused))
+        XCTAssertFalse(AdbOutput.isDaemonFailure("failed to connect to 10.0.0.8:5555"))
 
         let listing = """
         List of devices attached
@@ -81,9 +96,9 @@ final class AdbLayerTests: XCTestCase {
         try client.launchApp(packageName: "com.netflix.ninja", serial: "emulator-5554")
 
         XCTAssertEqual(fake.calls.map(\.arguments), [
-            ["-s", "emulator-5554", "shell", "input", "text", "'hi%sthere'"],
-            AdbCommands.launchLeanback(serial: "emulator-5554", packageName: "com.netflix.ninja"),
-            AdbCommands.launchMonkey(serial: "emulator-5554", packageName: "com.netflix.ninja", category: "android.intent.category.LEANBACK_LAUNCHER")
+            ["-P", "5037", "-s", "emulator-5554", "shell", "input", "text", "'hi%sthere'"],
+            ["-P", "5037"] + AdbCommands.launchLeanback(serial: "emulator-5554", packageName: "com.netflix.ninja"),
+            ["-P", "5037"] + AdbCommands.launchMonkey(serial: "emulator-5554", packageName: "com.netflix.ninja", category: "android.intent.category.LEANBACK_LAUNCHER")
         ])
     }
 
@@ -127,8 +142,37 @@ final class AdbLayerTests: XCTestCase {
             serverSocket: "tcp:localhost:5037"
         )
         XCTAssertTrue(try client.pair(host: "192.0.2.8", port: 37111, code: "123456"))
+        XCTAssertEqual(fake.calls.first?.arguments, ["-P", "5037", "pair", "192.0.2.8:37111", "123456"])
         XCTAssertEqual(fake.calls.first?.environment["TMPDIR"], "/var/folders/zapbar")
         XCTAssertEqual(fake.calls.first?.environment["ADB_SERVER_SOCKET"], "tcp:localhost:5037")
+    }
+
+    func testSandboxHelperPassesThePrivatePort() throws {
+        XCTAssertEqual(AdbLaunch.privateServerSocket, "tcp:localhost:5038")
+        XCTAssertEqual(AdbLaunch.serverPort(socket: AdbLaunch.privateServerSocket), "5038")
+        XCTAssertEqual(AdbLaunch.serverPort(socket: AdbLaunch.publicServerSocket), "5037")
+        let fake = FakeRunner()
+        fake.script = [
+            .success(CommandResult(status: 0, stdout: "", stderr: "")),
+            .success(CommandResult(status: 0, stdout: "List of devices attached\n", stderr: "")),
+            .success(CommandResult(status: 0, stdout: "", stderr: ""))
+        ]
+        let client = AdbClient(
+            runner: fake,
+            adbPath: "/Applications/Zapbar.app/Contents/Helpers/adb",
+            serverSocket: AdbLaunch.serverSocket(sandboxed: true)
+        )
+        _ = try client.connect(host: "192.0.2.20", port: 5555)
+        _ = try client.listDevices()
+        client.killServer()
+        XCTAssertEqual(fake.calls.map(\.arguments), [
+            ["-P", "5038", "connect", "192.0.2.20:5555"],
+            ["-P", "5038", "devices"],
+            ["-P", "5038", "kill-server"]
+        ])
+        for call in fake.calls {
+            XCTAssertEqual(call.environment["ADB_SERVER_SOCKET"], "tcp:localhost:5038")
+        }
     }
 
     func testHostInputAcceptsTailscaleNamesAndPastedConnectLines() {

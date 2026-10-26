@@ -15,7 +15,7 @@ final class MacJobTests: XCTestCase {
         let fake = FakeRunner()
         let session = connectedSession(fake, temporaryDirectory: "/var/folders/zapbar")
         fake.handler = { arguments in
-            if arguments == ["devices"] {
+            if arguments == ["-P", "5037", "devices"] {
                 return .success(CommandResult(status: 0, stdout: "List of devices attached\n192.0.2.20:5555\tdevice\n", stderr: ""))
             }
             if arguments.contains("install") {
@@ -29,7 +29,7 @@ final class MacJobTests: XCTestCase {
         XCTAssertTrue(report.raw.contains("INSTALL_FAILED_VERSION_DOWNGRADE"))
         XCTAssertTrue(report.isError)
         let install = fake.calls.last
-        XCTAssertEqual(install?.arguments, ["-s", "192.0.2.20:5555", "install", "-r", apk.path])
+        XCTAssertEqual(install?.arguments, ["-P", "5037", "-s", "192.0.2.20:5555", "install", "-r", apk.path])
         XCTAssertEqual(install?.arguments.last, apk.path)
         XCTAssertTrue(apk.path.contains(" "))
         XCTAssertEqual(install?.environment["TMPDIR"], "/var/folders/zapbar")
@@ -62,7 +62,7 @@ final class MacJobTests: XCTestCase {
         XCTAssertTrue(fake.calls.isEmpty)
 
         fake.handler = { arguments in
-            if arguments == ["devices"] {
+            if arguments == ["-P", "5037", "devices"] {
                 return .success(CommandResult(status: 0, stdout: "List of devices attached\n192.0.2.20:5555\tdevice\n", stderr: ""))
             }
             return .success(CommandResult(status: 0, stdout: "Starting: Intent", stderr: ""))
@@ -72,11 +72,11 @@ final class MacJobTests: XCTestCase {
         XCTAssertFalse(sent.isError)
         XCTAssertEqual(
             fake.calls.last?.arguments,
-            ["-s", "192.0.2.20:5555", "shell", "am start -a android.intent.action.VIEW -d 'https://example.com/a?b=1&c=2'"]
+            ["-P", "5037", "-s", "192.0.2.20:5555", "shell", "am start -a android.intent.action.VIEW -d 'https://example.com/a?b=1&c=2'"]
         )
 
         fake.handler = { arguments in
-            if arguments == ["devices"] {
+            if arguments == ["-P", "5037", "devices"] {
                 return .success(CommandResult(status: 0, stdout: "List of devices attached\n192.0.2.20:5555\tdevice\n", stderr: ""))
             }
             return .success(CommandResult(status: 1, stdout: "", stderr: "Error: Activity not started"))
@@ -124,7 +124,7 @@ final class MacJobTests: XCTestCase {
         let fake = FakeRunner()
         let session = connectedSession(fake, temporaryDirectory: folder.path)
         fake.handler = { arguments in
-            if arguments == ["devices"] {
+            if arguments == ["-P", "5037", "devices"] {
                 return .success(CommandResult(status: 0, stdout: "List of devices attached\n192.0.2.20:5555\tdevice\n", stderr: ""))
             }
             if arguments.contains("exec-out") {
@@ -166,7 +166,7 @@ final class MacJobTests: XCTestCase {
         let fake = FakeRunner()
         let session = connectedSession(fake, temporaryDirectory: NSTemporaryDirectory())
         fake.handler = { arguments in
-            if arguments == ["devices"] {
+            if arguments == ["-P", "5037", "devices"] {
                 return .success(CommandResult(status: 0, stdout: "List of devices attached\n192.0.2.20:5555\tdevice\n", stderr: ""))
             }
             if arguments.contains("push") {
@@ -179,16 +179,16 @@ final class MacJobTests: XCTestCase {
         XCTAssertFalse(sent.isError)
         XCTAssertEqual(
             fake.calls.first { $0.arguments.contains("push") }?.arguments,
-            ["-s", "192.0.2.20:5555", "push", video.path, "/sdcard/Download/My Video.mp4"]
+            ["-P", "5037", "-s", "192.0.2.20:5555", "push", video.path, "/sdcard/Download/My Video.mp4"]
         )
         XCTAssertEqual(
             fake.calls.last?.arguments,
-            ["-s", "192.0.2.20:5555", "shell", "am start -a android.intent.action.VIEW -d 'file:///sdcard/Download/My%20Video.mp4' -t 'video/mp4'"]
+            ["-P", "5037", "-s", "192.0.2.20:5555", "shell", "am start -a android.intent.action.VIEW -d 'file:///sdcard/Download/My%20Video.mp4' -t 'video/mp4'"]
         )
 
         fake.calls = []
         fake.handler = { arguments in
-            if arguments == ["devices"] {
+            if arguments == ["-P", "5037", "devices"] {
                 return .success(CommandResult(status: 0, stdout: "List of devices attached\n192.0.2.20:5555\tdevice\n", stderr: ""))
             }
             if arguments.contains("push") {
@@ -203,7 +203,7 @@ final class MacJobTests: XCTestCase {
 
         fake.calls = []
         fake.handler = { arguments in
-            if arguments == ["devices"] {
+            if arguments == ["-P", "5037", "devices"] {
                 return .success(CommandResult(status: 0, stdout: "List of devices attached\n192.0.2.20:5555\tdevice\n", stderr: ""))
             }
             if arguments.contains("push") {

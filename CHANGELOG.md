@@ -5,7 +5,7 @@
 Release build: core setup, drop an app file, send a link, screenshot, send a file, and the approved icon.
 
 - Product name is Zapbar. Bundle id is `com.pohstep.tvremote`.
-- Setup is a short step-by-step flow: brand, address, debugging, pair or allow, save. Several TVs are remembered. The last one reconnects on launch, and wake is in the menu bar. A v1.0 settings file becomes the first saved TV.
+- Setup is a short step-by-step flow: brand, address, debugging, pair or allow, save. Several TVs are remembered. The last one reconnects on launch, and wake is in the menu bar. Release and sandbox builds leave a v1.0 settings file and the old keychain item unread. `scripts/build-dev.sh` sets `ZAPBAR_MIGRATE_V1` for that migration.
 - Finds TVs with Bonjour plus a small scan for IP control and the experimental port 6095.
 - A text field types on the TV. `⌃⌥T` opens it. Global keyboard capture stays in the non-sandbox build only.
 - Drop an app file on the menu bar icon or the panel to install it. The result is one plain sentence, with the original message kept underneath.

@@ -217,23 +217,27 @@ public final class RemoteSession {
             case .offline:
                 return assign(.offline(serial: serial))
             case .missing:
-                let detail = outcome.failureDetail
-                if AdbOutput.isRefusal(detail) {
+                if AdbOutput.isDaemonFailure(outcome.failureDetail) || AdbOutput.isDaemonFailure(listed.combined) {
+                    return assign(.helperDown)
+                }
+                if AdbOutput.isRefusal(outcome.failureDetail) {
                     return assign(.refused(serial: serial, detail: Copy.refused(serial: serial)))
                 }
-                let message = detail.isEmpty ? "Couldn't reach \(serial)." : detail
-                return assign(.failed(message: message))
+                return assign(.unreachable(serial: serial))
             }
         } catch let error as RemoteError {
             if case .notFound = error {
                 return assign(.adbMissing(message: Copy.adbMissing()))
             }
-            if case .timedOut = error {
-                return assign(.failed(message: "Timed out contacting \(serial)."))
+            if AdbOutput.isDaemonFailure(String(describing: error)) {
+                return assign(.helperDown)
             }
-            return assign(.failed(message: error.description))
+            return assign(.unreachable(serial: serial))
         } catch {
-            return assign(.failed(message: "Couldn't reach \(serial)."))
+            if AdbOutput.isDaemonFailure(String(describing: error)) {
+                return assign(.helperDown)
+            }
+            return assign(.unreachable(serial: serial))
         }
     }
 

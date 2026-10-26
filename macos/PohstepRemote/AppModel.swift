@@ -156,10 +156,17 @@ final class AppModel: ObservableObject {
     }
 
     func clearPreSharedKey() {
-        secrets.clear(account: secrets.account(for: settings.activeDeviceID))
-        if settings.activeDeviceID == "legacy" || settings.devices.count <= 1 {
+        let id = settings.activeDeviceID.trimmingCharacters(in: .whitespacesAndNewlines)
+        #if ZAPBAR_MIGRATE_V1 && !SANDBOX_BUILD
+        secrets.clear(account: secrets.account(for: id))
+        if id == "legacy" || id.isEmpty || settings.devices.count <= 1 {
             secrets.clear()
         }
+        #else
+        if !id.isEmpty, id != "legacy" {
+            secrets.clear(account: "psk.\(id)")
+        }
+        #endif
         pskSaved = false
         session.setPreSharedKey("")
         banner = "Pre-shared key removed from the Keychain."
@@ -908,19 +915,31 @@ final class AppModel: ObservableObject {
     }
 
     private func keyFromChain(deviceID: String, deviceCount: Int) -> String {
-        let specific = secrets.load(account: secrets.account(for: deviceID))
+        let trimmed = deviceID.trimmingCharacters(in: .whitespacesAndNewlines)
+        #if ZAPBAR_MIGRATE_V1 && !SANDBOX_BUILD
+        let specific = secrets.load(account: secrets.account(for: trimmed))
         if !specific.isEmpty { return specific }
-        if deviceID.isEmpty || deviceID == "legacy" || deviceCount <= 1 {
+        if trimmed.isEmpty || trimmed == "legacy" || deviceCount <= 1 {
             return secrets.load()
         }
         return ""
+        #else
+        guard !trimmed.isEmpty, trimmed != "legacy" else { return "" }
+        return secrets.load(account: "psk.\(trimmed)")
+        #endif
     }
 
     private func saveKey(_ value: String, deviceID: String) throws {
-        try secrets.save(value, account: secrets.account(for: deviceID))
-        if deviceID == "legacy" || deviceID.isEmpty || settings.devices.count <= 1 {
+        let trimmed = deviceID.trimmingCharacters(in: .whitespacesAndNewlines)
+        #if ZAPBAR_MIGRATE_V1 && !SANDBOX_BUILD
+        try secrets.save(value, account: secrets.account(for: trimmed))
+        if trimmed == "legacy" || trimmed.isEmpty || settings.devices.count <= 1 {
             try secrets.save(value)
         }
+        #else
+        guard !trimmed.isEmpty, trimmed != "legacy" else { return }
+        try secrets.save(value, account: "psk.\(trimmed)")
+        #endif
     }
 
     private func normalizeStoredAddress() {
