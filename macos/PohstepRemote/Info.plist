@@ -36,7 +36,7 @@
 		<string>_adb-tls-pairing._tcp</string>
 	</array>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Zapbar looks for TVs on your local network.</string>
+	<string>Zapbar looks for your TV on your home network and sends it remote commands.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSPrincipalClass</key>

@@ -196,6 +196,10 @@ extension AppModel {
     }
 
     func refreshCleanup() {
+        guard !demoOn else {
+            cleanupLine = "Leave demo before using clean-up."
+            return
+        }
         guard !cleanupBusy else { return }
         cleanupBusy = true
         cleanupLine = "Looking up packages…"
@@ -245,6 +249,10 @@ extension AppModel {
     }
 
     private func runCleanup(_ work: @escaping (CleanupRunner, UndoStore, String, TvBrand) -> CleanupReport) {
+        guard !demoOn else {
+            cleanupLine = "Leave demo before using clean-up."
+            return
+        }
         guard !cleanupBusy else { return }
         guard !jobBusy else {
             cleanupLine = "Wait for the other task to finish."

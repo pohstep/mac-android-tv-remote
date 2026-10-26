@@ -26,6 +26,8 @@ final class AppModel: ObservableObject {
     @Published var jobBusy = false
     @Published var jobCancellable = false
     @Published var screenshotPNG: Data?
+    @Published var demoOn = false
+    @Published var demoNote = ""
     #if ZAPBAR_ADVANCED
     @Published var advancedExpanded = false
     @Published var cleanupEnabled = false
@@ -38,6 +40,7 @@ final class AppModel: ObservableObject {
     #endif
 
     let session: RemoteSession
+    private let demo = DemoSession()
     let store: SettingsStore
     let hotkey = Hotkey.default
     let typeHotkey = Hotkey.typeDefault
@@ -228,6 +231,7 @@ final class AppModel: ObservableObject {
     }
 
     func refreshNow() {
+        guard !demoOn else { return }
         guard !refreshInFlight else { return }
         refreshInFlight = true
         let shouldReadApps = !appsFresh
@@ -240,6 +244,10 @@ final class AppModel: ObservableObject {
             let picture = self.session.refreshPicture()
             let apps = (status.isConnected && shouldReadApps) ? self.session.readApps() : nil
             DispatchQueue.main.async {
+                if self.demoOn {
+                    self.refreshInFlight = false
+                    return
+                }
                 self.status = status
                 self.picture = picture
                 if !self.settingsFieldsAreActive {
@@ -280,6 +288,10 @@ final class AppModel: ObservableObject {
     }
 
     func selectInput(_ input: BraviaInput) {
+        if demoOn {
+            demoAct { $0.selectInput(uri: input.uri) }
+            return
+        }
         run { $0.selectInput(uri: input.uri) }
     }
 
@@ -332,26 +344,50 @@ final class AppModel: ObservableObject {
     }
 
     func press(_ key: AndroidKey) {
+        if demoOn {
+            demoAct { $0.press(key) }
+            return
+        }
         run { $0.press(key) }
     }
 
     func launch(_ app: TvApp) {
+        if demoOn {
+            demoAct { $0.launch(app) }
+            return
+        }
         run { $0.launch(app) }
     }
 
     func wake() {
+        if demoOn {
+            demoAct { $0.pressPower() }
+            return
+        }
         run { $0.pressPower() }
     }
 
     func sleep() {
+        if demoOn {
+            demoAct { $0.pressSleep() }
+            return
+        }
         run { $0.pressSleep() }
     }
 
     func selectHdmi(_ port: Int) {
+        if demoOn {
+            demoAct { $0.selectHdmi(port) }
+            return
+        }
         run { $0.selectHdmi(port) }
     }
 
     func setVolume(_ level: Int) {
+        if demoOn {
+            demoAct { $0.setVolume(level) }
+            return
+        }
         run { $0.setVolume(level) }
     }
 
@@ -394,6 +430,10 @@ final class AppModel: ObservableObject {
 
     func sendTypedText(_ text: String) {
         guard !text.isEmpty else { return }
+        if demoOn {
+            demoAct { $0.type(text) }
+            return
+        }
         run { $0.type(text) }
     }
 
@@ -404,7 +444,9 @@ final class AppModel: ObservableObject {
 
     func sendLink(_ raw: String) {
         runJob("Sending the link…", cancellable: false) { [weak self] _ in
-            self?.session.sendLink(raw) ?? JobReport(sentence: "Cancelled.", raw: "", isError: true)
+            guard let self else { return JobReport(sentence: "Cancelled.", raw: "", isError: true) }
+            if self.demoOn { return self.demo.sendLink(raw) }
+            return self.session.sendLink(raw)
         }
     }
 
@@ -413,6 +455,18 @@ final class AppModel: ObservableObject {
     }
 
     func receiveStaged(_ paths: [String]) {
+        if demoOn {
+            discard(takePendingStages())
+            let apks = paths.filter { $0.lowercased().hasSuffix(".apk") }
+            guard !apks.isEmpty else {
+                noteJob(JobReport(sentence: "Drop an app file ending in .apk.", raw: "", isError: true))
+                return
+            }
+            runJob("Installing…", cancellable: false) { [weak self] _ in
+                self?.demo.installApk(at: apks[0]) ?? JobReport(sentence: "Cancelled.", raw: "", isError: true)
+            }
+            return
+        }
         let directories = takePendingStages()
         let apks = paths.filter { $0.lowercased().hasSuffix(".apk") }
         guard !apks.isEmpty else {
@@ -424,6 +478,17 @@ final class AppModel: ObservableObject {
     }
 
     func receiveApks(_ urls: [URL]) {
+        if demoOn {
+            let apks = urls.filter { $0.path.lowercased().hasSuffix(".apk") }
+            guard !apks.isEmpty else {
+                noteJob(JobReport(sentence: "Drop an app file ending in .apk.", raw: "", isError: true))
+                return
+            }
+            runJob("Installing…", cancellable: false) { [weak self] _ in
+                self?.demo.installApk(at: apks[0].path) ?? JobReport(sentence: "Cancelled.", raw: "", isError: true)
+            }
+            return
+        }
         let apks = urls.filter { $0.path.lowercased().hasSuffix(".apk") }
         guard !apks.isEmpty else {
             noteJob(JobReport(sentence: "Drop an app file ending in .apk.", raw: "", isError: true))
@@ -447,24 +512,64 @@ final class AppModel: ObservableObject {
     }
 
     func installApk(at path: String) {
+        if demoOn {
+            runJob("Installing…", cancellable: false) { [weak self] _ in
+                self?.demo.installApk(at: path) ?? JobReport(sentence: "Cancelled.", raw: "", isError: true)
+            }
+            return
+        }
         runInstalls([path], directories: [])
     }
 
     func takeScreenshot() {
         runJob("Taking a screenshot…", cancellable: false) { [weak self] _ in
             guard let self else { return JobReport(sentence: "Cancelled.", raw: "", isError: true) }
-            let shot = self.session.captureScreenshot()
+            let shot = self.demoOn ? self.demo.captureScreenshot() : self.session.captureScreenshot()
             DispatchQueue.main.async { self.screenshotPNG = shot.png }
             return JobReport(sentence: shot.sentence, raw: shot.raw, isError: shot.isError)
         }
     }
 
     func stopAdbServer() {
+        if demoOn { return }
         session.stopAdbServer()
+    }
+
+    func startDemo() {
+        timer?.invalidate()
+        timer = nil
+        demoOn = true
+        demoNote = ""
+        status = demo.refresh()
+        picture = DemoSession.connectedPicture
+        jobLine = ""
+        jobRaw = ""
+        jobIsError = false
+        jobBusy = false
+        banner = ""
+        bannerIsError = false
+        screenshotPNG = nil
+        closeWizard()
+        onOpenPanel?()
+        onChromeChanged?()
+    }
+
+    func leaveDemo() {
+        guard demoOn else { return }
+        demoOn = false
+        demoNote = ""
+        jobLine = ""
+        jobRaw = ""
+        jobIsError = false
+        screenshotPNG = nil
+        picture = TvPicture()
+        onChromeChanged?()
+        refreshNow()
     }
 
     func cancelJob() {
         guard jobBusy, jobCancellable else { return }
+        if demoOn { return }
         session.cancelTransfer()
     }
 
@@ -530,8 +635,10 @@ final class AppModel: ObservableObject {
             return
         }
         let name = URL(fileURLWithPath: staged).lastPathComponent
-        runJob("Sending \(name)…", directories: directories, cancellable: true) { [weak self] _ in
-            self?.session.sendFile(at: staged) ?? JobReport(sentence: "Cancelled.", raw: "", isError: true)
+        runJob("Sending \(name)…", directories: directories, cancellable: !demoOn) { [weak self] _ in
+            guard let self else { return JobReport(sentence: "Cancelled.", raw: "", isError: true) }
+            if self.demoOn { return self.demo.sendFile(at: staged) }
+            return self.session.sendFile(at: staged)
         }
     }
 
@@ -550,6 +657,7 @@ final class AppModel: ObservableObject {
                         self.jobLine = "Installing \(file)…"
                     }
                 }
+                if self.demoOn { return self.demo.installApk(at: path, clearingCancel: clear) }
                 return self.session.installApk(at: path, clearingCancel: clear)
             }
         }
@@ -851,7 +959,16 @@ final class AppModel: ObservableObject {
     }
 
     private func performText(_ text: String) {
+        if demoOn {
+            demoAct { $0.type(text) }
+            return
+        }
         run { $0.type(text) }
+    }
+
+    private func demoAct(_ work: (DemoSession) -> ActionReport) {
+        demoNote = work(demo).title
+        onChromeChanged?()
     }
 
     private func run(_ work: @escaping (RemoteSession) -> ActionReport) {

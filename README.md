@@ -15,7 +15,8 @@ A macOS menu bar remote: D-pad, apps, inputs, volume, power, and typing on the T
 - **Power on from standby** where the TV allows it: Sony IP control, then Wake-on-LAN, then a wake key, then a status check. Power off asks for a second click.
 - **Several TVs.** The last one reconnects on launch. Wake is in the menu bar. A v1.0 settings file becomes the first saved TV, including the pre-shared key already in the Keychain.
 - **Setup** walks through brand, finding the TV (or typing an address), debugging, pairing or Allow, and saving.
-- **Type on the TV.** A field in the panel sends on Return. `⌃⌥T` opens the panel and focuses it. Sony can take characters such as Chinese when a text field is open. Plain letters go over the debugging connection. If a route can't type, the panel says so.
+- **Type on the TV.** A field in the panel sends on Return. `⌃⌥T` opens the panel and focuses it. Plain letters go over the debugging connection. If a route can't type, the panel says so.
+- **Try demo TV** opens a connected panel with no TV on the network. It is on the find step when nothing is found, and in Settings. Leave demo returns to a saved TV. Demo mode is not saved.
 - **Drop an app file** on the menu bar icon or the panel. Zapbar installs it and shows one plain sentence for the result. The original message stays under that sentence. Filenames can contain spaces.
 - **Send a web link** from the paste field or with `⌃⌥L`. Only `http` and `https` links are sent. The TV needs a browser.
 - **Screenshot** copies the TV picture to the clipboard or saves it. A black picture is kept, and the panel says the TV may block screenshots of protected video.

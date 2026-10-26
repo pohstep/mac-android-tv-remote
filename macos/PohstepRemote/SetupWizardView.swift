@@ -79,6 +79,13 @@ struct SetupWizardView: View {
             ForEach(Array(model.discovered.enumerated()), id: \.offset) { _, tv in
                 Button("\(tv.name) · \(tv.host)") { model.sendWizard(.pick(tv)) }
             }
+            if DemoOffer.showWhenNoneFound(searching: model.discovering, matchCount: model.discovered.count) {
+                Text(DemoCopy.noneFound)
+                    .font(.system(size: 12))
+                    .foregroundColor(Palette.muted)
+                Button(DemoCopy.tryIt) { model.startDemo() }
+                    .font(.system(size: 12))
+            }
             Button("Enter an address") { model.sendWizard(.wantManual) }
         case .manual:
             TextField("IP address or hostname", text: $manualHost)

@@ -37,6 +37,8 @@ struct SettingsView: View {
                         }
                     }
                     Button("Add a TV…") { model.showWizard() }
+                    Button(DemoCopy.tryIt) { model.startDemo() }
+                        .font(.system(size: 12))
                 }
 
                 group("TV") {

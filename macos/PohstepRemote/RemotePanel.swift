@@ -117,6 +117,21 @@ struct RemotePanel: View {
 
     private var status: some View {
         VStack(alignment: .leading, spacing: 2) {
+            if model.demoOn {
+                HStack(spacing: 8) {
+                    Text(DemoCopy.mode)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(Palette.text)
+                    Spacer(minLength: 8)
+                    Button(DemoCopy.leave) { model.leaveDemo() }
+                        .font(.system(size: 11))
+                }
+                if !model.demoNote.isEmpty {
+                    Text(model.demoNote)
+                        .font(.system(size: 12))
+                        .foregroundColor(Palette.muted)
+                }
+            }
             HStack(alignment: .center, spacing: 8) {
                 Circle()
                     .fill(tvIsOn ? Palette.dotOn : Palette.dotOff)
@@ -718,6 +733,7 @@ struct RemotePanel: View {
     private var showsWake: Bool { !tvIsOn }
 
     private var statusTitle: String {
+        if model.demoOn { return DemoCopy.name }
         switch model.picture.power {
         case .on, .reachableOnly:
             return "TV on"
@@ -732,6 +748,7 @@ struct RemotePanel: View {
     }
 
     private var statusSubtitle: String {
+        if model.demoOn { return "Connected" }
         if !tvIsOn {
             if case .connecting = model.status { return model.status.detail }
             if case .idle = model.status { return model.status.detail }

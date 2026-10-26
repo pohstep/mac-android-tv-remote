@@ -6,9 +6,8 @@ public enum TypeRoute: Equatable {
     case unsupported(String)
 }
 
-/// ASCII goes over adb `input text`. Other characters, including Chinese,
-/// go through Sony `setTextForm` when a text field is open. A route that
-/// cannot type returns a message instead of sending a partial command.
+/// Plain letters go over the debugging connection. A route that cannot type
+/// returns a message instead of sending a partial command.
 public enum TypingRoute {
     public static func isASCII(_ text: String) -> Bool {
         text.unicodeScalars.allSatisfy { $0.isASCII }

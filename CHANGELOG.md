@@ -13,6 +13,7 @@ Release build: core setup, drop an app file, send a link, screenshot, send a fil
 - Screenshot copies the picture to the clipboard or saves it. A black picture is kept, with a note that the TV may block protected video. Save asks for a name and will not overwrite an existing file silently.
 - Send a file to Downloads and ask the TV to open it. The TV needs a player. If the file arrives and does not open, it stays in Downloads.
 - The app icon and the menu bar glyph are the approved zap mark. The panel header and the first setup step show the Zapbar wordmark.
+- Try demo TV shows a connected panel when no TV is found, and from Settings. Key presses, a link, a file, an app install, and a screenshot stay on this Mac. Demo mode is not saved.
 - Transfers run one at a time. Cancel stops an install or a file send. A sandboxed build can embed a local helper (never downloaded at runtime), uses its own port, and is signed with the hardened runtime.
 - The Swift package asks for tools version 5.8.
 

@@ -5,7 +5,7 @@ final class ReviewFixesTests: XCTestCase {
     func testLocalNetworkUsageAndBonjourServices() throws {
         let plist = try String(contentsOf: repoRoot().appendingPathComponent("macos/PohstepRemote/Info.plist"), encoding: .utf8)
         XCTAssertTrue(plist.contains("<key>NSLocalNetworkUsageDescription</key>"))
-        XCTAssertTrue(plist.contains("<string>Zapbar looks for TVs on your local network.</string>"))
+        XCTAssertTrue(plist.contains("<string>Zapbar looks for your TV on your home network and sends it remote commands.</string>"))
         XCTAssertFalse(DiscoveryService.types.isEmpty)
         for type in DiscoveryService.types {
             XCTAssertTrue(plist.contains("<string>\(type)</string>"), type)
