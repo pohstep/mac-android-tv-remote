@@ -64,8 +64,11 @@ cp dist/PohstepRemote "$APP/Contents/MacOS/$EXE"
 sed -e "s/\$(EXECUTABLE_NAME)/$EXE/" -e "s/\$(PRODUCT_BUNDLE_IDENTIFIER)/$BUNDLE_ID/" \
     -e "s|>Zapbar<|>$APP_NAME<|g" \
     macos/PohstepRemote/Info.plist > "$APP/Contents/Info.plist"
+# The iconset PNGs are already masked. iconutil only packs them. Same step for the normal and sandboxed builds.
 iconutil -c icns assets/AppIcon.iconset -o "$APP/Contents/Resources/AppIcon.icns"
-cp assets/menubar-template.png assets/menubar-template@2x.png "$APP/Contents/Resources/"
+cp assets/zapbarTemplate.png "assets/zapbarTemplate@2x.png" "assets/zapbarTemplate@3x.png" "$APP/Contents/Resources/"
+# In-app mark: the approved 128 px icon, copied as-is.
+cp assets/AppIcon.iconset/icon_128x128.png "$APP/Contents/Resources/ZapbarMark.png"
 if [ "${ZAPBAR_ADVANCED:-0}" = 1 ]; then
   cp Sources/TvRemoteCore/Resources/never-touch.json Sources/TvRemoteCore/Resources/cleanup-preview.json "$APP/Contents/Resources/"
 fi

@@ -2,57 +2,13 @@ import AppKit
 import SwiftUI
 
 enum MenuBarIcon {
-    /// Template image, 18×18pt, 1.5pt stroke. Off is the slashed set at 55% alpha. Keyboard mode adds a 13pt keyboard.
-    static func image(powerOn: Bool, keyboard: Bool) -> NSImage {
-        let symbol: CGFloat = 18
-        let extra: CGFloat = keyboard ? 16 : 0
-        let size = NSSize(width: symbol + extra, height: symbol)
-        // Icon B template from the bundle (menubar-template.png + @2x), 18pt.
-        let art = Bundle.main.image(forResource: "menubar-template")
-        let image = NSImage(size: size, flipped: false) { _ in
-            let alpha: CGFloat = powerOn ? 1 : 0.55
-            let color = NSColor.black.withAlphaComponent(alpha)
-            color.setStroke()
-            color.setFill()
-            if let art {
-                art.draw(in: NSRect(x: 0, y: 0, width: symbol, height: symbol), from: .zero, operation: .sourceOver, fraction: alpha)
-            } else {
-            let screen = NSBezierPath(roundedRect: NSRect(x: 1.25, y: 5, width: 15.5, height: 10.5), xRadius: 2, yRadius: 2)
-            screen.lineWidth = 1.5
-            screen.stroke()
-            let stand = NSBezierPath()
-            stand.lineWidth = 1.5
-            stand.lineCapStyle = .round
-            stand.lineJoinStyle = .round
-            stand.move(to: NSPoint(x: 6, y: 5))
-            stand.line(to: NSPoint(x: 6, y: 2.75))
-            stand.line(to: NSPoint(x: 12, y: 2.75))
-            stand.line(to: NSPoint(x: 12, y: 5))
-            stand.stroke()
-            if powerOn {
-                NSBezierPath(ovalIn: NSRect(x: 7, y: 8, width: 4, height: 4)).fill()
-            } else {
-                let slash = NSBezierPath()
-                slash.lineWidth = 1.5
-                slash.lineCapStyle = .round
-                slash.move(to: NSPoint(x: 3.2, y: 4.2))
-                slash.line(to: NSPoint(x: 14.8, y: 16.2))
-                slash.stroke()
-            }
-            }
-            if keyboard {
-                let body = NSBezierPath(roundedRect: NSRect(x: 21, y: 4.5, width: 12, height: 8.5), xRadius: 1.5, yRadius: 1.5)
-                body.lineWidth = 1.2
-                body.stroke()
-                for row in 0..<2 {
-                    for column in 0..<3 {
-                        let key = NSRect(x: 22.4 + CGFloat(column) * 3.4, y: 5.6 + CGFloat(row) * 3.4, width: 2.2, height: 2.2)
-                        NSBezierPath(roundedRect: key, xRadius: 0.4, yRadius: 0.4).fill()
-                    }
-                }
-            }
-            return true
-        }
+    /// Approved template glyph (zapbarTemplate.png, @2x, @3x). Pure black on transparent, 18 pt.
+    /// macOS tints it for light, dark, and highlighted. No drawn fallback and no colour.
+    static func image() -> NSImage {
+        let side: CGFloat = 18
+        let loaded = Bundle.main.image(forResource: "zapbarTemplate")
+        let image = (loaded?.copy() as? NSImage) ?? NSImage(size: NSSize(width: side, height: side))
+        image.size = NSSize(width: side, height: side)
         image.isTemplate = true
         return image
     }
@@ -267,16 +223,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func applyIcon() {
-        let on: Bool
-        switch model.picture.power {
-        case .on, .reachableOnly:
-            on = true
-        case .off:
-            on = false
-        case .unknown:
-            on = model.status.isConnected
-        }
-        let image = MenuBarIcon.image(powerOn: on, keyboard: model.allowsKeyboardCapture && model.keyboardMode)
+        let image = MenuBarIcon.image()
         image.accessibilityDescription = accessibilityLabel()
         statusItem.button?.image = image
         statusItem.button?.contentTintColor = nil

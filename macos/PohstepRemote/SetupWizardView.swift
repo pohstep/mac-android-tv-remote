@@ -12,6 +12,9 @@ struct SetupWizardView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
+            if model.wizard.phase == .pickBrand {
+                ZapbarWordmark(wordSize: 22)
+            }
             Text(title)
                 .font(.system(size: 16, weight: .semibold))
             if let message = model.wizard.message, !message.isEmpty {

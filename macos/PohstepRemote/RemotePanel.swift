@@ -72,6 +72,8 @@ struct RemotePanel: View {
     private var panel: some View {
         VStack(alignment: .leading, spacing: 0) {
             Group {
+                ZapbarWordmark()
+                gap(10)
                 status
                 gap(10)
                 dpad
