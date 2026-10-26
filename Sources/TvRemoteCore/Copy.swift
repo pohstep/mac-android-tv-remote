@@ -4,6 +4,7 @@ public enum Copy {
     public static let helperMissing = "Zapbar's built-in helper is missing. Reinstall Zapbar."
     public static let helperDidNotStart = "Zapbar's helper couldn't start. Quit and reopen Zapbar."
     public static let stoppedAnswering = "The TV stopped answering."
+    public static let nothingCanOpen = "No app on the TV can open this."
 
     public static func adbMissing() -> String {
         #if SANDBOX_BUILD

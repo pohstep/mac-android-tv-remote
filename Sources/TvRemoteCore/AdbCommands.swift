@@ -57,6 +57,10 @@ public enum AdbCommands {
         ["connect", "\(host):\(port)"]
     }
 
+    public static func disconnect(host: String, port: Int) -> [String] {
+        ["disconnect", "\(host):\(port)"]
+    }
+
     public static func pair(host: String, port: Int, code: String) -> [String] {
         ["pair", "\(host):\(port)", code]
     }
@@ -192,6 +196,13 @@ public enum AdbOutput {
             }
         }
         return .missing
+    }
+
+    /// `am start` VIEW failed because nothing on the TV handles that link or file.
+    public static func cannotOpenView(_ text: String) -> Bool {
+        let lower = text.lowercased()
+        return lower.contains("unable to resolve intent")
+            || lower.contains("no activity found to handle intent")
     }
 
     public static func outputIndicatesFailure(_ text: String, status: Int32) -> Bool {

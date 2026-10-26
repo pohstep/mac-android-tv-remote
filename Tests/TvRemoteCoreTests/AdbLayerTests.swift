@@ -13,6 +13,7 @@ final class AdbLayerTests: XCTestCase {
 
     func testCommandLines() {
         XCTAssertEqual(AdbCommands.connect(host: "bravia.tail.ts.net", port: 5555), ["connect", "bravia.tail.ts.net:5555"])
+        XCTAssertEqual(AdbCommands.disconnect(host: "192.0.2.20", port: 5555), ["disconnect", "192.0.2.20:5555"])
         XCTAssertEqual(
             AdbCommands.keyEvent(serial: "emulator-5554", key: .dpadUp),
             ["-s", "emulator-5554", "shell", "input", "keyevent", "KEYCODE_DPAD_UP"]
@@ -61,6 +62,9 @@ final class AdbLayerTests: XCTestCase {
     }
 
     func testLaunchFailureDetection() {
+        XCTAssertTrue(AdbOutput.cannotOpenView("Error: Activity not started, unable to resolve Intent"))
+        XCTAssertTrue(AdbOutput.cannotOpenView("Error: No activity found to handle Intent { act=VIEW }"))
+        XCTAssertFalse(AdbOutput.cannotOpenView("Error: Activity not started"))
         XCTAssertTrue(AdbOutput.outputIndicatesFailure("Error: Activity not started, unable to resolve Intent", status: 0))
         XCTAssertTrue(AdbOutput.outputIndicatesFailure("** No activities found to run, monkey aborted.", status: 0))
         XCTAssertFalse(AdbOutput.outputIndicatesFailure("Starting: Intent { cmp=com.android.tv.settings/.MainSettings }", status: 0))

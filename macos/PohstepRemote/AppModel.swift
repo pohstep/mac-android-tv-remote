@@ -873,17 +873,32 @@ final class AppModel: ObservableObject {
         DispatchQueue.global(qos: .utility).async { [weak self] in
             guard let self else { return }
             let status = self.session.refresh()
-            DispatchQueue.main.async {
-                self.status = status
-                switch status {
-                case .connected:
-                    _ = self.wizard.handle(.allowAccepted)
-                case .unauthorized:
+            if case .unauthorized = status {
+                DispatchQueue.main.async {
+                    self.status = status
                     _ = self.wizard.handle(.allowWaiting)
-                default:
-                    _ = self.wizard.handle(.connectFailed(status.detail))
                 }
+                let settled = self.session.reconnectUntilAuthorized()
+                DispatchQueue.main.async {
+                    self.applyAllow(settled)
+                }
+                return
             }
+            DispatchQueue.main.async {
+                self.applyAllow(status)
+            }
+        }
+    }
+
+    private func applyAllow(_ status: LinkStatus) {
+        self.status = status
+        switch status {
+        case .connected:
+            _ = wizard.handle(.allowAccepted)
+        case .unauthorized:
+            _ = wizard.handle(.allowWaiting)
+        case .idle, .connecting, .adbMissing, .helperDown, .refused, .unreachable, .offline, .failed:
+            _ = wizard.handle(.connectFailed(status.detail))
         }
     }
 

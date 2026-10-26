@@ -167,6 +167,72 @@ final class SessionTests: XCTestCase {
         return session.refresh()
     }
 
+    func testAllowWaitPollsATelevisionThatAuthorizesItself() {
+        let fake = allowRunner(states: ["device"])
+        let session = allowSession(fake)
+        var slept: [TimeInterval] = []
+        let status = session.reconnectUntilAuthorized(sleep: { slept.append($0) }, now: { Date(timeIntervalSince1970: 0) })
+        guard case .connected(let serial) = status else {
+            return XCTFail("expected a connection, got \(status)")
+        }
+        XCTAssertEqual(serial, "192.0.2.20:5555")
+        XCTAssertTrue(slept.isEmpty)
+        XCTAssertFalse(fake.calls.contains { $0.arguments.contains("disconnect") })
+    }
+
+    func testAllowWaitDisconnectsAndConnectsUntilAuthorized() {
+        let fake = allowRunner(states: ["unauthorized", "unauthorized", "device"])
+        let session = allowSession(fake)
+        var clock = Date(timeIntervalSince1970: 0)
+        var slept: [TimeInterval] = []
+        let status = session.reconnectUntilAuthorized(
+            timeout: AllowReconnect.timeout,
+            interval: AllowReconnect.interval,
+            sleep: { amount in
+                slept.append(amount)
+                clock = clock.addingTimeInterval(amount)
+            },
+            now: { clock }
+        )
+        guard case .connected = status else {
+            return XCTFail("expected a connection after reconnect, got \(status)")
+        }
+        XCTAssertEqual(slept, [AllowReconnect.interval])
+        let serialCalls = fake.calls.map(\.arguments)
+        XCTAssertEqual(
+            serialCalls.filter { $0.contains("disconnect") },
+            [["-P", "5037", "disconnect", "192.0.2.20:5555"]]
+        )
+        XCTAssertEqual(
+            serialCalls.filter { $0.contains("connect") },
+            [["-P", "5037", "connect", "192.0.2.20:5555"]]
+        )
+    }
+
+    func testAllowWaitStopsAtTheCommandTimeout() {
+        let fake = allowRunner(states: Array(repeating: "unauthorized", count: 20))
+        let session = allowSession(fake)
+        var clock = Date(timeIntervalSince1970: 0)
+        var slept: [TimeInterval] = []
+        let status = session.reconnectUntilAuthorized(
+            timeout: 9,
+            interval: 3,
+            sleep: { amount in
+                slept.append(amount)
+                clock = clock.addingTimeInterval(amount)
+            },
+            now: { clock }
+        )
+        guard case .unauthorized(let serial) = status else {
+            return XCTFail("expected to stay unauthorized, got \(status)")
+        }
+        XCTAssertEqual(serial, "192.0.2.20:5555")
+        XCTAssertEqual(slept, [3, 3, 3])
+        XCTAssertEqual(fake.calls.filter { $0.arguments.contains("disconnect") }.count, 3)
+        XCTAssertEqual(AllowReconnect.timeout, 12)
+        XCTAssertEqual(AllowReconnect.interval, 3)
+    }
+
     func testRefreshReportsUnauthorized() {
         var settings = Settings.factoryDefaults()
         settings.host = "tv.tailnet.ts.net"
@@ -296,5 +362,46 @@ final class SessionTests: XCTestCase {
             "com.spotify.tv.android",
             "com.phlox.tvwebbrowser"
         ])
+    }
+
+    private func allowSession(_ fake: FakeRunner) -> RemoteSession {
+        var settings = Settings.factoryDefaults()
+        settings.host = "192.0.2.20"
+        settings.port = 5555
+        return RemoteSession(
+            settings: settings,
+            runner: fake,
+            fileExists: { $0 == "/usr/local/bin/adb" },
+            pathEnvironment: "",
+            homeDirectory: "/Users/tester"
+        )
+    }
+
+    private func allowRunner(states: [String]) -> FakeRunner {
+        let fake = FakeRunner()
+        let script = DeviceScript(states)
+        fake.handler = { arguments in
+            if arguments.contains("disconnect") {
+                return .success(CommandResult(status: 0, stdout: "disconnected 192.0.2.20:5555", stderr: ""))
+            }
+            if arguments.contains("connect") {
+                return .success(CommandResult(status: 0, stdout: "connected to 192.0.2.20:5555", stderr: ""))
+            }
+            if arguments.contains("devices") {
+                let state = script.next()
+                return .success(CommandResult(status: 0, stdout: "List of devices attached\n192.0.2.20:5555\t\(state)\n", stderr: ""))
+            }
+            return .success(CommandResult(status: 0, stdout: "", stderr: ""))
+        }
+        return fake
+    }
+}
+
+private final class DeviceScript {
+    private var states: [String]
+    init(_ states: [String]) { self.states = states }
+    func next() -> String {
+        guard !states.isEmpty else { return "unauthorized" }
+        return states.removeFirst()
     }
 }

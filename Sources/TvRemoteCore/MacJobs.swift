@@ -78,6 +78,9 @@ public enum LinkSend {
     }
 
     public static func sentence(status: Int32, output: String) -> String {
+        if AdbOutput.cannotOpenView(output) {
+            return Copy.nothingCanOpen
+        }
         if AdbOutput.outputIndicatesFailure(output, status: status) {
             return "The TV didn't open that link. It needs a browser."
         }
