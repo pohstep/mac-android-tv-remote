@@ -208,23 +208,12 @@ public final class RemoteSession {
         do {
             let outcome = try client.connect(host: host, port: port)
             let listed = try client.listDevices()
-            switch AdbOutput.parseDevices(listed.combined, serial: serial) {
-            case .device:
-                lock.critical { adbLink = true }
-                return assign(.connected(serial: serial))
-            case .unauthorized:
-                return assign(.unauthorized(serial: serial))
-            case .offline:
-                return assign(.offline(serial: serial))
-            case .missing:
-                if AdbOutput.isDaemonFailure(outcome.failureDetail) || AdbOutput.isDaemonFailure(listed.combined) {
-                    return assign(.helperDown)
-                }
-                if AdbOutput.isRefusal(outcome.failureDetail) {
-                    return assign(.refused(serial: serial, detail: Copy.refused(serial: serial)))
-                }
-                return assign(.unreachable(serial: serial))
-            }
+            return finishConnect(
+                AdbOutput.parseDevices(listed.combined, serial: serial),
+                serial: serial,
+                outcome: outcome,
+                listing: listed.combined
+            )
         } catch let error as RemoteError {
             if case .notFound = error {
                 return assign(.adbMissing(message: Copy.adbMissing()))
@@ -239,6 +228,65 @@ public final class RemoteSession {
             }
             return assign(.unreachable(serial: serial))
         }
+    }
+
+    /// Allow-wait. A TV that is already `device` is left alone. While it stays
+    /// unauthorized, disconnect and connect the same address about every 3 seconds,
+    /// stopping at `AllowReconnect.timeout`.
+    public func reconnectUntilAuthorized(
+        timeout: TimeInterval = AllowReconnect.timeout,
+        interval: TimeInterval = AllowReconnect.interval,
+        sleep: @escaping (TimeInterval) -> Void = { Thread.sleep(forTimeInterval: $0) },
+        now: @escaping () -> Date = Date.init
+    ) -> LinkStatus {
+        let endpoint = lock.critical { (settings.host, settings.port) }
+        let host = endpoint.0
+        let port = endpoint.1
+        let serial = "\(host):\(port)"
+        guard let adb = resolvedAdbPath() else {
+            let trimmed = lock.critical { settings.adbPath }.trimmingCharacters(in: .whitespacesAndNewlines)
+            let message = trimmed.isEmpty ? Copy.adbMissing() : Copy.adbMissing(at: trimmed)
+            return assign(.adbMissing(message: message))
+        }
+        let client = makeClient(path: adb)
+        var lastOutcome = ConnectOutcome.connected
+        var lastListing = ""
+
+        func read() -> DeviceState {
+            do {
+                let listed = try client.listDevices()
+                lastListing = listed.combined
+                return AdbOutput.parseDevices(listed.combined, serial: serial)
+            } catch {
+                lastListing = String(describing: error)
+                lastOutcome = .failed(lastListing)
+                return .missing
+            }
+        }
+
+        func reconnect() -> DeviceState {
+            _ = try? client.disconnect(host: host, port: port)
+            do {
+                lastOutcome = try client.connect(host: host, port: port)
+                let listed = try client.listDevices()
+                lastListing = listed.combined
+                return AdbOutput.parseDevices(listed.combined, serial: serial)
+            } catch {
+                lastListing = String(describing: error)
+                lastOutcome = .failed(lastListing)
+                return .missing
+            }
+        }
+
+        let state = AllowReconnect.wait(
+            timeout: timeout,
+            interval: interval,
+            sleep: sleep,
+            now: now,
+            read: read,
+            reconnect: reconnect
+        )
+        return finishConnect(state, serial: serial, outcome: lastOutcome, listing: lastListing)
     }
 
     public func press(_ key: AndroidKey) -> ActionReport {
@@ -602,6 +650,9 @@ public final class RemoteSession {
                 return cancelledJob()
             }
             let openText = opened.combined.trimmingCharacters(in: .whitespacesAndNewlines)
+            if AdbOutput.cannotOpenView(openText) {
+                return JobReport(sentence: Copy.nothingCanOpen, raw: openText, isError: true)
+            }
             if AdbOutput.outputIndicatesFailure(openText, status: opened.status) {
                 return JobReport(sentence: FileSend.playerLeftBehind, raw: openText, isError: true)
             }
@@ -966,6 +1017,26 @@ public final class RemoteSession {
 
     private func currentAdbLink() -> Bool {
         lock.critical { adbLink }
+    }
+
+    private func finishConnect(_ state: DeviceState, serial: String, outcome: ConnectOutcome, listing: String) -> LinkStatus {
+        switch state {
+        case .device:
+            lock.critical { adbLink = true }
+            return assign(.connected(serial: serial))
+        case .unauthorized:
+            return assign(.unauthorized(serial: serial))
+        case .offline:
+            return assign(.offline(serial: serial))
+        case .missing:
+            if AdbOutput.isDaemonFailure(outcome.failureDetail) || AdbOutput.isDaemonFailure(listing) {
+                return assign(.helperDown)
+            }
+            if AdbOutput.isRefusal(outcome.failureDetail) {
+                return assign(.refused(serial: serial, detail: Copy.refused(serial: serial)))
+            }
+            return assign(.unreachable(serial: serial))
+        }
     }
 
     private func assign(_ newStatus: LinkStatus) -> LinkStatus {

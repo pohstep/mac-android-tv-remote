@@ -84,6 +84,23 @@ final class MacJobTests: XCTestCase {
         let failed = session.sendLink("https://example.com")
         XCTAssertEqual(failed.sentence, "The TV didn't open that link. It needs a browser.")
         XCTAssertTrue(failed.raw.contains("Activity not started"))
+
+        fake.handler = { arguments in
+            if arguments == ["-P", "5037", "devices"] {
+                return .success(CommandResult(status: 0, stdout: "List of devices attached\n192.0.2.20:5555\tdevice\n", stderr: ""))
+            }
+            return .success(CommandResult(status: 0, stdout: "Error: Activity not started, unable to resolve Intent", stderr: ""))
+        }
+        let unresolved = session.sendLink("https://example.com/watch")
+        XCTAssertEqual(unresolved.sentence, Copy.nothingCanOpen)
+        XCTAssertTrue(unresolved.isError)
+        XCTAssertEqual(Copy.nothingCanOpen, "No app on the TV can open this.")
+        XCTAssertFalse(Copy.nothingCanOpen.localizedCaseInsensitiveContains("android"))
+        XCTAssertFalse(Copy.nothingCanOpen.localizedCaseInsensitiveContains("sony"))
+        XCTAssertEqual(
+            LinkSend.sentence(status: 1, output: "Error: No activity found to handle Intent"),
+            Copy.nothingCanOpen
+        )
     }
 
     func testScreenshotBlankBrokenAndSaveThenPull() throws {
@@ -214,6 +231,21 @@ final class MacJobTests: XCTestCase {
         let unopened = session.sendFile(at: video.path)
         XCTAssertEqual(unopened.sentence, "The file is in Downloads. The TV needs a player to open it.")
         XCTAssertTrue(unopened.raw.contains("Activity not started"))
+
+        fake.calls = []
+        fake.handler = { arguments in
+            if arguments == ["-P", "5037", "devices"] {
+                return .success(CommandResult(status: 0, stdout: "List of devices attached\n192.0.2.20:5555\tdevice\n", stderr: ""))
+            }
+            if arguments.contains("push") {
+                return .success(CommandResult(status: 0, stdout: "1 file pushed", stderr: ""))
+            }
+            return .success(CommandResult(status: 0, stdout: "Error: No activity found to handle Intent", stderr: ""))
+        }
+        let noPlayer = session.sendFile(at: video.path)
+        XCTAssertEqual(noPlayer.sentence, Copy.nothingCanOpen)
+        XCTAssertTrue(noPlayer.isError)
+        XCTAssertTrue(noPlayer.raw.contains("No activity found to handle Intent"))
     }
 
     func testJobsDoNothingWithoutADebuggingConnection() throws {

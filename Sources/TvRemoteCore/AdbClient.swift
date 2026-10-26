@@ -31,6 +31,10 @@ public struct AdbClient {
         return AdbOutput.parseConnect(result.combined)
     }
 
+    public func disconnect(host: String, port: Int) throws {
+        _ = try run(AdbCommands.disconnect(host: host, port: port))
+    }
+
     public func listDevices() throws -> CommandResult {
         try run(AdbCommands.devices())
     }
