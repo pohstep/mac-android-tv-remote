@@ -32,6 +32,11 @@ final class AdbLayerTests: XCTestCase {
         let refused = "cannot connect to 10.0.0.8:5555: Connection refused"
         XCTAssertEqual(AdbOutput.parseConnect(refused), .failed(refused))
         XCTAssertTrue(AdbOutput.isRefusal(refused))
+        XCTAssertTrue(AdbOutput.isRefusal("connection refused"))
+        XCTAssertFalse(AdbOutput.isRefusal("failed to connect to 10.0.0.8:5555"))
+        XCTAssertFalse(AdbOutput.isRefusal("cannot connect to 10.0.0.8:5555: No route to host"))
+        XCTAssertFalse(AdbOutput.isRefusal("cannot connect to 10.0.0.8:5555"))
+        XCTAssertFalse(AdbOutput.isRefusal(""))
 
         let listing = """
         List of devices attached

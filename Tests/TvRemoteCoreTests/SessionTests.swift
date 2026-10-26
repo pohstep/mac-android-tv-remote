@@ -89,6 +89,58 @@ final class SessionTests: XCTestCase {
         XCTAssertEqual(fake.calls.first?.arguments, ["connect", "192.0.2.20:5555"])
     }
 
+    func testRefreshReportsUnreachableWhenTheConnectIsNotARefusal() {
+        let blocked = [
+            "failed to connect to 192.0.2.20:5555: Operation timed out",
+            "cannot connect to 192.0.2.20:5555: No route to host",
+            "cannot connect to 192.0.2.20:5555"
+        ]
+        for stderr in blocked {
+            let status = refresh(stderr: stderr)
+            guard case .unreachable(let serial) = status else {
+                return XCTFail("expected unreachable for \(stderr), got \(status)")
+            }
+            XCTAssertEqual(serial, "192.0.2.20:5555")
+            XCTAssertEqual(status.title, "Couldn't reach the TV")
+            XCTAssertEqual(status.detail, Copy.unreachable(serial: serial))
+            XCTAssertFalse(status.detail.localizedCaseInsensitiveContains("refused"))
+            XCTAssertFalse(status.detail.contains("Local Network"))
+        }
+
+        let timedOut = refresh(error: RemoteError.timedOut("/usr/local/bin/adb"))
+        guard case .unreachable(let serial) = timedOut else {
+            return XCTFail("expected unreachable for a timeout, got \(timedOut)")
+        }
+        XCTAssertEqual(timedOut.detail, Copy.unreachable(serial: serial))
+    }
+
+    private func refresh(stderr: String) -> LinkStatus {
+        refresh(connect: .success(CommandResult(status: 1, stdout: "", stderr: stderr)))
+    }
+
+    private func refresh(error: Error) -> LinkStatus {
+        refresh(connect: .failure(error))
+    }
+
+    private func refresh(connect: Result<CommandResult, Error>) -> LinkStatus {
+        var settings = Settings.factoryDefaults()
+        settings.host = "192.0.2.20"
+        settings.port = 5555
+        let fake = FakeRunner()
+        fake.script = [
+            connect,
+            .success(CommandResult(status: 0, stdout: "List of devices attached\n", stderr: ""))
+        ]
+        let session = RemoteSession(
+            settings: settings,
+            runner: fake,
+            fileExists: { $0 == "/usr/local/bin/adb" },
+            pathEnvironment: "",
+            homeDirectory: "/Users/tester"
+        )
+        return session.refresh()
+    }
+
     func testRefreshReportsUnauthorized() {
         var settings = Settings.factoryDefaults()
         settings.host = "tv.tailnet.ts.net"
@@ -194,7 +246,18 @@ final class SessionTests: XCTestCase {
         XCTAssertEqual(policy.delay(for: .refused(serial: "a:5555", detail: "no"), failures: 0), 5)
         XCTAssertEqual(policy.delay(for: .refused(serial: "a:5555", detail: "no"), failures: 1), 10)
         XCTAssertEqual(policy.delay(for: .refused(serial: "a:5555", detail: "no"), failures: 3), 30)
+        XCTAssertEqual(policy.delay(for: .unreachable(serial: "a:5555"), failures: 0), 5)
         XCTAssertEqual(policy.delay(for: .adbMissing(message: "x"), failures: 9), 10)
+    }
+
+    func testUnreachableCopy() {
+        let serial = "192.0.2.8:5555"
+        XCTAssertEqual(
+            Copy.unreachable(serial: serial),
+            "Couldn't reach the TV at \(serial). Check that it is on, on the same network, and that network debugging is enabled."
+        )
+        XCTAssertFalse(Copy.unreachable(serial: serial).contains("Local Network"))
+        XCTAssertFalse(Copy.unreachable(serial: serial).localizedCaseInsensitiveContains("android"))
     }
 
     func testDefaultApps() {

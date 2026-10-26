@@ -19,15 +19,19 @@ struct RemotePanel: View {
     @Environment(\.colorSchemeContrast) private var contrast
 
     var body: some View {
-        // Fits when the screen is tall enough; otherwise scrolls instead of clipping.
+        // The window is the measured height, capped at the visible screen.
+        // The scroll view takes that height, so a short screen scrolls instead of clipping.
         Group {
             if measuring {
                 stack
             } else {
-                ScrollView(.vertical, showsIndicators: false) { stack }
+                ScrollView(.vertical, showsIndicators: true) {
+                    stack
+                }
+                .frame(maxHeight: .infinity, alignment: .top)
             }
         }
-        .frame(width: GlassMetrics.panelWidth + 56)
+        .frame(width: GlassMetrics.panelWidth + 56, alignment: .top)
         .preferredColorScheme(.dark)
         .tint(Palette.accent)
         .onChange(of: model.picture.volume) { value in
@@ -755,6 +759,7 @@ struct RemotePanel: View {
             if case .adbMissing = model.status { return model.status.detail }
             if case .unauthorized = model.status { return model.status.detail }
             if case .refused = model.status { return model.status.detail }
+            if case .unreachable = model.status { return model.status.detail }
             if case .failed = model.status { return model.status.detail }
             return "Sleeping · tap power to wake"
         }

@@ -29,6 +29,10 @@ public enum Copy {
         "The TV refused the connection to \(serial). Turn on network debugging and check the address."
     }
 
+    public static func unreachable(serial: String) -> String {
+        "Couldn't reach the TV at \(serial). Check that it is on, on the same network, and that network debugging is enabled."
+    }
+
     public static func unauthorized(serial: String) -> String {
         "This Mac isn't authorized yet. Accept the debugging prompt on the TV (\(serial))."
     }

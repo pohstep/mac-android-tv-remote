@@ -159,12 +159,10 @@ public enum AdbOutput {
         return .failed(trimmed)
     }
 
+    /// A real refusal. Other connect failures ("failed to connect", "cannot connect",
+    /// no route, timeouts) are not refusals.
     public static func isRefusal(_ text: String) -> Bool {
-        let lower = text.lowercased()
-        return lower.contains("refused")
-            || lower.contains("failed to connect")
-            || lower.contains("cannot connect")
-            || lower.contains("connection refused")
+        text.lowercased().contains("refused")
     }
 
     public static func parseDevices(_ text: String, serial: String) -> DeviceState {
