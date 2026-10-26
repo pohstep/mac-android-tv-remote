@@ -6,6 +6,22 @@ import Darwin
 import Glibc
 #endif
 
+/// `bind` and `close` are macros on Darwin and plain functions on Glibc.
+/// Calling them by these names keeps one test body for both.
+private func systemBind(_ fd: Int32, _ address: UnsafePointer<sockaddr>, _ length: socklen_t) -> Int32 {
+    bind(fd, address, length)
+}
+
+private func systemClose(_ fd: Int32) -> Int32 {
+    close(fd)
+}
+
+#if os(Linux)
+private let datagramSocketType = Int32(SOCK_DGRAM.rawValue)
+#else
+private let datagramSocketType = SOCK_DGRAM
+#endif
+
 final class WakeAndSettingsTests: XCTestCase {
     func testMagicPacketLayout() throws {
         let mac = try XCTUnwrap(MACAddress.bytes("aa:bb:cc:dd:ee:ff"))
@@ -94,7 +110,7 @@ final class UDPCatcher {
     }
 
     static func bind(host: String) throws -> UDPCatcher {
-        let fd = socket(AF_INET, Int32(SOCK_DGRAM.rawValue), 0)
+        let fd = socket(AF_INET, datagramSocketType, 0)
         if fd < 0 { throw TestSocketError() }
         var address = sockaddr_in()
         address.sin_family = sa_family_t(AF_INET)
@@ -105,11 +121,11 @@ final class UDPCatcher {
         _ = host.withCString { inet_pton(AF_INET, $0, &address.sin_addr) }
         let bound = withUnsafePointer(to: &address) { pointer in
             pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { socketAddress in
-                Glibc.bind(fd, socketAddress, socklen_t(MemoryLayout<sockaddr_in>.size))
+                systemBind(fd, socketAddress, socklen_t(MemoryLayout<sockaddr_in>.size))
             }
         }
         if bound != 0 {
-            _ = Glibc.close(fd)
+            _ = systemClose(fd)
             throw TestSocketError()
         }
         var timeout = timeval(tv_sec: 2, tv_usec: 0)
@@ -122,7 +138,7 @@ final class UDPCatcher {
             }
         }
         if named != 0 {
-            _ = Glibc.close(fd)
+            _ = systemClose(fd)
             throw TestSocketError()
         }
         return UDPCatcher(fd: fd, port: UInt16(bigEndian: resolved.sin_port))
@@ -136,7 +152,7 @@ final class UDPCatcher {
     }
 
     func shutdownSocket() {
-        _ = Glibc.close(fd)
+        _ = systemClose(fd)
     }
 }
 

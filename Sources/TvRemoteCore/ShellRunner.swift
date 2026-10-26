@@ -1,9 +1,33 @@
 import Foundation
+#if canImport(Darwin)
+import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 
 public final class ShellRunner: CommandRunning {
+    private let state = NSLock()
+    private var running: Process?
+
     public init() {}
 
+    public func cancel() {
+        state.lock()
+        let process = running
+        state.unlock()
+        guard let process else { return }
+        let pid = process.processIdentifier
+        // SIGKILL. Process.terminate() from another thread does not stop the child.
+        if pid > 0 {
+            _ = kill(pid, SIGKILL)
+        }
+    }
+
     public func run(_ executable: String, arguments: [String], timeout: TimeInterval) throws -> CommandResult {
+        try run(executable, arguments: arguments, timeout: timeout, environment: [:])
+    }
+
+    public func run(_ executable: String, arguments: [String], timeout: TimeInterval, environment: [String: String]) throws -> CommandResult {
         guard FileManager.default.isExecutableFile(atPath: executable) else {
             throw RemoteError.notFound(executable)
         }
@@ -11,6 +35,13 @@ public final class ShellRunner: CommandRunning {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = arguments
+        if !environment.isEmpty {
+            var env = ProcessInfo.processInfo.environment
+            for (key, value) in environment where !value.isEmpty {
+                env[key] = value
+            }
+            process.environment = env
+        }
 
         let stdoutPipe = Pipe()
         let stderrPipe = Pipe()
@@ -33,6 +64,15 @@ public final class ShellRunner: CommandRunning {
             group.leave()
         }
 
+        state.lock()
+        running = process
+        state.unlock()
+        defer {
+            state.lock()
+            if running === process { running = nil }
+            state.unlock()
+        }
+
         do {
             try process.run()
         } catch {
@@ -47,10 +87,12 @@ public final class ShellRunner: CommandRunning {
         }
         process.waitUntilExit()
 
+        let bytes = stdoutBox.data
         return CommandResult(
             status: process.terminationStatus,
-            stdout: String(data: stdoutBox.data, encoding: .utf8) ?? "",
-            stderr: String(data: stderrBox.data, encoding: .utf8) ?? ""
+            stdout: String(data: bytes, encoding: .utf8) ?? "",
+            stderr: String(data: stderrBox.data, encoding: .utf8) ?? "",
+            stdoutData: bytes
         )
     }
 }

@@ -87,6 +87,50 @@ final class AdbLayerTests: XCTestCase {
         ])
     }
 
+    func testBundledHelperWinsAndSandboxSkipsAUserInstall() {
+        XCTAssertEqual(
+            AdbLocator.helperPath(bundlePath: "/Applications/Zapbar.app"),
+            "/Applications/Zapbar.app/Contents/Helpers/adb"
+        )
+        let bundled = AdbLocator(
+            candidatePaths: ["/usr/local/bin/adb"],
+            pathEnvironment: "/usr/local/bin",
+            fileExists: { $0 == "/usr/local/bin/adb" || $0.hasSuffix("/Contents/Helpers/adb") },
+            bundledHelperPath: "/Applications/Zapbar.app/Contents/Helpers/adb"
+        )
+        XCTAssertEqual(bundled.resolve(customPath: "/usr/local/bin/adb"), "/Applications/Zapbar.app/Contents/Helpers/adb")
+
+        let sandbox = AdbLocator(
+            candidatePaths: ["/usr/local/bin/adb"],
+            pathEnvironment: "/usr/local/bin",
+            fileExists: { $0 == "/usr/local/bin/adb" },
+            bundledHelperPath: "/Applications/Zapbar.app/Contents/Helpers/adb",
+            allowUserInstall: false
+        )
+        XCTAssertNil(sandbox.resolve(customPath: "/usr/local/bin/adb"))
+    }
+
+    func testLaunchEnvironmentAndPairCommand() throws {
+        let env = AdbLaunch.environment(temporaryDirectory: "/var/folders/zapbar", serverSocket: "tcp:localhost:5037")
+        XCTAssertEqual(env["TMPDIR"], "/var/folders/zapbar")
+        XCTAssertEqual(env["ADB_SERVER_SOCKET"], "tcp:localhost:5037")
+        XCTAssertEqual(AdbCommands.pair(host: "192.0.2.8", port: 37111, code: "123456"), ["pair", "192.0.2.8:37111", "123456"])
+        XCTAssertTrue(AdbOutput.parsePair("Successfully paired to 192.0.2.8:37111"))
+        XCTAssertFalse(AdbOutput.parsePair("Failed: invalid pairing code"))
+
+        let fake = FakeRunner()
+        fake.script = [.success(CommandResult(status: 0, stdout: "Successfully paired to 192.0.2.8:37111\n", stderr: ""))]
+        let client = AdbClient(
+            runner: fake,
+            adbPath: "/Applications/Zapbar.app/Contents/Helpers/adb",
+            temporaryDirectory: "/var/folders/zapbar",
+            serverSocket: "tcp:localhost:5037"
+        )
+        XCTAssertTrue(try client.pair(host: "192.0.2.8", port: 37111, code: "123456"))
+        XCTAssertEqual(fake.calls.first?.environment["TMPDIR"], "/var/folders/zapbar")
+        XCTAssertEqual(fake.calls.first?.environment["ADB_SERVER_SOCKET"], "tcp:localhost:5037")
+    }
+
     func testHostInputAcceptsTailscaleNamesAndPastedConnectLines() {
         XCTAssertEqual(HostInput.normalize("bravia.tailnet.ts.net").host, "bravia.tailnet.ts.net")
         XCTAssertNil(HostInput.normalize("bravia.tailnet.ts.net").port)

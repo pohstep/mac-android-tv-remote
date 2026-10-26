@@ -5,13 +5,28 @@ final class FakeRunner: CommandRunning {
     struct Call: Equatable {
         var executable: String
         var arguments: [String]
+        var environment: [String: String] = [:]
+        var timeout: TimeInterval = 0
     }
 
     var calls: [Call] = []
     var script: [Result<CommandResult, Error>] = []
+    var handler: (([String]) -> Result<CommandResult, Error>)?
+    var cancelCount = 0
+
+    func cancel() {
+        cancelCount += 1
+    }
 
     func run(_ executable: String, arguments: [String], timeout: TimeInterval) throws -> CommandResult {
-        calls.append(Call(executable: executable, arguments: arguments))
+        try run(executable, arguments: arguments, timeout: timeout, environment: [:])
+    }
+
+    func run(_ executable: String, arguments: [String], timeout: TimeInterval, environment: [String: String]) throws -> CommandResult {
+        calls.append(Call(executable: executable, arguments: arguments, environment: environment, timeout: timeout))
+        if let handler {
+            return try handler(arguments).get()
+        }
         if script.isEmpty {
             return CommandResult(status: 0, stdout: "", stderr: "")
         }

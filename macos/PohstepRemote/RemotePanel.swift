@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct RemotePanel: View {
     @ObservedObject var model: AppModel
@@ -9,6 +10,11 @@ struct RemotePanel: View {
     @State private var volumeIsLive = false
     @State private var inputOpen = false
     @State private var powerArmed = false
+    @State private var typeDraft = ""
+    @State private var linkDraft = ""
+    @State private var dropTargeted = false
+    @FocusState private var typeFocused: Bool
+    @FocusState private var linkFocused: Bool
 
     @Environment(\.colorSchemeContrast) private var contrast
 
@@ -33,6 +39,21 @@ struct RemotePanel: View {
             if let value = model.picture.volume {
                 volumeDraft = Double(value)
             }
+            if model.typeFocusID > 0 {
+                typeFocused = true
+            }
+            if model.linkFocusID > 0 {
+                linkFocused = true
+            }
+        }
+        .onChange(of: model.typeFocusID) { _ in
+            typeFocused = true
+        }
+        .onChange(of: model.linkFocusID) { _ in
+            linkFocused = true
+        }
+        .onDrop(of: [.fileURL], isTargeted: $dropTargeted) { providers in
+            loadDroppedFiles(providers)
         }
     }
 
@@ -51,6 +72,8 @@ struct RemotePanel: View {
     private var panel: some View {
         VStack(alignment: .leading, spacing: 0) {
             Group {
+                ZapbarWordmark()
+                gap(10)
                 status
                 gap(10)
                 dpad
@@ -67,9 +90,18 @@ struct RemotePanel: View {
                 hairline
                 apps
                 hairline
-                keyboard
+                typeRow
+                macTools
+                #if ZAPBAR_ADVANCED
+                gap(8)
+                AdvancedCleanupSection(model: model)
+                #endif
+                if model.allowsKeyboardCapture {
+                    gap(8)
+                    keyboard
+                }
             }
-            if model.keyboardMode {
+            if model.allowsKeyboardCapture && model.keyboardMode {
                 gap(8)
                 legend
             }
@@ -85,6 +117,21 @@ struct RemotePanel: View {
 
     private var status: some View {
         VStack(alignment: .leading, spacing: 2) {
+            if model.demoOn {
+                HStack(spacing: 8) {
+                    Text(DemoCopy.mode)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(Palette.text)
+                    Spacer(minLength: 8)
+                    Button(DemoCopy.leave) { model.leaveDemo() }
+                        .font(.system(size: 11))
+                }
+                if !model.demoNote.isEmpty {
+                    Text(model.demoNote)
+                        .font(.system(size: 12))
+                        .foregroundColor(Palette.muted)
+                }
+            }
             HStack(alignment: .center, spacing: 8) {
                 Circle()
                     .fill(tvIsOn ? Palette.dotOn : Palette.dotOff)
@@ -106,7 +153,124 @@ struct RemotePanel: View {
                     .foregroundColor(Palette.text)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            if model.settings.devices.count > 1 {
+                Picker("TV", selection: deviceSelection) {
+                    ForEach(model.settings.devices) { device in
+                        Text(device.name).tag(device.id)
+                    }
+                }
+                .labelsHidden()
+                .frame(maxWidth: 200)
+            }
         }
+    }
+
+    private var deviceSelection: Binding<String> {
+        Binding(
+            get: { model.settings.activeDeviceID },
+            set: { model.selectDevice($0) }
+        )
+    }
+
+    private var typeRow: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            TextField("Type to the TV", text: $typeDraft)
+                .textFieldStyle(.roundedBorder)
+                .focused($typeFocused)
+                .onSubmit {
+                    let text = typeDraft
+                    typeDraft = ""
+                    model.sendTypedText(text)
+                }
+            Text("Return sends. \(model.typeHotkey.display) focuses this field.")
+                .font(.system(size: 11))
+                .foregroundColor(tertiaryInk)
+        }
+    }
+
+    private var macTools: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            TextField("Paste a link", text: $linkDraft)
+                .textFieldStyle(.roundedBorder)
+                .focused($linkFocused)
+                .onSubmit {
+                    let text = linkDraft
+                    linkDraft = ""
+                    model.sendLink(text)
+                }
+            Text("Return sends. \(model.linkHotkey.display) focuses this field. Web links only.")
+                .font(.system(size: 11))
+                .foregroundColor(tertiaryInk)
+            HStack(spacing: 8) {
+                Button("Screenshot") { model.takeScreenshot() }
+                    .disabled(model.jobBusy)
+                Button("Copy") { model.copyScreenshot() }
+                    .disabled(model.screenshotPNG == nil)
+                Button("Save…") { model.saveScreenshot() }
+                    .disabled(model.screenshotPNG == nil)
+                Button("Send file…") { model.chooseFileToSend() }
+                    .disabled(model.jobBusy)
+                if model.jobBusy && model.jobCancellable {
+                    Button("Cancel") { model.cancelJob() }
+                }
+            }
+            .font(.system(size: 12))
+            if let png = model.screenshotPNG, let image = NSImage(data: png) {
+                Image(nsImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(maxWidth: .infinity, maxHeight: 96)
+                    .accessibilityLabel("Screenshot")
+            }
+            Text(dropTargeted ? "Drop the app file to install it." : "Drop an app file here or on the menu bar icon.")
+                .font(.system(size: 11))
+                .foregroundColor(tertiaryInk)
+            Text("Sending a file needs a player on the TV.")
+                .font(.system(size: 11))
+                .foregroundColor(tertiaryInk)
+            if !model.jobLine.isEmpty {
+                Text(model.jobLine)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(model.jobIsError ? Palette.text : Palette.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if !model.jobRaw.isEmpty {
+                Text(model.jobRaw)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundColor(tertiaryInk)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func loadDroppedFiles(_ providers: [NSItemProvider]) -> Bool {
+        let group = DispatchGroup()
+        let found = DropBox()
+        for provider in providers where provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+            group.enter()
+            provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
+                defer { group.leave() }
+                let url: URL?
+                if let data = item as? Data {
+                    url = URL(dataRepresentation: data, relativeTo: nil)
+                } else if let foundURL = item as? URL {
+                    url = foundURL
+                } else {
+                    url = nil
+                }
+                guard let url, url.path.lowercased().hasSuffix(".apk") else { return }
+                let scoped = url.startAccessingSecurityScopedResource()
+                defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+                if let staged = model.stageDroppedFile(url) {
+                    found.add(staged)
+                }
+            }
+        }
+        group.notify(queue: .main) {
+            model.receiveStaged(found.paths)
+        }
+        return !providers.isEmpty
     }
 
     @ViewBuilder
@@ -460,7 +624,7 @@ struct RemotePanel: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Keyboard shortcuts. Arrows move. Return is OK. Escape is Back. Delete deletes. Control-H is Home. Control-Option-Command-K stops.")
+        .accessibilityLabel("Keyboard shortcuts. Arrows move. Return is OK. Esc is Back. Delete deletes. Control-H is Home. Control-Option-Command-K stops.")
     }
 
     private func keyCap(_ title: String) -> some View {
@@ -569,6 +733,7 @@ struct RemotePanel: View {
     private var showsWake: Bool { !tvIsOn }
 
     private var statusTitle: String {
+        if model.demoOn { return DemoCopy.name }
         switch model.picture.power {
         case .on, .reachableOnly:
             return "TV on"
@@ -583,6 +748,7 @@ struct RemotePanel: View {
     }
 
     private var statusSubtitle: String {
+        if model.demoOn { return "Connected" }
         if !tvIsOn {
             if case .connecting = model.status { return model.status.detail }
             if case .idle = model.status { return model.status.detail }
@@ -649,9 +815,18 @@ struct RemotePanel: View {
     }
 
     private var footerLine: String {
-        if model.picture.sonyReady { return "Sony Bravia · IP control" }
-        if model.picture.adbReady || model.status.isConnected { return "Sony Bravia · network adb" }
-        return "Sony Bravia · not connected"
+        switch model.settings.brand {
+        case .sony where model.picture.sonyReady:
+            return "Sony · IP control"
+        case .sony where model.status.isConnected:
+            return "Sony · network debugging"
+        case .sony:
+            return "Sony"
+        case .xiaomi:
+            return "Xiaomi"
+        case .generic:
+            return model.status.isConnected ? "Connected" : "Not connected"
+        }
     }
 
     private var secondaryInk: Color {
@@ -847,5 +1022,15 @@ private struct RingWedge: Shape {
                  startAngle: .degrees(from), endAngle: .degrees(to), clockwise: false)
         p.closeSubpath()
         return p
+    }
+}
+
+private final class DropBox {
+    private let lock = NSLock()
+    private(set) var paths: [String] = []
+    func add(_ path: String) {
+        lock.lock()
+        paths.append(path)
+        lock.unlock()
     }
 }

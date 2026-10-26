@@ -10,8 +10,8 @@ jobs:
       - name: Build (ad-hoc signed, no install)
         run: NO_INSTALL=1 ARCH=arm64 scripts/build-local.sh
       - name: Zip
-        run: ditto -c -k --keepParent "dist/Mac Android TV Remote.app" dist/Mac-Android-TV-Remote.zip
+        run: ditto -c -k --keepParent "dist/Zapbar.app" dist/Zapbar.zip
       - uses: actions/upload-artifact@v4
         with:
-          name: Mac-Android-TV-Remote
-          path: dist/Mac-Android-TV-Remote.zip
+          name: Zapbar
+          path: dist/Zapbar.zip

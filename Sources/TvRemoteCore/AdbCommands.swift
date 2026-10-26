@@ -5,10 +5,15 @@ public struct CommandResult: Equatable {
     public var stdout: String
     public var stderr: String
 
-    public init(status: Int32, stdout: String, stderr: String) {
+    /// Raw standard output. Text commands leave this as the UTF-8 bytes of `stdout`.
+    /// `screencap` keeps the PNG here, because those bytes are not text.
+    public var stdoutData: Data
+
+    public init(status: Int32, stdout: String, stderr: String, stdoutData: Data? = nil) {
         self.status = status
         self.stdout = stdout
         self.stderr = stderr
+        self.stdoutData = stdoutData ?? Data(stdout.utf8)
     }
 
     public var combined: String {
@@ -20,6 +25,13 @@ public struct CommandResult: Equatable {
 
 public protocol CommandRunning {
     func run(_ executable: String, arguments: [String], timeout: TimeInterval) throws -> CommandResult
+    func run(_ executable: String, arguments: [String], timeout: TimeInterval, environment: [String: String]) throws -> CommandResult
+    /// Stops the command started by `run`, if one is still running.
+    func cancel()
+}
+
+public extension CommandRunning {
+    func cancel() {}
 }
 
 public enum ConnectOutcome: Equatable {
@@ -43,6 +55,10 @@ public enum DeviceState: Equatable {
 public enum AdbCommands {
     public static func connect(host: String, port: Int) -> [String] {
         ["connect", "\(host):\(port)"]
+    }
+
+    public static func pair(host: String, port: Int, code: String) -> [String] {
+        ["pair", "\(host):\(port)", code]
     }
 
     public static func devices() -> [String] {
@@ -85,9 +101,55 @@ public enum AdbCommands {
     public static func launchMonkey(serial: String, packageName: String, category: String) -> [String] {
         ["-s", serial, "shell", "monkey", "-p", packageName, "-c", category, "1"]
     }
+
+    /// Local path is one argument, so spaces in the filename stay intact.
+    public static func install(serial: String, apkPath: String) -> [String] {
+        ["-s", serial, "install", "-r", apkPath]
+    }
+
+    public static func viewURL(serial: String, url: String) -> [String] {
+        let command = "am start -a android.intent.action.VIEW -d \(ShellWords.quote(url))"
+        return ["-s", serial, "shell", command]
+    }
+
+    public static func screencap(serial: String) -> [String] {
+        ["-s", serial, "exec-out", "screencap", "-p"]
+    }
+
+    public static func screencapFile(serial: String, remotePath: String) -> [String] {
+        ["-s", serial, "shell", "screencap -p \(ShellWords.quote(remotePath))"]
+    }
+
+    public static func pull(serial: String, remotePath: String, localPath: String) -> [String] {
+        ["-s", serial, "pull", remotePath, localPath]
+    }
+
+    public static func removeRemote(serial: String, remotePath: String) -> [String] {
+        ["-s", serial, "shell", "rm -f \(ShellWords.quote(remotePath))"]
+    }
+
+    public static func push(serial: String, localPath: String, remotePath: String) -> [String] {
+        ["-s", serial, "push", localPath, remotePath]
+    }
+
+    public static func viewFile(serial: String, fileURL: String, mime: String) -> [String] {
+        let command = "am start -a android.intent.action.VIEW -d \(ShellWords.quote(fileURL)) -t \(ShellWords.quote(mime))"
+        return ["-s", serial, "shell", command]
+    }
+}
+
+public enum ShellWords {
+    /// Single-quote a string for the device shell so spaces and `&` stay in one word.
+    public static func quote(_ text: String) -> String {
+        "'" + text.replacingOccurrences(of: "'", with: "'\\''") + "'"
+    }
 }
 
 public enum AdbOutput {
+    public static func parsePair(_ text: String) -> Bool {
+        text.lowercased().contains("successfully paired")
+    }
+
     public static func parseConnect(_ text: String) -> ConnectOutcome {
         let lower = text.lowercased()
         if lower.contains("already connected") { return .alreadyConnected }

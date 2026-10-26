@@ -1,55 +1,73 @@
-<p align="center"><img src="docs/icon.png" width="128" alt="Mac Android TV Remote icon"></p>
+<p align="center"><img src="docs/icon.png" width="128" alt="Zapbar icon"></p>
 
-# Mac Android TV Remote
+# Zapbar
 
-A macOS menu bar remote for Sony Bravia / Android TV: D-pad, apps, inputs, volume, power, and your Mac keyboard as the remote.
+A macOS menu bar remote: D-pad, apps, inputs, volume, power, and typing on the TV.
 
 ![Panel](docs/screenshots/panel.png)
-<!-- Screenshot placeholders: docs/screenshots/panel.png, docs/screenshots/apps-expanded.png, docs/screenshots/menubar.png -->
 
 ## Features
 
 - **D-pad, OK, Back, Home**, play/pause, previous/next.
 - **Volume** slider, steps and mute.
-- **Apps** read from the TV (Sony `getApplicationList`) with their real icons. 12 are pinned; **More apps…** expands the panel to show the rest. Launch uses Sony `setActiveApp`, with adb as a fallback.
-- **Inputs** with the TV's own names, e.g. "HDMI 1 — Apple TV".
-- **Power on that works from standby**: Sony `setPowerStatus` → Wake-on-LAN → adb `KEYCODE_WAKEUP`, then it re-checks the power status. Power off asks for a second click.
-- **Keyboard as remote**: press **⌃⌥K** to toggle; **⌃⌥⌘K** always turns it off. Arrows are the D-pad, Return is OK, Esc is Back, Backspace deletes, and anything you type goes into the TV's search or text field (adb `input text`, batched so it feels quick). Only the keyboard is captured; the mouse and trackpad stay with your Mac. ⌘ shortcuts still go to the Mac.
+- **Apps** read from the TV, with **More apps…** for the rest of the list.
+- **Inputs** with the names the TV reports.
+- **Power on from standby** where the TV allows it: Sony IP control, then Wake-on-LAN, then a wake key, then a status check. Power off asks for a second click.
+- **Several TVs.** The last one reconnects on launch. Wake is in the menu bar. A v1.0 settings file becomes the first saved TV, including the pre-shared key already in the Keychain.
+- **Setup** walks through brand, finding the TV (or typing an address), debugging, pairing or Allow, and saving.
+- **Type on the TV.** A field in the panel sends on Return. `⌃⌥T` opens the panel and focuses it. Plain letters go over the debugging connection. If a route can't type, the panel says so.
+- **Try demo TV** opens a connected panel with no TV on the network. It is on the find step when nothing is found, and in Settings. Leave demo returns to a saved TV. Demo mode is not saved.
+- **Drop an app file** on the menu bar icon or the panel. Zapbar installs it and shows one plain sentence for the result. The original message stays under that sentence. Filenames can contain spaces.
+- **Send a web link** from the paste field or with `⌃⌥L`. Only `http` and `https` links are sent. The TV needs a browser.
+- **Screenshot** copies the TV picture to the clipboard or saves it. A black picture is kept, and the panel says the TV may block screenshots of protected video.
+- **Send a file** to the TV's Downloads folder and ask the TV to open it. The TV needs a player.
+- **Keyboard as remote** in the non-sandbox build: `⌃⌥K` toggles it, `⌃⌥⌘K` turns it off. The sandboxed build hides this. It needs Accessibility, which the sandbox does not grant.
+
+Clean-up with undo is built behind an Advanced section and is excluded from the release build until Jim says go. `scripts/build-local.sh` leaves `ZAPBAR_ADVANCED` off, so the release app has no clean-up code. `scripts/build-dev.sh` turns it on. `swift test` still covers it.
+
+Xiaomi control (port 6095: keys, apps, HDMI) is **experimental**. It was written against `scripts/mock-xiaomi.py` and has not been checked on a real set. It cannot type and cannot power the set on.
 
 ## Requirements
 
 - macOS 13 Ventura or later (Intel or Apple silicon).
-- A Sony Bravia (Google TV / Android TV) with **IP control** and a **pre-shared key**.
-- Optional, but recommended: [Android platform-tools](https://developer.android.com/tools/releases/platform-tools) (`adb`) with network debugging on the TV. It's needed for typing and for waking the TV when Remote Start is off.
+- A TV on the local network. Sony sets need **IP control** and a **pre-shared key**. Other sets need network debugging. Xiaomi uses port 6095.
+- For a sandboxed build, a local copy of platform-tools (`adb`) on the build machine. See [docs/adb-notice.md](docs/adb-notice.md). The app never downloads `adb`.
 
 ## Setup
 
-### On the TV
+### On a Sony TV
 
-1. **Settings → Network & Internet → Home network → IP control**
+1. **Settings → Network → IP control**
    - **Authentication**: *Normal and Pre-Shared Key*
    - **Pre-Shared Key**: choose a key
-   - **Simple IP control**: optional
-2. **Settings → Network & Internet → Remote Start**: **On**. This lets the TV wake from standby over the network. On some models it's under **Settings → System → Power & Energy**.
-3. Optional (adb): **Settings → System → About**, then press **Build** 7 times. Then go to **Settings → System → Developer options** and turn on **USB debugging** / **Network debugging**. Accept the prompt the first time your Mac connects.
+2. **Remote start**: **On**, if you want the set to wake from standby.
+3. Optional, for typing: turn on network debugging and accept the prompt the first time this Mac connects. Skip this if you only want the remote buttons.
+
+### On another TV
+
+1. Open the setup window and pick **Other TV**.
+2. For current wireless debugging, enter the pairing port and the 6-digit code. Zapbar runs `adb pair`, then `adb connect`.
+3. For an older set, use port 5555 and accept **Allow** on the TV.
+
+You can always type an IP address instead of waiting for discovery.
 
 ### On the Mac
 
-1. Open the app. It lives in the menu bar only and has no Dock icon.
-2. Right-click the menu bar icon → **Settings…** (⌘,). Enter the TV's IP address or hostname, the pre-shared key and, optionally, the adb path and the TV's MAC address for Wake-on-LAN.
-3. The pre-shared key is stored in your **login keychain**. The first time, macOS asks to let the app use it: enter your Mac password and click **Always Allow**.
-4. For keyboard-as-remote, grant **System Settings → Privacy & Security → Accessibility** to the app, then quit and reopen it.
+1. Open Zapbar. It lives in the menu bar and has no Dock icon.
+2. The first launch with no saved TV opens setup. You can also use the menu bar item **Add a TV…** or **Settings…** (⌘,).
+3. The Sony pre-shared key is stored in the login keychain, one item per TV. The first time, macOS asks to let the app use it: enter your Mac password and click **Always Allow**.
+4. Keyboard-as-remote (non-sandbox builds only) needs **System Settings → Privacy & Security → Accessibility**.
 
 ## First launch (unsigned app)
 
 The app is not signed with an Apple developer account, so macOS blocks it the first time. Allow it once:
 
-- **macOS 13 or 14:** in Applications, right-click **Pohstep Remote**, choose **Open**, then **Open** again.
+- **macOS 13 or 14:** in Applications, right-click **Zapbar**, choose **Open**, then **Open** again.
 - **macOS 15 or newer:** try to open it, then go to **System Settings → Privacy & Security** and click **Open Anyway**.
 - **Or, in Terminal:**
 
   ```sh
-  xattr -dr com.apple.quarantine "/Applications/Pohstep Remote.app"
+  xattr -dr com.apple.quarantine "/Applications/Zapbar.app"
   ```
 
 ## Build from source
@@ -67,10 +85,31 @@ Options (environment variables):
 | Variable | Default | Meaning |
 |---|---|---|
 | `SIGN_IDENTITY` | `-` (ad-hoc) | codesign identity. A stable self-signed identity keeps the Accessibility grant across rebuilds. |
-| `APP_NAME` | `Mac Android TV Remote` | App bundle name |
-| `BUNDLE_ID` | `app.pohstep.remote` | Bundle identifier |
+| `APP_NAME` | `Zapbar` | App bundle name |
+| `BUNDLE_ID` | `com.pohstep.tvremote` | Bundle identifier |
 | `INSTALL_DIR` | `~/Applications` | Install location |
 | `NO_INSTALL=1` | – | Build and sign only |
+| `SANDBOX=1` | – | Sandboxed build with a bundled `adb` |
+| `PLATFORM_TOOLS` | `./platform-tools` | Local platform-tools directory used when `SANDBOX=1` |
+| `ADB_BINARY` | `$PLATFORM_TOOLS/adb` | `adb` to embed |
+
+### Sandboxed build
+
+Put an unzipped platform-tools folder on the Mac (do not commit it). It must contain `adb` and `NOTICE.txt` or `NOTICE`. The script copies both into the bundle and signs them. It will not fetch `adb`.
+
+```sh
+SANDBOX=1 NO_INSTALL=1 scripts/build-local.sh
+```
+
+With an explicit directory and a signing identity:
+
+```sh
+SANDBOX=1 PLATFORM_TOOLS="$HOME/platform-tools" SIGN_IDENTITY="-" NO_INSTALL=1 scripts/build-local.sh
+```
+
+The host is signed with `macos/PohstepRemote/Zapbar.entitlements` (`app-sandbox`, `network.client`, `network.server`) and the hardened runtime. The helper at `Contents/Helpers/adb` is signed with `macos/PohstepRemote/adb-helper.entitlements` (`app-sandbox` and `inherit` only) and the hardened runtime. Every `adb` launch sets `TMPDIR` to the app temporary directory. A sandboxed build sets `ADB_SERVER_SOCKET` to `tcp:127.0.0.1:5038` so it does not attach to another adb server. The other build uses `tcp:localhost:5037`. The non-sandbox build still looks for a user-installed `adb` when the helper is absent.
+
+See [docs/adb-notice.md](docs/adb-notice.md) for the Apache-2.0 notice.
 
 CI: a GitHub Actions workflow is included as `docs/ci/build.yml.example`. To enable it, copy it to `.github/workflows/build.yml`.
 
@@ -78,8 +117,10 @@ CI: a GitHub Actions workflow is included as `docs/ci/build.yml.example`. To ena
 
 ## Privacy
 
-Everything stays on your local network. The app talks only to your TV: Sony REST/IRCC over HTTP, adb on port 5555 and Wake-on-LAN over UDP. There's no analytics, telemetry or cloud. The pre-shared key lives in the macOS keychain, and typed characters are never logged.
+Everything stays on your local network. The app talks only to your TVs. There is no analytics, telemetry, or cloud. Pre-shared keys live in the macOS keychain, and typed characters are never logged.
 
 ## License
 
 [MIT](LICENSE) © pohstep
+
+The bundled `adb` binary, when you build with `SANDBOX=1`, is Apache License 2.0 and is not covered by the MIT license. Its notice is copied into the app. See [docs/adb-notice.md](docs/adb-notice.md).

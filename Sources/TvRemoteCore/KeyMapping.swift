@@ -17,7 +17,7 @@ public enum InputKey: Equatable {
     case arrowRight
     case returnKey
     case keypadEnter
-    case escape
+    case esc
     case delete
     case forwardDelete
     case home
@@ -59,6 +59,10 @@ public struct Hotkey: Equatable, Codable {
     }
 
     public static let `default` = Hotkey(letter: "k", control: true, option: true, shift: false, command: false)
+    /// Opens the panel and focuses the type field. Carbon registers this, including in the sandbox.
+    public static let typeDefault = Hotkey(letter: "t", control: true, option: true, shift: false, command: false)
+    /// Opens the panel and focuses the link field. Carbon registers this, including in the sandbox.
+    public static let linkDefault = Hotkey(letter: "l", control: true, option: true, shift: false, command: false)
 
     public var display: String {
         var symbols = ""
@@ -99,7 +103,7 @@ public enum KeyMapping {
         if hotkey.matches(chord) {
             return .toggleKeyboardMode
         }
-        // Escape hatch ⌃⌥⌘K: never forwarded; turns keyboard mode off.
+        // Stop chord ⌃⌥⌘K: never forwarded; turns keyboard mode off.
         if case .ansi(let c) = chord.key, c == "k",
            chord.modifiers.contains([.control, .option, .command]) {
             return keyboardMode ? .toggleKeyboardMode : .ignore
@@ -120,7 +124,7 @@ public enum KeyMapping {
             return .send(.key(.dpadRight))
         case .returnKey, .keypadEnter:
             return .send(.key(.dpadCenter))
-        case .escape:
+        case .esc:
             return .send(.key(.back))
         case .delete:
             // Backspace deletes a character in TV text fields.
@@ -180,7 +184,7 @@ public enum MacVirtualKey {
         case 124: return .arrowRight
         case 36: return .returnKey
         case 76: return .keypadEnter
-        case 53: return .escape
+        case 53: return .esc
         case 51: return .delete
         case 117: return .forwardDelete
         case 115: return .home

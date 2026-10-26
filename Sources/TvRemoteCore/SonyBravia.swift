@@ -127,7 +127,7 @@ public struct BraviaInput: Equatable {
         let port = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let name = label.trimmingCharacters(in: .whitespacesAndNewlines)
         if !port.isEmpty, !name.isEmpty, port.caseInsensitiveCompare(name) != .orderedSame {
-            return "\(port) — \(name)"
+            return "\(port) · \(name)"
         }
         if !name.isEmpty { return name }
         return port
@@ -152,9 +152,15 @@ public struct URLSessionHttp: HttpSending {
     public init() {}
 
     public func send(url: URL, headers: [String: String], body: Data, timeout: TimeInterval) throws -> HttpReply {
+        try perform(method: "POST", url: url, headers: headers, body: body, timeout: timeout)
+    }
+
+    func perform(method: String, url: URL, headers: [String: String], body: Data?, timeout: TimeInterval) throws -> HttpReply {
         var request = URLRequest(url: url, timeoutInterval: timeout)
-        request.httpMethod = "POST"
-        request.httpBody = body
+        request.httpMethod = method
+        if let body, !body.isEmpty {
+            request.httpBody = body
+        }
         for (field, value) in headers {
             request.setValue(value, forHTTPHeaderField: field)
         }
@@ -178,7 +184,7 @@ public struct URLSessionHttp: HttpSending {
         }
         session.finishTasksAndInvalidate()
         if box.reply == nil, box.error != nil {
-            throw RemoteError.commandFailed("Sony IP didn't answer.")
+            throw RemoteError.commandFailed("The TV didn't answer.")
         }
         return box.reply ?? HttpReply(status: 0, body: Data())
     }

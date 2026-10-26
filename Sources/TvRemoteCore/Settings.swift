@@ -84,8 +84,13 @@ public struct Settings: Codable, Equatable {
     public var broadcastAddress: String
     public var apps: [TvApp]
     public var keyboardMode: Bool
-    /// HTTP port for Sony BRAVIA IP control. The pre-shared key is not stored here.
+    /// HTTP port for Sony IP control. The pre-shared key is not stored here.
     public var sonyPort: Int
+    public var devices: [StoredTV]
+    public var activeDeviceID: String
+    public var brand: TvBrand
+    /// When false, a Sony TV stays on IP control and does not open network debugging.
+    public var useDebugging: Bool
 
     public init(
         host: String,
@@ -96,7 +101,11 @@ public struct Settings: Codable, Equatable {
         broadcastAddress: String,
         apps: [TvApp],
         keyboardMode: Bool,
-        sonyPort: Int = 80
+        sonyPort: Int = 80,
+        devices: [StoredTV] = [],
+        activeDeviceID: String = "",
+        brand: TvBrand = .sony,
+        useDebugging: Bool = true
     ) {
         self.host = host
         self.port = port
@@ -107,6 +116,10 @@ public struct Settings: Codable, Equatable {
         self.apps = apps
         self.keyboardMode = keyboardMode
         self.sonyPort = sonyPort
+        self.devices = devices
+        self.activeDeviceID = activeDeviceID
+        self.brand = brand
+        self.useDebugging = useDebugging
     }
 
     public static func factoryDefaults() -> Settings {
@@ -119,12 +132,36 @@ public struct Settings: Codable, Equatable {
             broadcastAddress: "255.255.255.255",
             apps: TvApp.defaults,
             keyboardMode: false,
-            sonyPort: 80
+            sonyPort: 80,
+            devices: [],
+            activeDeviceID: "",
+            brand: .sony,
+            useDebugging: true
         )
+    }
+
+    public func applying(_ device: StoredTV) -> Settings {
+        var copy = self
+        copy.host = device.host
+        copy.port = device.port
+        copy.macAddress = device.macAddress
+        copy.brand = device.brand
+        copy.useDebugging = device.useDebugging
+        copy.activeDeviceID = device.id
+        if device.brand == .sony {
+            copy.sonyPort = device.controlPort
+        }
+        if let index = copy.devices.firstIndex(where: { $0.id == device.id }) {
+            copy.devices[index] = device
+        } else if !device.id.isEmpty {
+            copy.devices.append(device)
+        }
+        return copy
     }
 
     private enum CodingKeys: String, CodingKey {
         case host, port, adbPath, wolEnabled, macAddress, broadcastAddress, apps, keyboardMode, sonyPort
+        case devices, activeDeviceID, brand, useDebugging
     }
 
     public init(from decoder: Decoder) throws {
@@ -138,6 +175,15 @@ public struct Settings: Codable, Equatable {
         apps = try container.decodeIfPresent([TvApp].self, forKey: .apps) ?? TvApp.defaults
         keyboardMode = try container.decodeIfPresent(Bool.self, forKey: .keyboardMode) ?? false
         sonyPort = try container.decodeIfPresent(Int.self, forKey: .sonyPort) ?? 80
+        if let stored = try container.decodeIfPresent([StoredTV].self, forKey: .devices) {
+            devices = stored
+            activeDeviceID = try container.decodeIfPresent(String.self, forKey: .activeDeviceID) ?? stored.first?.id ?? ""
+        } else {
+            devices = StoredTV.migrateLegacy(host: host, port: port, macAddress: macAddress, controlPort: sonyPort)
+            activeDeviceID = devices.first?.id ?? ""
+        }
+        brand = try container.decodeIfPresent(TvBrand.self, forKey: .brand) ?? devices.first?.brand ?? .sony
+        useDebugging = try container.decodeIfPresent(Bool.self, forKey: .useDebugging) ?? devices.first?.useDebugging ?? true
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -151,11 +197,32 @@ public struct Settings: Codable, Equatable {
         try container.encode(apps, forKey: .apps)
         try container.encode(keyboardMode, forKey: .keyboardMode)
         try container.encode(sonyPort, forKey: .sonyPort)
+        try container.encode(devices, forKey: .devices)
+        try container.encode(activeDeviceID, forKey: .activeDeviceID)
+        try container.encode(brand, forKey: .brand)
+        try container.encode(useDebugging, forKey: .useDebugging)
     }
 
     public static func applicationSupportURL(homeDirectory: String = NSHomeDirectory()) -> URL {
+        settingsFile(homeDirectory: homeDirectory, folder: "Zapbar")
+    }
+
+    /// v1.0 wrote settings here. Still read when the Zapbar file is absent.
+    public static func legacyApplicationSupportURL(homeDirectory: String = NSHomeDirectory()) -> URL {
+        settingsFile(homeDirectory: homeDirectory, folder: "Pohstep Remote")
+    }
+
+    public static func resolvedSettingsURL(homeDirectory: String = NSHomeDirectory()) -> URL {
+        let modern = applicationSupportURL(homeDirectory: homeDirectory)
+        if FileManager.default.fileExists(atPath: modern.path) { return modern }
+        let legacy = legacyApplicationSupportURL(homeDirectory: homeDirectory)
+        if FileManager.default.fileExists(atPath: legacy.path) { return legacy }
+        return modern
+    }
+
+    private static func settingsFile(homeDirectory: String, folder: String) -> URL {
         URL(fileURLWithPath: homeDirectory, isDirectory: true)
-            .appendingPathComponent("Library/Application Support/Pohstep Remote", isDirectory: true)
+            .appendingPathComponent("Library/Application Support/\(folder)", isDirectory: true)
             .appendingPathComponent("settings.json")
     }
 }
