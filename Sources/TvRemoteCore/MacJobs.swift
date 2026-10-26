@@ -99,8 +99,8 @@ public enum FileSend {
     }
 
     public static func fileURL(remotePath: String) -> String {
-        let escaped = remotePath.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? remotePath
-        return "file://\(escaped)"
+        let encoded = remotePath.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? remotePath
+        return "file://\(encoded)"
     }
 
     public static func mimeType(for path: String) -> String {

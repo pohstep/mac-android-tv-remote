@@ -40,7 +40,7 @@ struct SettingsView: View {
                 }
 
                 group("TV") {
-                    field("Address", text: hostBinding, prompt: "TV IP (e.g. 192.0.2.10) or bravia.local")
+                    field("Address", text: hostBinding, prompt: "TV IP (e.g. 192.168.1.20)")
                         .onSubmit { model.commitAddress(); model.refreshNow() }
                     field("adb port", text: portBinding, prompt: "5555")
                     field("adb path", text: adbBinding, prompt: "Blank finds Homebrew's adb")

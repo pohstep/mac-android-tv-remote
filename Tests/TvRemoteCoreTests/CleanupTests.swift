@@ -613,8 +613,6 @@ final class CleanupTests: XCTestCase {
         XCTAssertFalse(text.contains("Android"), text, file: file, line: line)
         XCTAssertFalse(text.contains("android"), text, file: file, line: line)
         XCTAssertFalse(text.contains("Sony Bravia"), text, file: file, line: line)
-        XCTAssertFalse(text.contains("Scape"), text, file: file, line: line)
-        XCTAssertFalse(text.contains("绽胜"), text, file: file, line: line)
         XCTAssertFalse(text.localizedCaseInsensitiveContains("todo"), text, file: file, line: line)
         XCTAssertFalse(text.localizedCaseInsensitiveContains("tbd"), text, file: file, line: line)
     }

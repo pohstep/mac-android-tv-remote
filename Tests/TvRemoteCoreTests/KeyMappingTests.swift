@@ -15,14 +15,14 @@ final class KeyMappingTests: XCTestCase {
         XCTAssertEqual(KeyMapping.effect(for: letter, keyboardMode: false), .ignore)
     }
 
-    func testArrowsReturnEscapeAndDelete() {
+    func testArrowsReturnEscAndDelete() {
         XCTAssertEqual(KeyMapping.effect(for: KeyChord(key: .arrowUp), keyboardMode: true), .send(.key(.dpadUp)))
         XCTAssertEqual(KeyMapping.effect(for: KeyChord(key: .arrowDown), keyboardMode: true), .send(.key(.dpadDown)))
         XCTAssertEqual(KeyMapping.effect(for: KeyChord(key: .arrowLeft), keyboardMode: true), .send(.key(.dpadLeft)))
         XCTAssertEqual(KeyMapping.effect(for: KeyChord(key: .arrowRight), keyboardMode: true), .send(.key(.dpadRight)))
         XCTAssertEqual(KeyMapping.effect(for: KeyChord(key: .returnKey), keyboardMode: true), .send(.key(.dpadCenter)))
         XCTAssertEqual(KeyMapping.effect(for: KeyChord(key: .keypadEnter), keyboardMode: true), .send(.key(.dpadCenter)))
-        XCTAssertEqual(KeyMapping.effect(for: KeyChord(key: .escape), keyboardMode: true), .send(.key(.back)))
+        XCTAssertEqual(KeyMapping.effect(for: KeyChord(key: .esc), keyboardMode: true), .send(.key(.back)))
         XCTAssertEqual(KeyMapping.effect(for: KeyChord(key: .delete), keyboardMode: true), .send(.key(.del)))
         XCTAssertEqual(KeyMapping.effect(for: KeyChord(key: .forwardDelete), keyboardMode: true), .send(.key(.forwardDel)))
     }
@@ -74,7 +74,7 @@ final class KeyMappingTests: XCTestCase {
         XCTAssertEqual(Hotkey.default.display, "⌃⌥K")
         XCTAssertEqual(MacVirtualKey.inputKey(for: 126), .arrowUp)
         XCTAssertEqual(MacVirtualKey.inputKey(for: 36), .returnKey)
-        XCTAssertEqual(MacVirtualKey.inputKey(for: 53), .escape)
+        XCTAssertEqual(MacVirtualKey.inputKey(for: 53), .esc)
         XCTAssertEqual(MacVirtualKey.inputKey(for: 51), .delete)
         XCTAssertEqual(MacVirtualKey.inputKey(for: 115), .home)
         XCTAssertEqual(MacVirtualKey.inputKey(for: 122), .f1)

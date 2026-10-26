@@ -112,10 +112,19 @@ final class WizardTests: XCTestCase {
                 for line in SetupCopy.lines(phase: phase, brand: brand, wantsTyping: true) {
                     XCTAssertFalse(line.text.localizedCaseInsensitiveContains("android"), line.text)
                     XCTAssertFalse(line.text.contains("Sony Bravia"), line.text)
-                    XCTAssertFalse(line.text.contains("Scape"))
-                    XCTAssertFalse(line.text.contains("绽胜"))
                 }
             }
         }
+    }
+
+    /// Blocked product names are assembled in scripts/check-copy.sh.
+    func testSourcesOmitBlockedNames() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let script = root.appendingPathComponent("scripts/check-copy.sh").path
+        let result = try ShellRunner().run("/bin/sh", arguments: [script], timeout: 30)
+        XCTAssertEqual(result.status, 0, result.stdout + result.stderr)
     }
 }

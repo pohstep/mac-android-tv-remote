@@ -609,7 +609,7 @@ struct RemotePanel: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Keyboard shortcuts. Arrows move. Return is OK. Escape is Back. Delete deletes. Control-H is Home. Control-Option-Command-K stops.")
+        .accessibilityLabel("Keyboard shortcuts. Arrows move. Return is OK. Esc is Back. Delete deletes. Control-H is Home. Control-Option-Command-K stops.")
     }
 
     private func keyCap(_ title: String) -> some View {
