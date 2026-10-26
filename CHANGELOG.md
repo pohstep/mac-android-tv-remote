@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.1 — 2026-10-26
+
+- Arrow keys are now four large wedge-shaped click zones around the OK button, so you no longer have to hit the small glyph.
+
 ## 1.0 — 2026-10-21
 
 First release.

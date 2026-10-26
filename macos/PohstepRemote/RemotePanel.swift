@@ -160,10 +160,10 @@ struct RemotePanel: View {
             Circle()
                 .fill(Palette.ring)
                 .overlay(Circle().strokeBorder(Color.white.opacity(0.12), lineWidth: contrast == .increased ? 1 : 0.5))
-            ringZone("chevron.up", "Up", width: GlassMetrics.ring, height: 52, alignment: .top) { model.press(.dpadUp) }
-            ringZone("chevron.down", "Down", width: GlassMetrics.ring, height: 52, alignment: .bottom) { model.press(.dpadDown) }
-            ringZone("chevron.left", "Left", width: 52, height: 72, alignment: .leading) { model.press(.dpadLeft) }
-            ringZone("chevron.right", "Right", width: 52, height: 72, alignment: .trailing) { model.press(.dpadRight) }
+            ringZone("chevron.up", "Up", from: -135, to: -45, glyph: .top) { model.press(.dpadUp) }
+            ringZone("chevron.right", "Right", from: -45, to: 45, glyph: .trailing) { model.press(.dpadRight) }
+            ringZone("chevron.down", "Down", from: 45, to: 135, glyph: .bottom) { model.press(.dpadDown) }
+            ringZone("chevron.left", "Left", from: 135, to: 225, glyph: .leading) { model.press(.dpadLeft) }
             Chip(width: GlassMetrics.ok, height: GlassMetrics.ok, corner: GlassMetrics.ok / 2, action: { model.press(.dpadCenter) }) {
                 Text("OK")
                     .font(.system(size: 15, weight: .semibold))
@@ -174,23 +174,28 @@ struct RemotePanel: View {
         .clipShape(Circle())
     }
 
+    /// One quarter of the ring: the whole wedge (not just the arrow glyph) is the click target.
     private func ringZone(
         _ symbol: String,
         _ label: String,
-        width: CGFloat,
-        height: CGFloat,
-        alignment: Alignment,
+        from: Double,
+        to: Double,
+        glyph: Alignment,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
-            Image(systemName: symbol)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(Palette.text)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            ZStack(alignment: glyph) {
+                RingWedge(from: from, to: to)
+                    .fill(Color.white.opacity(0.001))
+                Image(systemName: symbol)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(Palette.text)
+                    .padding(14)
+            }
+            .frame(width: GlassMetrics.ring, height: GlassMetrics.ring)
+            .contentShape(RingWedge(from: from, to: to))
         }
         .buttonStyle(.plain)
-        .frame(width: width, height: height)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: alignment)
         .accessibilityLabel(label)
     }
 
@@ -826,5 +831,21 @@ private final class InputMenuTarget: NSObject {
     init(_ onPick: @escaping (BraviaInput) -> Void) { self.onPick = onPick }
     @objc func pick(_ sender: NSMenuItem) {
         if let box = sender.representedObject as? InputBox { onPick(box.input) }
+    }
+}
+
+
+/// A pie wedge covering the full ring, between two angles in degrees (0 = right, clockwise).
+private struct RingWedge: Shape {
+    var from: Double
+    var to: Double
+    func path(in rect: CGRect) -> Path {
+        let c = CGPoint(x: rect.midX, y: rect.midY)
+        var p = Path()
+        p.move(to: c)
+        p.addArc(center: c, radius: min(rect.width, rect.height) / 2,
+                 startAngle: .degrees(from), endAngle: .degrees(to), clockwise: false)
+        p.closeSubpath()
+        return p
     }
 }
