@@ -182,7 +182,7 @@ struct RemotePanel: View {
                     typeDraft = ""
                     model.sendTypedText(text)
                 }
-            Text("Return sends. \(model.typeHotkey.display) focuses this field.")
+            Text("Type, Return sends")
                 .font(.system(size: 11))
                 .foregroundColor(tertiaryInk)
         }
