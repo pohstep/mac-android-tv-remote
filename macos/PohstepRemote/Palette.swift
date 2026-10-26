@@ -80,7 +80,6 @@ enum GlassMetrics {
     static let panelTint: Double = 0.72
     static let menuTint: Double = 0.93
     static let solidTint: Double = 0.96
-    static let panelMaxHeight: CGFloat = 600
     static let pinnedApps = 12
 }
 
