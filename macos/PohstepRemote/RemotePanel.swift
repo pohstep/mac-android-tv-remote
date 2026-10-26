@@ -121,10 +121,7 @@ struct RemotePanel: View {
     private var searchingChrome: some View {
         VStack(alignment: .leading, spacing: GlassMetrics.sectionGap) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("TV Remote")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(Palette.text)
-                    .folioTextShadow()
+                panelTitle("TV Remote")
                 HStack(spacing: 6) {
                     Circle()
                         .fill(searchingDot)
@@ -215,11 +212,7 @@ struct RemotePanel: View {
             VStack(alignment: .leading, spacing: 2) {
                 Button(action: showDeviceMenu) {
                     HStack(spacing: 5) {
-                        Text(headerTitle)
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(Palette.text)
-                            .folioTextShadow()
-                            .lineLimit(1)
+                        panelTitle(headerTitle)
                         if !model.settings.devices.isEmpty {
                             Image(systemName: "chevron.up.chevron.down")
                                 .font(.system(size: 13))
@@ -227,7 +220,8 @@ struct RemotePanel: View {
                         }
                     }
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(PanelTitleButtonStyle())
+                .environment(\.controlActiveState, .key)
                 .disabled(model.settings.devices.isEmpty)
                 .accessibilityLabel("TV")
                 .accessibilityValue(headerTitle)
@@ -1087,12 +1081,35 @@ struct RemotePanel: View {
         return "Input"
     }
 
+    /// TV name, "TV Remote", and "Demo TV". Absolute white, including when the
+    /// panel is not key and when the device switcher is disabled.
+    private func panelTitle(_ name: String) -> some View {
+        Text(name)
+            .font(.system(size: 14, weight: .semibold))
+            .foregroundColor(Palette.text)
+            .opacity(1)
+            .lineLimit(1)
+            .folioTextShadow()
+            .environment(\.controlActiveState, .key)
+    }
+
     private var secondaryInk: Color {
         Palette.ink(Palette.secondary, increasedContrast: contrast == .increased)
     }
 
     private var tertiaryInk: Color {
         Palette.ink(Palette.tertiary, increasedContrast: contrast == .increased)
+    }
+}
+
+/// Plain buttons on a non-key panel swap in the inactive label color (~60% white)
+/// and fade when disabled. This style keeps the title on Palette.text.
+private struct PanelTitleButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .opacity(1)
+            .environment(\.isEnabled, true)
+            .environment(\.controlActiveState, .key)
     }
 }
 

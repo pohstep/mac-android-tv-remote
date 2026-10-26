@@ -210,11 +210,12 @@ struct GlassPlate: View {
             RoundedRectangle(cornerRadius: corner, style: .continuous)
                 .strokeBorder(Folio.edge, lineWidth: strong ? 1.5 : 1)
         )
+        // 24 / y 10 at 25% fades inside the window's 28pt sides and 36pt bottom.
         .shadow(
             color: castsShadow ? Folio.shadow : Color.clear,
-            radius: castsShadow ? 80 : 0,
+            radius: castsShadow ? 24 : 0,
             x: 0,
-            y: castsShadow ? 30 : 0
+            y: castsShadow ? 10 : 0
         )
     }
 }

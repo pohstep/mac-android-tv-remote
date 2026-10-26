@@ -256,7 +256,12 @@ final class AppModel: ObservableObject {
                     return
                 }
                 self.status = status
-                self.picture = picture
+                var shown = picture
+                // Sony reports mute with the volume. Otherwise keep the button's last mute.
+                if shown.volume == nil {
+                    shown.muted = self.picture.muted
+                }
+                self.picture = shown
                 if !self.settingsFieldsAreActive {
                     self.settings.host = self.session.settings.host
                     self.settings.port = self.session.settings.port
@@ -351,6 +356,9 @@ final class AppModel: ObservableObject {
     }
 
     func press(_ key: AndroidKey) {
+        if key == .volumeMute {
+            picture.muted.toggle()
+        }
         if demoOn {
             demoAct { $0.press(key) }
             return
