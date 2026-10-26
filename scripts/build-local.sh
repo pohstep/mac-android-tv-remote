@@ -11,6 +11,7 @@
 #                   Does not download adb. Requires PLATFORM_TOOLS or ADB_BINARY on this machine.
 #   PLATFORM_TOOLS  directory that contains adb and NOTICE.txt (default ./platform-tools)
 #   ADB_BINARY      adb executable (default $PLATFORM_TOOLS/adb)
+#   ZAPBAR_ADVANCED  default 0. Leave unset for a release build. scripts/build-dev.sh sets it to 1.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"; cd "$ROOT"
 APP_NAME="${APP_NAME:-Zapbar}"
@@ -52,6 +53,10 @@ SWIFT_FLAGS=(-O -target "$ARCH-apple-macos13.0" -parse-as-library -module-name P
 if [ "$SANDBOX" = 1 ]; then
   SWIFT_FLAGS+=(-DSANDBOX_BUILD)
 fi
+# Release builds leave this unset, so clean-up is not compiled into the app.
+if [ "${ZAPBAR_ADVANCED:-0}" = 1 ]; then
+  SWIFT_FLAGS+=(-DZAPBAR_ADVANCED)
+fi
 swiftc "${SWIFT_FLAGS[@]}" Sources/TvRemoteCore/*.swift macos/PohstepRemote/*.swift -lz -o dist/PohstepRemote
 
 rm -rf "$APP"; mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
@@ -61,6 +66,9 @@ sed -e "s/\$(EXECUTABLE_NAME)/$EXE/" -e "s/\$(PRODUCT_BUNDLE_IDENTIFIER)/$BUNDLE
     macos/PohstepRemote/Info.plist > "$APP/Contents/Info.plist"
 iconutil -c icns assets/AppIcon.iconset -o "$APP/Contents/Resources/AppIcon.icns"
 cp assets/menubar-template.png assets/menubar-template@2x.png "$APP/Contents/Resources/"
+if [ "${ZAPBAR_ADVANCED:-0}" = 1 ]; then
+  cp Sources/TvRemoteCore/Resources/never-touch.json Sources/TvRemoteCore/Resources/cleanup-preview.json "$APP/Contents/Resources/"
+fi
 
 if [ "$SANDBOX" = 1 ]; then
   NOTICE="$(notice_file)"

@@ -22,6 +22,8 @@ A macOS menu bar remote: D-pad, apps, inputs, volume, power, and typing on the T
 - **Send a file** to the TV's Downloads folder and ask the TV to open it. The TV needs a player.
 - **Keyboard as remote** in the non-sandbox build: `⌃⌥K` toggles it, `⌃⌥⌘K` turns it off. The sandboxed build hides this. It needs Accessibility, which the sandbox does not grant.
 
+Clean-up with undo is built behind an Advanced section and is excluded from the release build until Jim says go. `scripts/build-local.sh` leaves `ZAPBAR_ADVANCED` off, so the release app has no clean-up code. `scripts/build-dev.sh` turns it on. `swift test` still covers it.
+
 Xiaomi control (port 6095: keys, apps, HDMI) is **experimental**. It was written against `scripts/mock-xiaomi.py` and has not been checked on a real set. It cannot type and cannot power the set on.
 
 ## Requirements

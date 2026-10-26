@@ -816,6 +816,17 @@ public final class RemoteSession {
     }
 }
 
+#if ZAPBAR_ADVANCED
+extension RemoteSession {
+    /// Debugging connection for clean-up. Nil when this TV is not on a debugging link.
+    public func cleanupConnection() -> (client: AdbClient, serial: String)? {
+        guard let serial = debuggingSerial(), !serial.isEmpty else { return nil }
+        guard resolvedAdbPath() != nil else { return nil }
+        return (client(), serial)
+    }
+}
+#endif
+
 private extension NSLock {
     func critical<T>(_ body: () -> T) -> T {
         lock()

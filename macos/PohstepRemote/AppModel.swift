@@ -25,6 +25,16 @@ final class AppModel: ObservableObject {
     @Published var jobIsError = false
     @Published var jobBusy = false
     @Published var screenshotPNG: Data?
+    #if ZAPBAR_ADVANCED
+    @Published var advancedExpanded = false
+    @Published var cleanupEnabled = false
+    @Published var cleanupRows: [CleanupRow] = []
+    @Published var cleanupWarnings: [CleanupRow] = []
+    @Published var cleanupUndo: [String] = []
+    @Published var cleanupLine = ""
+    @Published var cleanupBusy = false
+    var cleanupExtras: [String] = []
+    #endif
 
     let session: RemoteSession
     let store: SettingsStore
@@ -103,6 +113,10 @@ final class AppModel: ObservableObject {
             try? store.save(initial)
         }
         normalizeStoredAddress()
+        #if ZAPBAR_ADVANCED
+        advancedExpanded = UserDefaults.standard.bool(forKey: "zapbar.advanced.expanded")
+        cleanupEnabled = UserDefaults.standard.bool(forKey: "zapbar.cleanup.enabled")
+        #endif
     }
 
     func setPanelVisible(_ visible: Bool) {

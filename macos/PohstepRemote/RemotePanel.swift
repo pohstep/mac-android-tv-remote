@@ -90,6 +90,10 @@ struct RemotePanel: View {
                 hairline
                 typeRow
                 macTools
+                #if ZAPBAR_ADVANCED
+                gap(8)
+                AdvancedCleanupSection(model: model)
+                #endif
                 if model.allowsKeyboardCapture {
                     gap(8)
                     keyboard
