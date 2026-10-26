@@ -37,6 +37,7 @@ struct SettingsView: View {
                         }
                     }
                     Button("Add a TV…") { model.showWizard() }
+                        .buttonStyle(FolioPrimaryStyle())
                     Button(DemoCopy.tryIt) { model.startDemo() }
                         .font(.system(size: 12))
                 }
@@ -52,6 +53,7 @@ struct SettingsView: View {
                         model.commitAddress()
                         model.refreshNow()
                     }
+                    .buttonStyle(FolioPrimaryStyle())
                 }
 
                 group("Sony IP control") {
@@ -60,7 +62,7 @@ struct SettingsView: View {
                         .foregroundColor(Palette.muted)
                         .fixedSize(horizontal: false, vertical: true)
                     SecureField("Pre-shared key", text: $pskDraft)
-                        .textFieldStyle(.roundedBorder)
+                        .folioFieldChrome(focused: false)
                         .accessibilityLabel("Pre-shared key")
                     field("Sony port", text: sonyPortBinding, prompt: "80")
                     HStack {
@@ -68,6 +70,7 @@ struct SettingsView: View {
                             model.savePreSharedKey(pskDraft)
                             pskDraft = ""
                         }
+                        .buttonStyle(FolioPrimaryStyle())
                         Button("Remove key") {
                             pskDraft = ""
                             model.clearPreSharedKey()
@@ -106,6 +109,7 @@ struct SettingsView: View {
             .padding(20)
         }
         .frame(minWidth: 480, minHeight: 560)
+        .background(GlassPlate(corner: 0, castsShadow: false))
         .preferredColorScheme(.dark)
         .tint(Palette.accent)
     }
@@ -172,17 +176,17 @@ struct SettingsView: View {
                 .font(.system(size: 11))
                 .foregroundColor(Palette.muted)
             TextField(title, text: text, prompt: Text(prompt))
-                .textFieldStyle(.roundedBorder)
+                .folioFieldChrome(focused: false)
         }
     }
 
     private func appRow(_ app: TvApp) -> some View {
         HStack(spacing: 8) {
             TextField("Name", text: binding(app.id, \.name))
-                .textFieldStyle(.roundedBorder)
+                .folioFieldChrome(focused: false)
                 .frame(width: 120)
             TextField("Package", text: binding(app.id, \.packageName))
-                .textFieldStyle(.roundedBorder)
+                .folioFieldChrome(focused: false)
             Button(action: { model.update { $0.apps.removeAll { $0.id == app.id } } }) {
                 Image(systemName: "minus.circle")
             }

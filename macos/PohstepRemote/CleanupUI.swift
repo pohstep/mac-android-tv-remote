@@ -68,7 +68,7 @@ struct AdvancedCleanupSection: View {
             }
             HStack(spacing: 8) {
                 TextField("Add a package name", text: $extraName)
-                    .textFieldStyle(.roundedBorder)
+                    .folioFieldChrome(focused: false)
                     .onSubmit { addName() }
                 Button("Add") { addName() }
                     .disabled(model.cleanupBusy)

@@ -116,7 +116,7 @@ struct RemotePanel: View {
         .padding(.top, GlassMetrics.padTop)
         .padding(.bottom, GlassMetrics.padBottom)
         .frame(width: GlassMetrics.panelWidth, alignment: .top)
-        .background(GlassPlate(material: .popover, corner: GlassMetrics.panelCorner))
+        .background(GlassPlate())
     }
 
     private var status: some View {
@@ -138,7 +138,7 @@ struct RemotePanel: View {
             }
             HStack(alignment: .center, spacing: 8) {
                 Circle()
-                    .fill(tvIsOn ? Palette.dotOn : Palette.dotOff)
+                    .fill(statusDot)
                     .frame(width: 8, height: 8)
                     .accessibilityHidden(true)
                 Text(statusTitle)
@@ -179,7 +179,7 @@ struct RemotePanel: View {
     private var typeRow: some View {
         VStack(alignment: .leading, spacing: 4) {
             TextField("Type to the TV", text: $typeDraft)
-                .textFieldStyle(.roundedBorder)
+                .folioFieldChrome(focused: typeFocused)
                 .focused($typeFocused)
                 .onSubmit {
                     let text = typeDraft
@@ -195,7 +195,7 @@ struct RemotePanel: View {
     private var macTools: some View {
         VStack(alignment: .leading, spacing: 6) {
             TextField("Paste a link", text: $linkDraft)
-                .textFieldStyle(.roundedBorder)
+                .folioFieldChrome(focused: linkFocused)
                 .focused($linkFocused)
                 .onSubmit {
                     let text = linkDraft
@@ -280,7 +280,7 @@ struct RemotePanel: View {
     @ViewBuilder
     private var powerControl: some View {
         if showsWake {
-            Chip(width: 64, height: GlassMetrics.power, corner: 16, action: { model.wake() }) {
+            Chip(width: 64, height: GlassMetrics.power, corner: 12, prominent: true, action: { model.wake() }) {
                 Text("Wake")
                     .font(.system(size: 13, weight: .semibold))
             }
@@ -327,12 +327,16 @@ struct RemotePanel: View {
         ZStack {
             Circle()
                 .fill(Palette.ring)
-                .overlay(Circle().strokeBorder(Color.white.opacity(0.12), lineWidth: contrast == .increased ? 1 : 0.5))
+                .overlay {
+                    if contrast == .increased {
+                        Circle().strokeBorder(Color.white.opacity(0.55), lineWidth: 1)
+                    }
+                }
             ringZone("chevron.up", "Up", from: -135, to: -45, glyph: .top) { model.press(.dpadUp) }
             ringZone("chevron.right", "Right", from: -45, to: 45, glyph: .trailing) { model.press(.dpadRight) }
             ringZone("chevron.down", "Down", from: 45, to: 135, glyph: .bottom) { model.press(.dpadDown) }
             ringZone("chevron.left", "Left", from: 135, to: 225, glyph: .leading) { model.press(.dpadLeft) }
-            Chip(width: GlassMetrics.ok, height: GlassMetrics.ok, corner: GlassMetrics.ok / 2, action: { model.press(.dpadCenter) }) {
+            Chip(width: GlassMetrics.ok, height: GlassMetrics.ok, corner: GlassMetrics.ok / 2, prominent: true, action: { model.press(.dpadCenter) }) {
                 Text("OK")
                     .font(.system(size: 15, weight: .semibold))
             }
@@ -427,12 +431,12 @@ struct RemotePanel: View {
             .frame(maxWidth: .infinity, minHeight: GlassMetrics.inputHeight)
             .contentShape(Rectangle())
             .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .fill(inputOpen ? Palette.chipHover : Palette.chip)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.18), lineWidth: contrast == .increased ? 1 : 0.5)
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(Color.white.opacity(contrast == .increased ? 0.55 : 0), lineWidth: contrast == .increased ? 1 : 0)
             )
         }
         .buttonStyle(.plain)
@@ -478,7 +482,7 @@ struct RemotePanel: View {
                         if item.uri == selectedInputURI {
                             Image(systemName: "checkmark")
                                 .font(.system(size: 11, weight: .semibold))
-                                .foregroundColor(Palette.accent)
+                                .foregroundColor(Palette.text)
                         }
                     }
                     .padding(.horizontal, 8)
@@ -492,7 +496,7 @@ struct RemotePanel: View {
             }
         }
         .padding(4)
-        .background(GlassPlate(material: .menu, corner: 10, tintOpacity: GlassMetrics.menuTint, prominentShadow: false))
+        .background(GlassPlate(corner: 12, castsShadow: false))
         .accessibilityLabel("Inputs")
     }
 
@@ -567,8 +571,8 @@ struct RemotePanel: View {
         let pinned = Array(all.prefix(GlassMetrics.pinnedApps))
         let grid = { (list: [TvApp]) in
             LazyVGrid(columns: columns, alignment: .leading, spacing: 4) {
-                ForEach(list) { app in
-                    AppTile(app: app, selected: app.matches(package: model.picture.foregroundPackage)) {
+                ForEach(Array(list.enumerated()), id: \.element.id) { index, app in
+                    AppTile(app: app, tintIndex: index, selected: app.matches(package: model.picture.foregroundPackage)) {
                         model.launch(app)
                     }
                 }
@@ -670,7 +674,7 @@ struct RemotePanel: View {
         .foregroundColor(Palette.text)
         .padding(.horizontal, 14)
         .frame(height: 36)
-        .background(GlassPlate(material: .hudWindow, corner: 12, tintOpacity: GlassMetrics.panelTint))
+        .background(GlassPlate(corner: 16))
         .frame(maxWidth: .infinity)
         .accessibilityLabel(text)
     }
@@ -679,7 +683,7 @@ struct RemotePanel: View {
         Chip(
             width: GlassMetrics.small,
             height: GlassMetrics.small,
-            corner: 8,
+            corner: GlassMetrics.small / 2,
             hitOutset: (GlassMetrics.smallHit - GlassMetrics.small) / 2,
             action: action
         ) {
@@ -721,6 +725,13 @@ struct RemotePanel: View {
     private var volumeLabel: String {
         if model.picture.volume == nil && !volumeIsLive { return "—" }
         return "\(Int(volumeDraft.rounded()))"
+    }
+
+    private var statusDot: Color {
+        if model.demoOn { return Palette.dotConnected }
+        if case .connecting = model.status { return Palette.dotSearching }
+        if tvIsOn { return Palette.dotConnected }
+        return Palette.dotOffline
     }
 
     private var tvIsOn: Bool {
@@ -846,10 +857,10 @@ struct RemotePanel: View {
 
 private struct AppTile: View {
     var app: TvApp
+    var tintIndex: Int
     var selected: Bool
     var action: () -> Void
 
-    @State private var hover = false
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -857,22 +868,20 @@ private struct AppTile: View {
             VStack(spacing: 3) {
                 ZStack {
                     RoundedRectangle(cornerRadius: GlassMetrics.tileRadius, style: .continuous)
-                        .fill(selected ? Palette.accent : (hover ? Palette.chipHover : Palette.chip))
+                        .fill(Folio.tilePair(index: tintIndex))
+                    RoundedRectangle(cornerRadius: GlassMetrics.tileRadius, style: .continuous)
+                        .fill(Folio.ink.opacity(0.18))
                     tileMark
                         .font(.system(size: 15, weight: .bold))
                         .foregroundColor(Palette.text)
                 }
                 .frame(width: GlassMetrics.tile, height: GlassMetrics.tile)
-                .overlay(alignment: .top) {
+                .overlay {
                     if selected {
                         RoundedRectangle(cornerRadius: GlassMetrics.tileRadius, style: .continuous)
-                            .stroke(Color.white.opacity(0.50), lineWidth: 0.5)
-                            .frame(height: 1)
-                            .offset(y: 0.5)
-                            .allowsHitTesting(false)
+                            .strokeBorder(Color.white, lineWidth: 1.5)
                     }
                 }
-                .shadow(color: selected ? Palette.accent.opacity(0.33) : Color.clear, radius: 2, y: 1)
                 Text(app.name)
                     .font(.system(size: 11))
                     .foregroundColor(Palette.secondary)
@@ -886,13 +895,12 @@ private struct AppTile: View {
             .overlay {
                 if focused {
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(Palette.accent.opacity(0.5), lineWidth: 3)
+                        .stroke(Color.white.opacity(0.25), lineWidth: 3)
                         .padding(-1)
                 }
             }
         }
         .buttonStyle(.plain)
-        .onHover { hover = $0 }
         .focused($focused)
         .focusable()
         .help(app.name)
@@ -934,7 +942,6 @@ struct VolumeSlider: View {
     var onLive: (Double) -> Void
     var onCommit: (Double) -> Void
 
-    @State private var hover = false
     @State private var pressed = false
     @FocusState private var focused: Bool
 
@@ -949,18 +956,17 @@ struct VolumeSlider: View {
                     .fill(Palette.track)
                     .frame(height: GlassMetrics.track)
                 Capsule()
-                    .fill(Palette.accent)
+                    .fill(Palette.sliderFill)
                     .frame(width: max(knobX + GlassMetrics.knob / 2, GlassMetrics.track), height: GlassMetrics.track)
                 Circle()
                     .fill(pressed ? Palette.knobPressed : Palette.knob)
                     .frame(width: GlassMetrics.knob, height: GlassMetrics.knob)
-                    .scaleEffect(pressed ? 0.92 : (hover ? 1.1 : 1))
-                    .shadow(color: Color.black.opacity(0.18), radius: 1, y: 1)
+                    .scaleEffect(pressed ? 0.96 : 1)
                     .offset(x: knobX)
                     .overlay {
                         if focused && !pressed {
                             Circle()
-                                .stroke(Palette.accent.opacity(0.5), lineWidth: 3)
+                                .stroke(Color.white.opacity(0.25), lineWidth: 3)
                                 .frame(width: GlassMetrics.knob + 6, height: GlassMetrics.knob + 6)
                         }
                     }
@@ -984,7 +990,6 @@ struct VolumeSlider: View {
                         onCommit(next)
                     }
             )
-            .onHover { hover = $0 }
         }
         .frame(height: GlassMetrics.sliderRow)
         .focused($focused)

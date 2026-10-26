@@ -413,6 +413,8 @@ final class AppModel: ObservableObject {
             )
             window.title = "Zapbar Settings"
             window.contentView = hosting
+            window.isOpaque = false
+            window.backgroundColor = .clear
             AppearanceLock.apply(to: hosting)
             AppearanceLock.apply(to: window)
             window.isReleasedWhenClosed = false
@@ -771,13 +773,17 @@ final class AppModel: ObservableObject {
         if wizardWindow == nil {
             let hosting = NSHostingView(rootView: SetupWizardView(model: self))
             let window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 480, height: 420),
+                contentRect: NSRect(x: 0, y: 0, width: 480, height: 640),
                 styleMask: [.titled, .closable],
                 backing: .buffered,
                 defer: false
             )
             window.title = "Zapbar"
             window.contentView = hosting
+            window.isOpaque = false
+            window.backgroundColor = .clear
+            AppearanceLock.apply(to: hosting)
+            AppearanceLock.apply(to: window)
             window.isReleasedWhenClosed = false
             window.identifier = NSUserInterfaceItemIdentifier("zapbar.setup")
             window.center()

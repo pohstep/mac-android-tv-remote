@@ -9,20 +9,15 @@ enum ZapbarMark {
     }()
 }
 
-/// Lockup for the panel header and the first setup step. The word is never amber.
+/// Lockup for the panel header and the first setup step. One ink: white.
 struct ZapbarWordmark: View {
     var wordSize: CGFloat = 18
-    @Environment(\.colorScheme) private var colorScheme
 
     /// SF Pro Rounded cap height is about 0.71 em. The mark is that height times 1.4.
     private var markSide: CGFloat { wordSize * 0.71 * 1.4 }
     private var lineSize: CGFloat { wordSize * 0.62 }
 
-    private var ink: Color {
-        colorScheme == .dark
-            ? Color.white
-            : Color(red: 23 / 255, green: 23 / 255, blue: 25 / 255)
-    }
+    private var ink: Color { Color.white }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
