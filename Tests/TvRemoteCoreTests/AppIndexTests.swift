@@ -79,8 +79,8 @@ final class AppIndexTests: XCTestCase {
         let apps = session.readApps()
         XCTAssertEqual(apps?.map(\.name), ["Netflix"])
         XCTAssertEqual(apps?.first?.packageName, "com.netflix.ninja")
-        XCTAssertTrue(runner.calls.contains { $0.arguments == AdbCommands.leanbackActivities(serial: "127.0.0.1:5555") })
-        XCTAssertTrue(runner.calls.contains { $0.arguments == AdbCommands.packageDump(serial: "127.0.0.1:5555", packageName: "com.netflix.ninja") })
+        XCTAssertTrue(runner.calls.contains { $0.arguments == ["-P", "5037"] + AdbCommands.leanbackActivities(serial: "127.0.0.1:5555") })
+        XCTAssertTrue(runner.calls.contains { $0.arguments == ["-P", "5037"] + AdbCommands.packageDump(serial: "127.0.0.1:5555", packageName: "com.netflix.ninja") })
         XCTAssertFalse(runner.calls.contains { $0.arguments.joined(separator: " ").contains("192.0.2.57") })
     }
 
@@ -105,7 +105,7 @@ final class AppIndexTests: XCTestCase {
         let apps = session.readApps()
         XCTAssertEqual(apps?.map(\.name), ["SmartTube"])
         XCTAssertEqual(apps?.first?.favourite, true)
-        XCTAssertTrue(runner.calls.contains { $0.arguments == AdbCommands.launcherIndex(serial: "127.0.0.1:5555") })
+        XCTAssertTrue(runner.calls.contains { $0.arguments == ["-P", "5037"] + AdbCommands.launcherIndex(serial: "127.0.0.1:5555") })
         XCTAssertFalse(runner.calls.contains { $0.arguments.contains("query-activities") })
     }
 

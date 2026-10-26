@@ -98,7 +98,7 @@ final class ReviewFixesTests: XCTestCase {
 
     func testPrivateAdbPortAndKillServer() {
         XCTAssertEqual(AdbLaunch.serverSocket(sandboxed: false), "tcp:localhost:5037")
-        XCTAssertEqual(AdbLaunch.serverSocket(sandboxed: true), "tcp:127.0.0.1:5038")
+        XCTAssertEqual(AdbLaunch.serverSocket(sandboxed: true), "tcp:localhost:5038")
         XCTAssertNotEqual(AdbLaunch.serverSocket(sandboxed: true), AdbLaunch.publicServerSocket)
         XCTAssertEqual(AdbLaunch.quitWait, 2)
         #if SANDBOX_BUILD
@@ -119,10 +119,10 @@ final class ReviewFixesTests: XCTestCase {
         )
         session.stopAdbServer()
         XCTAssertEqual(fake.calls.count, 1)
-        XCTAssertEqual(fake.calls[0].arguments, ["kill-server"])
+        XCTAssertEqual(fake.calls[0].arguments, ["-P", "5038", "kill-server"])
         XCTAssertEqual(fake.calls[0].timeout, 2)
         XCTAssertEqual(fake.calls[0].environment["TMPDIR"], "/tmp/zapbar-adb")
-        XCTAssertEqual(fake.calls[0].environment["ADB_SERVER_SOCKET"], "tcp:127.0.0.1:5038")
+        XCTAssertEqual(fake.calls[0].environment["ADB_SERVER_SOCKET"], "tcp:localhost:5038")
 
         let missing = FakeRunner()
         let absent = RemoteSession(
@@ -217,7 +217,7 @@ final class ReviewFixesTests: XCTestCase {
 
         let unauthorized = connectedSession()
         unauthorized.fake.handler = { arguments in
-            if arguments == ["devices"] {
+            if arguments == ["-P", "5037", "devices"] {
                 return .success(CommandResult(status: 0, stdout: "List of devices attached\n192.0.2.20:5555\tunauthorized\n", stderr: ""))
             }
             return .success(CommandResult(status: 0, stdout: "", stderr: ""))
@@ -228,7 +228,7 @@ final class ReviewFixesTests: XCTestCase {
 
         let offline = connectedSession()
         offline.fake.handler = { arguments in
-            if arguments == ["devices"] {
+            if arguments == ["-P", "5037", "devices"] {
                 return .success(CommandResult(status: 0, stdout: "List of devices attached\n192.0.2.20:5555\toffline\n", stderr: ""))
             }
             return .success(CommandResult(status: 0, stdout: "", stderr: ""))
@@ -238,7 +238,7 @@ final class ReviewFixesTests: XCTestCase {
 
         let timed = connectedSession()
         timed.fake.handler = { arguments in
-            if arguments == ["devices"] {
+            if arguments == ["-P", "5037", "devices"] {
                 return .success(CommandResult(status: 0, stdout: "List of devices attached\n192.0.2.20:5555\tdevice\n", stderr: ""))
             }
             if arguments.contains("install") {
@@ -260,7 +260,7 @@ final class ReviewFixesTests: XCTestCase {
         try Data([0]).write(to: video)
         let rig = connectedSession()
         rig.fake.handler = { arguments in
-            if arguments == ["devices"] {
+            if arguments == ["-P", "5037", "devices"] {
                 return .success(CommandResult(status: 0, stdout: "List of devices attached\n192.0.2.20:5555\tdevice\n", stderr: ""))
             }
             if arguments.contains("push") {
@@ -280,7 +280,7 @@ final class ReviewFixesTests: XCTestCase {
         let rig = connectedSession()
         let red = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC")!
         rig.fake.handler = { arguments in
-            if arguments == ["devices"] {
+            if arguments == ["-P", "5037", "devices"] {
                 return .success(CommandResult(status: 0, stdout: "List of devices attached\n192.0.2.20:5555\tdevice\n", stderr: ""))
             }
             if arguments.contains("exec-out") {
@@ -315,7 +315,7 @@ final class ReviewFixesTests: XCTestCase {
         try Data([0x50]).write(to: apk)
         let rig = connectedSession()
         rig.fake.handler = { [session = rig.session] arguments in
-            if arguments == ["devices"] {
+            if arguments == ["-P", "5037", "devices"] {
                 return .success(CommandResult(status: 0, stdout: "List of devices attached\n192.0.2.20:5555\tdevice\n", stderr: ""))
             }
             if arguments.contains("push") {

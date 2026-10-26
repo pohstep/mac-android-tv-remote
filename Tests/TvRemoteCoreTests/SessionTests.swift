@@ -86,7 +86,7 @@ final class SessionTests: XCTestCase {
         XCTAssertEqual(serial, "192.0.2.20:5555")
         XCTAssertTrue(detail.contains("refused"))
         XCTAssertTrue(detail.contains("192.0.2.20:5555"))
-        XCTAssertEqual(fake.calls.first?.arguments, ["connect", "192.0.2.20:5555"])
+        XCTAssertEqual(fake.calls.first?.arguments, ["-P", "5037", "connect", "192.0.2.20:5555"])
     }
 
     func testRefreshReportsUnreachableWhenTheConnectIsNotARefusal() {
@@ -112,6 +112,32 @@ final class SessionTests: XCTestCase {
             return XCTFail("expected unreachable for a timeout, got \(timedOut)")
         }
         XCTAssertEqual(timedOut.detail, Copy.unreachable(serial: serial))
+    }
+
+    func testRefreshReportsHelperDownWhenTheDaemonDoesNotStart() {
+        let outputs = [
+            "cannot start server on remote host\nfailed to connect to 127.0.0.1:5038",
+            "cannot connect to daemon",
+            "cannot start server on remote host: Connection refused"
+        ]
+        for stderr in outputs {
+            let status = refresh(stderr: stderr)
+            guard case .helperDown = status else {
+                return XCTFail("expected helper down for \(stderr), got \(status)")
+            }
+            XCTAssertEqual(status.detail, Copy.helperDidNotStart)
+            XCTAssertEqual(status.detail, "Zapbar's helper couldn't start. Quit and reopen Zapbar.")
+            XCTAssertEqual(status.title, "Helper didn't start")
+            XCTAssertNotEqual(status.title, "The TV refused the connection")
+            XCTAssertFalse(status.detail.localizedCaseInsensitiveContains("refused"))
+            XCTAssertNotEqual(status, .unreachable(serial: "192.0.2.20:5555"))
+        }
+
+        let thrown = refresh(error: RemoteError.commandFailed("cannot connect to daemon"))
+        guard case .helperDown = thrown else {
+            return XCTFail("expected helper down for a thrown daemon error, got \(thrown)")
+        }
+        XCTAssertEqual(thrown.detail, Copy.helperDidNotStart)
     }
 
     private func refresh(stderr: String) -> LinkStatus {
@@ -185,7 +211,7 @@ final class SessionTests: XCTestCase {
         _ = session.refresh()
         let wakeReport = session.pressPower()
         XCTAssertEqual(wakeReport.title, "Sent wake")
-        XCTAssertEqual(fake.calls.last?.arguments, AdbCommands.keyEvent(serial: "192.0.2.20:5555", key: .wakeup))
+        XCTAssertEqual(fake.calls.last?.arguments, ["-P", "5037"] + AdbCommands.keyEvent(serial: "192.0.2.20:5555", key: .wakeup))
         XCTAssertTrue(wake.sent.isEmpty)
 
         let asleep = RemoteSession(settings: settings, runner: FakeRunner(), wol: wake, fileExists: { _ in false })

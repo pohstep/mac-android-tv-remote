@@ -757,6 +757,7 @@ struct RemotePanel: View {
             if case .connecting = model.status { return model.status.detail }
             if case .idle = model.status { return model.status.detail }
             if case .adbMissing = model.status { return model.status.detail }
+            if case .helperDown = model.status { return model.status.detail }
             if case .unauthorized = model.status { return model.status.detail }
             if case .refused = model.status { return model.status.detail }
             if case .unreachable = model.status { return model.status.detail }

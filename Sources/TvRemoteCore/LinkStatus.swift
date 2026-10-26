@@ -5,6 +5,7 @@ public enum LinkStatus: Equatable {
     case connecting(serial: String)
     case connected(serial: String)
     case adbMissing(message: String)
+    case helperDown
     case unauthorized(serial: String)
     case refused(serial: String, detail: String)
     case unreachable(serial: String)
@@ -17,7 +18,7 @@ public enum LinkStatus: Equatable {
             return serial
         case .refused(let serial, _), .unreachable(let serial):
             return serial
-        case .idle, .adbMissing, .failed:
+        case .idle, .adbMissing, .helperDown, .failed:
             return nil
         }
     }
@@ -33,6 +34,7 @@ public enum LinkStatus: Equatable {
         case .connecting: return "Connecting"
         case .connected: return "Connected"
         case .adbMissing: return "adb isn't installed"
+        case .helperDown: return "Helper didn't start"
         case .unauthorized: return "Waiting for the TV"
         case .refused: return "The TV refused the connection"
         case .unreachable: return "Couldn't reach the TV"
@@ -51,6 +53,8 @@ public enum LinkStatus: Equatable {
             return serial
         case .adbMissing(let message):
             return message
+        case .helperDown:
+            return Copy.helperDidNotStart
         case .unauthorized(let serial):
             return Copy.unauthorized(serial: serial)
         case .refused(_, let detail):
@@ -87,7 +91,7 @@ public struct ReconnectPolicy {
             return 15
         case .idle:
             return 20
-        case .adbMissing:
+        case .adbMissing, .helperDown:
             return 10
         case .connecting:
             return 5

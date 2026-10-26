@@ -122,7 +122,7 @@ final class SonyPathTests: XCTestCase {
         let report = session.press(.dpadDown)
         XCTAssertFalse(report.isError)
         XCTAssertFalse(report.detail.contains(secret))
-        XCTAssertEqual(runner.calls.last?.arguments, AdbCommands.keyEvent(serial: "127.0.0.1:5555", key: .dpadDown))
+        XCTAssertEqual(runner.calls.last?.arguments, ["-P", "5037"] + AdbCommands.keyEvent(serial: "127.0.0.1:5555", key: .dpadDown))
     }
 
     func testVolumeAndHdmiUseSonyWhenTheKeyIsSaved() {

@@ -134,9 +134,13 @@ public struct AdbClient {
     }
 
     private func run(_ arguments: [String], timeout override: TimeInterval? = nil) throws -> CommandResult {
-        try runner.run(
+        var launched = arguments
+        if let port = AdbLaunch.serverPort(socket: serverSocket) {
+            launched = ["-P", port] + arguments
+        }
+        return try runner.run(
             adbPath,
-            arguments: arguments,
+            arguments: launched,
             timeout: override ?? timeout,
             environment: AdbLaunch.environment(temporaryDirectory: temporaryDirectory, serverSocket: serverSocket)
         )

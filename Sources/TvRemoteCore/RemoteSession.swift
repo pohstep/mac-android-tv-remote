@@ -217,8 +217,10 @@ public final class RemoteSession {
             case .offline:
                 return assign(.offline(serial: serial))
             case .missing:
-                let detail = outcome.failureDetail
-                if AdbOutput.isRefusal(detail) {
+                if AdbOutput.isDaemonFailure(outcome.failureDetail) || AdbOutput.isDaemonFailure(listed.combined) {
+                    return assign(.helperDown)
+                }
+                if AdbOutput.isRefusal(outcome.failureDetail) {
                     return assign(.refused(serial: serial, detail: Copy.refused(serial: serial)))
                 }
                 return assign(.unreachable(serial: serial))
@@ -227,8 +229,14 @@ public final class RemoteSession {
             if case .notFound = error {
                 return assign(.adbMissing(message: Copy.adbMissing()))
             }
+            if AdbOutput.isDaemonFailure(String(describing: error)) {
+                return assign(.helperDown)
+            }
             return assign(.unreachable(serial: serial))
         } catch {
+            if AdbOutput.isDaemonFailure(String(describing: error)) {
+                return assign(.helperDown)
+            }
             return assign(.unreachable(serial: serial))
         }
     }
