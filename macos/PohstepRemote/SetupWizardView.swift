@@ -15,14 +15,24 @@ struct SetupWizardView: View {
             wizardStack
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(GlassPlate(corner: 0, castsShadow: false))
+        .preferredColorScheme(.dark)
     }
 
     private var wizardStack: some View {
         VStack(alignment: .leading, spacing: 14) {
+            Text("Step \(progressIndex + 1) of 5")
+                .font(.system(size: 11.5))
+                .foregroundColor(Palette.text)
+            WizardProgress(index: progressIndex)
+            if showsPicture {
+                WizardPicture(symbol: pictureSymbol)
+            }
             if model.wizard.phase == .pickBrand {
                 ZapbarWordmark(wordSize: 22)
             }
             Text(title)
+                .foregroundColor(Palette.text)
                 .font(.system(size: 16, weight: .semibold))
             if let message = model.wizard.message, !message.isEmpty {
                 Text(message)
@@ -37,9 +47,16 @@ struct SetupWizardView: View {
                     .accessibilityIdentifier(line.key)
             }
             content
+            Rectangle()
+                .fill(Color.white.opacity(0.20))
+                .frame(height: 1)
             HStack {
-                if model.wizard.phase != .pickBrand && model.wizard.phase != .done {
+                if model.wizard.phase == .pickBrand {
+                    Button("Cancel") { model.closeWizard() }
+                        .foregroundColor(Palette.text)
+                } else if model.wizard.phase != .done {
                     Button("Back") { model.sendWizard(.back) }
+                        .foregroundColor(Palette.text)
                 }
                 Spacer()
             }
@@ -53,6 +70,46 @@ struct SetupWizardView: View {
             if phase == .remember {
                 deviceName = model.wizard.name
             }
+        }
+    }
+
+    /// Five slices of one gradient: brand, find, connect, save, done. No skip control on the bar.
+    private var progressIndex: Int {
+        switch model.wizard.phase {
+        case .pickBrand:
+            return 0
+        case .find, .manual:
+            return 1
+        case .sonyTyping, .debugging, .pair, .allow, .sonyKey:
+            return 2
+        case .remember:
+            return 3
+        case .done:
+            return 4
+        }
+    }
+
+    private var showsPicture: Bool {
+        switch model.wizard.phase {
+        case .debugging, .pair, .allow:
+            return true
+        case .pickBrand, .find, .manual, .sonyTyping, .sonyKey, .remember, .done:
+            return false
+        }
+    }
+
+    private var pictureSymbol: String {
+        switch model.wizard.phase {
+        case .pickBrand:
+            return "tv"
+        case .find, .manual:
+            return "dot.radiowaves.left.and.right"
+        case .sonyTyping, .debugging, .pair, .allow:
+            return "checkmark.shield"
+        case .sonyKey:
+            return "lock"
+        case .remember, .done:
+            return "square.and.arrow.down"
         }
     }
 
@@ -76,8 +133,11 @@ struct SetupWizardView: View {
         switch model.wizard.phase {
         case .pickBrand:
             Button("Sony") { model.sendWizard(.choose(.sony)) }
+                .buttonStyle(FolioPrimaryStyle(wizard: true))
             Button("Xiaomi") { model.sendWizard(.choose(.xiaomi)) }
+                .buttonStyle(FolioPrimaryStyle(wizard: true))
             Button("Other TV") { model.sendWizard(.choose(.generic)) }
+                .buttonStyle(FolioPrimaryStyle(wizard: true))
         case .find:
             if model.discovering {
                 Text("Looking on the local network…")
@@ -85,57 +145,132 @@ struct SetupWizardView: View {
             }
             ForEach(Array(model.discovered.enumerated()), id: \.offset) { _, tv in
                 Button("\(tv.name) · \(tv.host)") { model.sendWizard(.pick(tv)) }
+                    .buttonStyle(FolioPrimaryStyle(wizard: true))
             }
             if DemoOffer.showWhenNoneFound(searching: model.discovering, matchCount: model.discovered.count) {
                 Text(DemoCopy.noneFound)
                     .font(.system(size: 12))
                     .foregroundColor(Palette.muted)
                 Button(DemoCopy.tryIt) { model.startDemo() }
-                    .font(.system(size: 12))
+                    .buttonStyle(FolioPrimaryStyle(wizard: true))
             }
             Button("Enter an address") { model.sendWizard(.wantManual) }
         case .manual:
             TextField("IP address or hostname", text: $manualHost)
-                .textFieldStyle(.roundedBorder)
+                .folioFieldChrome(focused: false)
             TextField("Port (optional)", text: $manualPort)
-                .textFieldStyle(.roundedBorder)
+                .folioFieldChrome(focused: false)
             Button("Continue") {
                 let port = Int(manualPort.trimmingCharacters(in: .whitespacesAndNewlines))
                 model.sendWizard(.submitManual(host: manualHost, port: port))
             }
+            .buttonStyle(FolioPrimaryStyle(wizard: true))
         case .sonyTyping:
             Button("Skip typing") { model.sendWizard(.typing(false)) }
             Button("I want to type") { model.sendWizard(.typing(true)) }
+                .buttonStyle(FolioPrimaryStyle(wizard: true))
         case .debugging:
             Button("Pair with a code") { model.sendWizard(.chooseWireless) }
+                .buttonStyle(FolioPrimaryStyle(wizard: true))
             Button("Use port 5555") { model.sendWizard(.chooseLegacy) }
+                .buttonStyle(FolioPrimaryStyle(wizard: true))
         case .pair:
             TextField("Pairing port", text: $pairPort)
-                .textFieldStyle(.roundedBorder)
+                .folioFieldChrome(focused: false)
             TextField("Pairing code", text: $pairCode)
-                .textFieldStyle(.roundedBorder)
+                .folioFieldChrome(focused: false)
             Button("Pair") { model.sendWizard(.submitPair(port: pairPort, code: pairCode)) }
+                .buttonStyle(FolioPrimaryStyle(wizard: true))
+                .disabled(pairCode.trimmingCharacters(in: .whitespacesAndNewlines).count != 6)
         case .allow:
             Button("Check again") { model.retryAllow() }
+                .buttonStyle(FolioPrimaryStyle(wizard: true))
         case .sonyKey:
             SecureField("Pre-shared key", text: $psk)
-                .textFieldStyle(.roundedBorder)
+                .folioFieldChrome(focused: false)
             HStack {
                 Button("Save key and continue") {
                     model.stagePreSharedKey(psk)
                     model.sendWizard(.continueAhead)
                 }
+                .buttonStyle(FolioPrimaryStyle(wizard: true))
                 Button("Skip") { model.sendWizard(.continueAhead) }
             }
         case .remember:
             TextField("Name", text: $deviceName)
-                .textFieldStyle(.roundedBorder)
+                .folioFieldChrome(focused: false)
             Button("Save") {
                 model.stagePreSharedKey(psk)
                 model.sendWizard(.remember(name: deviceName))
             }
+            .buttonStyle(FolioPrimaryStyle(wizard: true))
         case .done:
             Button("Close") { model.closeWizard() }
+                .buttonStyle(FolioPrimaryStyle(wizard: true))
         }
+    }
+}
+
+/// Five segments cut from one diagonal gradient. Empty segments stay white at 22%.
+private struct WizardProgress: View {
+    var index: Int
+
+    var body: some View {
+        GeometryReader { proxy in
+            let gap: CGFloat = 3
+            let count: CGFloat = 5
+            let segment = max((proxy.size.width - gap * (count - 1)) / count, 1)
+            ZStack(alignment: .leading) {
+                HStack(spacing: gap) {
+                    ForEach(0..<5, id: \.self) { _ in
+                        Capsule()
+                            .fill(Color.white.opacity(0.22))
+                            .frame(height: 3)
+                    }
+                }
+                Folio.diagonal
+                    .frame(width: proxy.size.width, height: 3)
+                    .mask(
+                        HStack(spacing: gap) {
+                            ForEach(0..<5, id: \.self) { slot in
+                                Capsule()
+                                    .frame(width: segment, height: 3)
+                                    .opacity(slot <= index ? 1 : 0)
+                            }
+                        }
+                        .frame(width: proxy.size.width, alignment: .leading)
+                    )
+            }
+        }
+        .frame(height: 3)
+        .accessibilityLabel("Setup step \(index + 1) of 5")
+    }
+}
+
+/// Flat frame for steps that show a picture. The TV-settings drawings are not in this tree,
+/// so the frame stays empty of a fake settings screen.
+private struct WizardPicture: View {
+    var symbol: String
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color.white.opacity(0.06))
+            Image(systemName: symbol)
+                .font(.system(size: 28, weight: .regular))
+                .foregroundColor(Palette.secondary)
+        }
+        .frame(width: 288, height: 162)
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .padding(4)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.white.opacity(0.08))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.32), lineWidth: 1)
+        )
+        .accessibilityHidden(true)
     }
 }
