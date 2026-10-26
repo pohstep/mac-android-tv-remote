@@ -452,6 +452,90 @@ public final class RemoteSession {
         }
     }
 
+    public func installApk(at path: String) -> JobReport {
+        let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.lowercased().hasSuffix(".apk") else {
+            return JobReport(sentence: "Drop an app file ending in .apk.", raw: "", isError: true)
+        }
+        guard FileManager.default.fileExists(atPath: trimmed) else {
+            return JobReport(sentence: "That file can't be read.", raw: "", isError: true)
+        }
+        guard let serial = debuggingSerial() else {
+            return debuggingRequired()
+        }
+        do {
+            let result = try client().installPackage(at: trimmed, serial: serial)
+            let raw = result.combined.trimmingCharacters(in: .whitespacesAndNewlines)
+            let sentence = InstallExplain.sentence(status: result.status, output: raw)
+            let failed = sentence != "Installed."
+            return JobReport(sentence: sentence, raw: failed ? raw : "", isError: failed)
+        } catch {
+            return JobReport(sentence: "The TV refused the install.", raw: errorText(error), isError: true)
+        }
+    }
+
+    public func sendLink(_ raw: String) -> JobReport {
+        guard let url = LinkSend.httpURL(from: raw) else {
+            return JobReport(sentence: "Only web links can be sent. Use http or https.", raw: "", isError: true)
+        }
+        guard let serial = debuggingSerial() else {
+            return debuggingRequired()
+        }
+        do {
+            let result = try client().openLink(url, serial: serial)
+            let text = result.combined.trimmingCharacters(in: .whitespacesAndNewlines)
+            let sentence = LinkSend.sentence(status: result.status, output: text)
+            let failed = sentence != "Opened on the TV."
+            return JobReport(sentence: sentence, raw: failed ? text : "", isError: failed)
+        } catch {
+            return JobReport(sentence: "The TV didn't open that link. It needs a browser.", raw: errorText(error), isError: true)
+        }
+    }
+
+    public func captureScreenshot() -> ScreenshotResult {
+        guard let serial = debuggingSerial() else {
+            return ScreenshotResult(png: nil, sentence: "This needs a network debugging connection.", raw: "", isError: true)
+        }
+        let client = client()
+        do {
+            let exec = try client.captureScreen(serial: serial)
+            return ScreenshotCapture.resolve(execOut: exec.stdoutData, fallbackRaw: exec.combined) {
+                self.pullScreenshot(client: client, serial: serial)
+            }
+        } catch {
+            return ScreenshotResult(png: nil, sentence: "The screenshot didn't come back.", raw: errorText(error), isError: true)
+        }
+    }
+
+    public func sendFile(at path: String) -> JobReport {
+        let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard FileManager.default.fileExists(atPath: trimmed) else {
+            return JobReport(sentence: "That file can't be read.", raw: "", isError: true)
+        }
+        guard let serial = debuggingSerial() else {
+            return debuggingRequired()
+        }
+        let remote = FileSend.downloadPath(for: trimmed)
+        let mime = FileSend.mimeType(for: trimmed)
+        let client = client()
+        do {
+            let pushed = try client.pushFile(localPath: trimmed, remotePath: remote, serial: serial)
+            let pushText = pushed.combined.trimmingCharacters(in: .whitespacesAndNewlines)
+            let pushSentence = FileSend.pushSentence(status: pushed.status, output: pushText)
+            if pushSentence != FileSend.playerSentence {
+                return JobReport(sentence: pushSentence, raw: pushText, isError: true)
+            }
+            let opened = try client.openFile(fileURL: FileSend.fileURL(remotePath: remote), mime: mime, serial: serial)
+            let openText = opened.combined.trimmingCharacters(in: .whitespacesAndNewlines)
+            if AdbOutput.outputIndicatesFailure(openText, status: opened.status) {
+                return JobReport(sentence: FileSend.playerLeftBehind, raw: openText, isError: true)
+            }
+            return JobReport(sentence: FileSend.playerSentence, raw: "", isError: false)
+        } catch {
+            return JobReport(sentence: "The file didn't reach the TV.", raw: errorText(error), isError: true)
+        }
+    }
+
     /// Sony IP control first. A live debugging link sends the wake key and skips the magic packet.
     /// Wake-on-LAN runs only when that link is down.
     public func pressPower() -> ActionReport {
@@ -605,6 +689,34 @@ public final class RemoteSession {
     private func notConnectedReport() -> ActionReport {
         let current = lock.critical { status }
         return ActionReport(title: current.title, detail: current.detail, isError: true)
+    }
+
+    private func debuggingRequired() -> JobReport {
+        JobReport(sentence: "This needs a network debugging connection.", raw: "", isError: true)
+    }
+
+    private func debuggingSerial() -> String? {
+        guard currentAdbLink(), let serial = connectedSerial(), !serial.isEmpty else { return nil }
+        return serial
+    }
+
+    private func pullScreenshot(client: AdbClient, serial: String) -> (Data, String) {
+        let remote = ScreenshotCapture.remotePath
+        let local = URL(fileURLWithPath: temporaryDirectory, isDirectory: true)
+            .appendingPathComponent("zapbar-screen.png")
+            .path
+        var raw = ""
+        do {
+            let saved = try client.saveScreenshot(remotePath: remote, serial: serial)
+            raw += saved.combined
+            let pulled = try client.pullFile(remotePath: remote, localPath: local, serial: serial)
+            raw += pulled.combined
+            _ = try? client.removeRemote(remote, serial: serial)
+            let data = (try? Data(contentsOf: URL(fileURLWithPath: local))) ?? Data()
+            return (data, raw.trimmingCharacters(in: .whitespacesAndNewlines))
+        } catch {
+            return (Data(), (raw + errorText(error)).trimmingCharacters(in: .whitespacesAndNewlines))
+        }
     }
 
     private func connectedSerial() -> String? {

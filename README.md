@@ -16,6 +16,10 @@ A macOS menu bar remote: D-pad, apps, inputs, volume, power, and typing on the T
 - **Several TVs.** The last one reconnects on launch. Wake is in the menu bar. A v1.0 settings file becomes the first saved TV, including the pre-shared key already in the Keychain.
 - **Setup** walks through brand, finding the TV (or typing an address), debugging, pairing or Allow, and saving.
 - **Type on the TV.** A field in the panel sends on Return. `⌃⌥T` opens the panel and focuses it. Sony can take characters such as Chinese when a text field is open. Plain letters go over the debugging connection. If a route can't type, the panel says so.
+- **Drop an app file** on the menu bar icon or the panel. Zapbar installs it and shows one plain sentence for the result. The original message stays under that sentence. Filenames can contain spaces.
+- **Send a web link** from the paste field or with `⌃⌥L`. Only `http` and `https` links are sent. The TV needs a browser.
+- **Screenshot** copies the TV picture to the clipboard or saves it into a folder you pick. A black or broken picture is not shown. The panel says: blank, the TV blocks screenshots for protected video.
+- **Send a file** to the TV's Downloads folder and ask the TV to open it. The TV needs a player.
 - **Keyboard as remote** in the non-sandbox build: `⌃⌥K` toggles it, `⌃⌥⌘K` turns it off. The sandboxed build hides this. It needs Accessibility, which the sandbox does not grant.
 
 Xiaomi control (port 6095: keys, apps, HDMI) is **experimental**. It was written against `scripts/mock-xiaomi.py` and has not been checked on a real set. It cannot type and cannot power the set on.

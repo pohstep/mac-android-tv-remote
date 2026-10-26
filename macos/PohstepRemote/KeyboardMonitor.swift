@@ -9,6 +9,7 @@ final class KeyboardMonitor {
     private var runLoopSource: CFRunLoopSource?
     private var toggleHotKey: EventHotKeyRef?
     private var typeHotKey: EventHotKeyRef?
+    private var linkHotKey: EventHotKeyRef?
     private var handler: EventHandlerRef?
     private var swallowed = Set<Int64>()
     private var captureAvailable = false
@@ -19,6 +20,7 @@ final class KeyboardMonitor {
 
     func start() {
         installTypeHotkey()
+        installLinkHotkey()
         guard model?.allowsKeyboardCapture == true else { return }
         installTapIfTrusted(prompt: false)
         if tap == nil {
@@ -99,6 +101,13 @@ final class KeyboardMonitor {
             }
             return nil
         }
+        if model.linkHotkey.matches(chord) {
+            swallowed.insert(keyCode)
+            DispatchQueue.main.async {
+                model.openLinkField()
+            }
+            return nil
+        }
 
         if model.settingsFieldsAreActive && !model.hotkey.matches(chord) {
             return Unmanaged.passUnretained(event)
@@ -147,6 +156,14 @@ final class KeyboardMonitor {
         RegisterEventHotKey(UInt32(kVK_ANSI_T), modifiers, hotKeyID, GetApplicationEventTarget(), 0, &typeHotKey)
     }
 
+    private func installLinkHotkey() {
+        installHandlerIfNeeded()
+        guard linkHotKey == nil else { return }
+        var hotKeyID = EventHotKeyID(signature: OSType(0x5048_524D), id: 3)
+        let modifiers = UInt32(controlKey | optionKey)
+        RegisterEventHotKey(UInt32(kVK_ANSI_L), modifiers, hotKeyID, GetApplicationEventTarget(), 0, &linkHotKey)
+    }
+
     private func installToggleHotkey() {
         guard model?.allowsKeyboardCapture == true else { return }
         installHandlerIfNeeded()
@@ -173,11 +190,13 @@ final class KeyboardMonitor {
                 &hotKeyID
             )
             let monitor = Unmanaged<KeyboardMonitor>.fromOpaque(userData).takeUnretainedValue()
-            let typeField = status == noErr && hotKeyID.id == 2
+            let hotKey = status == noErr ? hotKeyID.id : 0
             DispatchQueue.main.async {
-                if typeField {
+                if hotKey == 2 {
                     monitor.model?.openTypeField()
-                } else if monitor.model?.allowsKeyboardCapture == true {
+                } else if hotKey == 3 {
+                    monitor.model?.openLinkField()
+                } else if hotKey == 1, monitor.model?.allowsKeyboardCapture == true {
                     monitor.model?.toggleKeyboardMode()
                 }
             }

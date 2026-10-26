@@ -19,11 +19,18 @@ final class AppModel: ObservableObject {
     @Published var discovered: [DiscoveredTV] = []
     @Published var discovering = false
     @Published var typeFocusID = 0
+    @Published var linkFocusID = 0
+    @Published var jobLine = ""
+    @Published var jobRaw = ""
+    @Published var jobIsError = false
+    @Published var jobBusy = false
+    @Published var screenshotPNG: Data?
 
     let session: RemoteSession
     let store: SettingsStore
     let hotkey = Hotkey.default
     let typeHotkey = Hotkey.typeDefault
+    let linkHotkey = Hotkey.linkDefault
 
     private var failures = 0
     private var refreshInFlight = false
@@ -370,6 +377,163 @@ final class AppModel: ObservableObject {
     func sendTypedText(_ text: String) {
         guard !text.isEmpty else { return }
         run { $0.type(text) }
+    }
+
+    func openLinkField() {
+        onOpenPanel?()
+        linkFocusID += 1
+    }
+
+    func sendLink(_ raw: String) {
+        beginJob("Sending the link…")
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self else { return }
+            let report = self.session.sendLink(raw)
+            DispatchQueue.main.async { self.finish(report) }
+        }
+    }
+
+    func stageDroppedFile(_ url: URL) -> String? {
+        stageReadableCopy(of: url)
+    }
+
+    func receiveStaged(_ paths: [String]) {
+        let apks = paths.filter { $0.lowercased().hasSuffix(".apk") }
+        guard !apks.isEmpty else {
+            finish(JobReport(sentence: "Drop an app file ending in .apk.", raw: "", isError: true))
+            return
+        }
+        for path in apks {
+            installApk(at: path)
+        }
+    }
+
+    func receiveApks(_ urls: [URL]) {
+        let apks = urls.filter { $0.path.lowercased().hasSuffix(".apk") }
+        guard !apks.isEmpty else {
+            finish(JobReport(sentence: "Drop an app file ending in .apk.", raw: "", isError: true))
+            return
+        }
+        for url in apks {
+            let scoped = url.startAccessingSecurityScopedResource()
+            let staged = stageReadableCopy(of: url)
+            if scoped { url.stopAccessingSecurityScopedResource() }
+            guard let staged else {
+                finish(JobReport(sentence: "That file can't be read.", raw: url.lastPathComponent, isError: true))
+                continue
+            }
+            installApk(at: staged)
+        }
+    }
+
+    func installApk(at path: String) {
+        let name = URL(fileURLWithPath: path).lastPathComponent
+        beginJob("Installing \(name)…")
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self else { return }
+            let report = self.session.installApk(at: path)
+            DispatchQueue.main.async { self.finish(report) }
+        }
+    }
+
+    func takeScreenshot() {
+        beginJob("Taking a screenshot…")
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self else { return }
+            let shot = self.session.captureScreenshot()
+            DispatchQueue.main.async {
+                self.screenshotPNG = shot.png
+                self.finish(JobReport(sentence: shot.sentence, raw: shot.raw, isError: shot.isError))
+            }
+        }
+    }
+
+    func copyScreenshot() {
+        guard let png = screenshotPNG else { return }
+        let board = NSPasteboard.general
+        board.clearContents()
+        board.setData(png, forType: .png)
+        jobLine = "Copied."
+        jobRaw = ""
+        jobIsError = false
+    }
+
+    func saveScreenshot() {
+        guard let png = screenshotPNG else { return }
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Save"
+        panel.message = "Choose a folder for the screenshot."
+        guard panel.runModal() == .OK, let folder = panel.url else { return }
+        let scoped = folder.startAccessingSecurityScopedResource()
+        defer { if scoped { folder.stopAccessingSecurityScopedResource() } }
+        let dest = folder.appendingPathComponent("Zapbar screenshot.png")
+        do {
+            try png.write(to: dest)
+            jobLine = "Saved."
+            jobRaw = dest.path
+            jobIsError = false
+        } catch {
+            jobLine = "The screenshot couldn't be saved."
+            jobRaw = error.localizedDescription
+            jobIsError = true
+        }
+    }
+
+    func chooseFileToSend() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Send"
+        panel.message = "The TV needs a player to open the file."
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        let scoped = url.startAccessingSecurityScopedResource()
+        let staged = stageReadableCopy(of: url)
+        if scoped { url.stopAccessingSecurityScopedResource() }
+        guard let staged else {
+            finish(JobReport(sentence: "That file can't be read.", raw: url.lastPathComponent, isError: true))
+            return
+        }
+        sendFile(at: staged)
+    }
+
+    func sendFile(at path: String) {
+        let name = URL(fileURLWithPath: path).lastPathComponent
+        beginJob("Sending \(name)…")
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self else { return }
+            let report = self.session.sendFile(at: path)
+            DispatchQueue.main.async { self.finish(report) }
+        }
+    }
+
+    private func stageReadableCopy(of url: URL) -> String? {
+        let dest = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true).appendingPathComponent(url.lastPathComponent)
+        if dest.path == url.path { return url.path }
+        try? FileManager.default.removeItem(at: dest)
+        do {
+            try FileManager.default.copyItem(at: url, to: dest)
+            return dest.path
+        } catch {
+            return nil
+        }
+    }
+
+    private func beginJob(_ line: String) {
+        jobBusy = true
+        jobLine = line
+        jobRaw = ""
+        jobIsError = false
+    }
+
+    private func finish(_ report: JobReport) {
+        jobBusy = false
+        jobLine = report.sentence
+        jobRaw = report.raw
+        jobIsError = report.isError
     }
 
     func selectDevice(_ id: String) {

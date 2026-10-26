@@ -58,6 +58,49 @@ enum MenuBarIcon {
     }
 }
 
+/// Covers the menu bar button so a dropped app file lands on the icon.
+/// Clicks are forwarded to the button.
+final class StatusDrop: NSView {
+    weak var button: NSStatusBarButton?
+    var onApks: ([URL]) -> Void = { _ in }
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        registerForDraggedTypes([.fileURL])
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        draggingUpdated(sender)
+    }
+
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        urls(from: sender).contains(where: { $0.path.lowercased().hasSuffix(".apk") }) ? .copy : []
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        let apks = urls(from: sender).filter { $0.path.lowercased().hasSuffix(".apk") }
+        guard !apks.isEmpty else { return false }
+        onApks(apks)
+        return true
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        button?.mouseDown(with: event)
+    }
+
+    override func rightMouseDown(with event: NSEvent) {
+        button?.rightMouseDown(with: event)
+    }
+
+    private func urls(from sender: NSDraggingInfo) -> [URL] {
+        sender.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [
+            .urlReadingFileURLsOnly: true
+        ]) as? [URL] ?? []
+    }
+}
+
 final class RemotePanelWindow: NSPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
@@ -143,6 +186,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         button.target = self
         button.action = #selector(statusClicked(_:))
         button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+        let overlay = StatusDrop(frame: button.bounds)
+        overlay.autoresizingMask = [.width, .height]
+        overlay.button = button
+        overlay.onApks = { [weak self] urls in
+            self?.model.receiveApks(urls)
+        }
+        button.addSubview(overlay)
     }
 
     private func buildPanel() {

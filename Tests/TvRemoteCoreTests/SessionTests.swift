@@ -10,6 +10,7 @@ final class FakeRunner: CommandRunning {
 
     var calls: [Call] = []
     var script: [Result<CommandResult, Error>] = []
+    var handler: (([String]) -> Result<CommandResult, Error>)?
 
     func run(_ executable: String, arguments: [String], timeout: TimeInterval) throws -> CommandResult {
         try run(executable, arguments: arguments, timeout: timeout, environment: [:])
@@ -17,6 +18,9 @@ final class FakeRunner: CommandRunning {
 
     func run(_ executable: String, arguments: [String], timeout: TimeInterval, environment: [String: String]) throws -> CommandResult {
         calls.append(Call(executable: executable, arguments: arguments, environment: environment))
+        if let handler {
+            return try handler(arguments).get()
+        }
         if script.isEmpty {
             return CommandResult(status: 0, stdout: "", stderr: "")
         }

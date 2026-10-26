@@ -58,10 +58,12 @@ public final class ShellRunner: CommandRunning {
         }
         process.waitUntilExit()
 
+        let bytes = stdoutBox.data
         return CommandResult(
             status: process.terminationStatus,
-            stdout: String(data: stdoutBox.data, encoding: .utf8) ?? "",
-            stderr: String(data: stderrBox.data, encoding: .utf8) ?? ""
+            stdout: String(data: bytes, encoding: .utf8) ?? "",
+            stderr: String(data: stderrBox.data, encoding: .utf8) ?? "",
+            stdoutData: bytes
         )
     }
 }

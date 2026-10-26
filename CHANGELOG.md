@@ -9,6 +9,8 @@
 - Setup is a short step-by-step flow: brand, address, debugging, pair or allow, save.
 - A text field types on the TV. `⌃⌥T` opens it. Global keyboard capture stays in the non-sandbox build only.
 - Experimental Xiaomi keys, app launch, and HDMI, checked against `scripts/mock-xiaomi.py`.
+- Drop an app file on the menu bar icon or the panel to install it. The result is one plain sentence, with the original message kept underneath.
+- Paste a web link, or press `⌃⌥L`. Screenshot to the clipboard or a chosen folder. Send a file to Downloads. A black or unreadable screenshot is reported as blocked protected video. Sending a file needs a player on the TV.
 
 ## 1.0.1 — 2026-10-26
 

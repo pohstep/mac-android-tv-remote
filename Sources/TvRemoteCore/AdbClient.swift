@@ -96,11 +96,43 @@ public struct AdbClient {
         throw RemoteError.commandFailed(lastDetail)
     }
 
-    private func run(_ arguments: [String]) throws -> CommandResult {
+    public func installPackage(at path: String, serial: String) throws -> CommandResult {
+        try run(AdbCommands.install(serial: serial, apkPath: path), timeout: 180)
+    }
+
+    public func openLink(_ url: String, serial: String) throws -> CommandResult {
+        try run(AdbCommands.viewURL(serial: serial, url: url), timeout: 20)
+    }
+
+    public func captureScreen(serial: String) throws -> CommandResult {
+        try run(AdbCommands.screencap(serial: serial), timeout: 30)
+    }
+
+    public func saveScreenshot(remotePath: String, serial: String) throws -> CommandResult {
+        try run(AdbCommands.screencapFile(serial: serial, remotePath: remotePath), timeout: 30)
+    }
+
+    public func pullFile(remotePath: String, localPath: String, serial: String) throws -> CommandResult {
+        try run(AdbCommands.pull(serial: serial, remotePath: remotePath, localPath: localPath), timeout: 60)
+    }
+
+    public func removeRemote(_ remotePath: String, serial: String) throws -> CommandResult {
+        try run(AdbCommands.removeRemote(serial: serial, remotePath: remotePath), timeout: 15)
+    }
+
+    public func pushFile(localPath: String, remotePath: String, serial: String) throws -> CommandResult {
+        try run(AdbCommands.push(serial: serial, localPath: localPath, remotePath: remotePath), timeout: 180)
+    }
+
+    public func openFile(fileURL: String, mime: String, serial: String) throws -> CommandResult {
+        try run(AdbCommands.viewFile(serial: serial, fileURL: fileURL, mime: mime), timeout: 20)
+    }
+
+    private func run(_ arguments: [String], timeout override: TimeInterval? = nil) throws -> CommandResult {
         try runner.run(
             adbPath,
             arguments: arguments,
-            timeout: timeout,
+            timeout: override ?? timeout,
             environment: AdbLaunch.environment(temporaryDirectory: temporaryDirectory, serverSocket: serverSocket)
         )
     }

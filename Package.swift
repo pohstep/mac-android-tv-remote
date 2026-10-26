@@ -7,7 +7,11 @@ let package = Package(
         .library(name: "TvRemoteCore", targets: ["TvRemoteCore"])
     ],
     targets: [
-        .target(name: "TvRemoteCore", path: "Sources/TvRemoteCore"),
+        .target(
+            name: "TvRemoteCore",
+            path: "Sources/TvRemoteCore",
+            linkerSettings: [.linkedLibrary("z")]
+        ),
         .testTarget(
             name: "TvRemoteCoreTests",
             dependencies: ["TvRemoteCore"],

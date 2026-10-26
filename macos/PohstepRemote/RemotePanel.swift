@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct RemotePanel: View {
     @ObservedObject var model: AppModel
@@ -10,7 +11,10 @@ struct RemotePanel: View {
     @State private var inputOpen = false
     @State private var powerArmed = false
     @State private var typeDraft = ""
+    @State private var linkDraft = ""
+    @State private var dropTargeted = false
     @FocusState private var typeFocused: Bool
+    @FocusState private var linkFocused: Bool
 
     @Environment(\.colorSchemeContrast) private var contrast
 
@@ -38,9 +42,18 @@ struct RemotePanel: View {
             if model.typeFocusID > 0 {
                 typeFocused = true
             }
+            if model.linkFocusID > 0 {
+                linkFocused = true
+            }
         }
         .onChange(of: model.typeFocusID) { _ in
             typeFocused = true
+        }
+        .onChange(of: model.linkFocusID) { _ in
+            linkFocused = true
+        }
+        .onDrop(of: [.fileURL], isTargeted: $dropTargeted) { providers in
+            loadDroppedFiles(providers)
         }
     }
 
@@ -76,6 +89,7 @@ struct RemotePanel: View {
                 apps
                 hairline
                 typeRow
+                macTools
                 if model.allowsKeyboardCapture {
                     gap(8)
                     keyboard
@@ -151,6 +165,81 @@ struct RemotePanel: View {
                 .font(.system(size: 11))
                 .foregroundColor(tertiaryInk)
         }
+    }
+
+    private var macTools: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            TextField("Paste a link", text: $linkDraft)
+                .textFieldStyle(.roundedBorder)
+                .focused($linkFocused)
+                .onSubmit {
+                    let text = linkDraft
+                    linkDraft = ""
+                    model.sendLink(text)
+                }
+            Text("Return sends. \(model.linkHotkey.display) focuses this field. Web links only.")
+                .font(.system(size: 11))
+                .foregroundColor(tertiaryInk)
+            HStack(spacing: 8) {
+                Button("Screenshot") { model.takeScreenshot() }
+                    .disabled(model.jobBusy)
+                Button("Copy") { model.copyScreenshot() }
+                    .disabled(model.screenshotPNG == nil)
+                Button("Save…") { model.saveScreenshot() }
+                    .disabled(model.screenshotPNG == nil)
+                Button("Send file…") { model.chooseFileToSend() }
+                    .disabled(model.jobBusy)
+            }
+            .font(.system(size: 12))
+            Text(dropTargeted ? "Drop the app file to install it." : "Drop an app file here or on the menu bar icon.")
+                .font(.system(size: 11))
+                .foregroundColor(tertiaryInk)
+            Text("Sending a file needs a player on the TV.")
+                .font(.system(size: 11))
+                .foregroundColor(tertiaryInk)
+            if !model.jobLine.isEmpty {
+                Text(model.jobLine)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(model.jobIsError ? Palette.text : Palette.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if !model.jobRaw.isEmpty {
+                Text(model.jobRaw)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundColor(tertiaryInk)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func loadDroppedFiles(_ providers: [NSItemProvider]) -> Bool {
+        let group = DispatchGroup()
+        let found = DropBox()
+        for provider in providers where provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+            group.enter()
+            provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
+                defer { group.leave() }
+                let url: URL?
+                if let data = item as? Data {
+                    url = URL(dataRepresentation: data, relativeTo: nil)
+                } else if let foundURL = item as? URL {
+                    url = foundURL
+                } else {
+                    url = nil
+                }
+                guard let url, url.path.lowercased().hasSuffix(".apk") else { return }
+                let scoped = url.startAccessingSecurityScopedResource()
+                defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+                if let staged = model.stageDroppedFile(url) {
+                    found.add(staged)
+                }
+            }
+        }
+        group.notify(queue: .main) {
+            model.receiveStaged(found.paths)
+        }
+        return !providers.isEmpty
     }
 
     @ViewBuilder
@@ -900,5 +989,15 @@ private struct RingWedge: Shape {
                  startAngle: .degrees(from), endAngle: .degrees(to), clockwise: false)
         p.closeSubpath()
         return p
+    }
+}
+
+private final class DropBox {
+    private let lock = NSLock()
+    private(set) var paths: [String] = []
+    func add(_ path: String) {
+        lock.lock()
+        paths.append(path)
+        lock.unlock()
     }
 }

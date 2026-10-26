@@ -61,6 +61,8 @@ public struct Hotkey: Equatable, Codable {
     public static let `default` = Hotkey(letter: "k", control: true, option: true, shift: false, command: false)
     /// Opens the panel and focuses the type field. Carbon registers this, including in the sandbox.
     public static let typeDefault = Hotkey(letter: "t", control: true, option: true, shift: false, command: false)
+    /// Opens the panel and focuses the link field. Carbon registers this, including in the sandbox.
+    public static let linkDefault = Hotkey(letter: "l", control: true, option: true, shift: false, command: false)
 
     public var display: String {
         var symbols = ""

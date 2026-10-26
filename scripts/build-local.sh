@@ -52,7 +52,7 @@ SWIFT_FLAGS=(-O -target "$ARCH-apple-macos13.0" -parse-as-library -module-name P
 if [ "$SANDBOX" = 1 ]; then
   SWIFT_FLAGS+=(-DSANDBOX_BUILD)
 fi
-swiftc "${SWIFT_FLAGS[@]}" Sources/TvRemoteCore/*.swift macos/PohstepRemote/*.swift -o dist/PohstepRemote
+swiftc "${SWIFT_FLAGS[@]}" Sources/TvRemoteCore/*.swift macos/PohstepRemote/*.swift -lz -o dist/PohstepRemote
 
 rm -rf "$APP"; mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp dist/PohstepRemote "$APP/Contents/MacOS/$EXE"
