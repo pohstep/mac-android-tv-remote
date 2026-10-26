@@ -88,7 +88,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var localClick: Any?
 
     func applicationWillTerminate(_ notification: Notification) {
+        // The normal build uses the user's adb server on 5037. Quitting must not stop it.
+        // The sandboxed build started its own server on the private port, so it stops that one.
+        #if SANDBOX_BUILD
         model.stopAdbServer()
+        #endif
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {

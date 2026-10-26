@@ -9,14 +9,19 @@ latin=$(printf '%s%s' 'Sca' 'pe')
 han=$(printf '\347\273\275\350\203\234')
 
 # Skip git metadata, SwiftPM output (its generated headers contain unrelated
-# compiler words), and picture bytes. Licence files are skipped because a
-# vendored notice can contain an unrelated word with the same letters.
+# compiler words), built bundles, and picture bytes. Licence files are skipped
+# because a vendored notice can contain an unrelated word with the same letters.
+# out/ and *.app are build products. Licenses/adb-NOTICE.txt is the helper notice
+# copied into a bundle, and that notice has the same unrelated word.
 if find . \
   -path './.git' -prune -o \
   -path './.build' -prune -o \
   -path './.swiftpm' -prune -o \
+  \( \( -name out -type d \) -o \( -name '*.app' -type d \) \) -prune -o \
   -type f \
   ! -name 'LICENSE' ! -name 'LICENSE.*' ! -name 'NOTICE' ! -name 'NOTICE.*' ! -name 'COPYING' ! -name 'COPYING.*' \
+  ! -name 'adb-NOTICE.txt' \
+  ! -path '*/Licenses/adb-NOTICE.txt' \
   ! -name '*.png' ! -name '*.icns' ! -name '*.pdf' \
   -print0 |
   xargs -0 grep -I -n -i -F -e "$latin" -e "$han"

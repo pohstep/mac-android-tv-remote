@@ -45,7 +45,9 @@ struct SettingsView: View {
                     field("Address", text: hostBinding, prompt: "TV IP (e.g. 192.168.1.20)")
                         .onSubmit { model.commitAddress(); model.refreshNow() }
                     field("adb port", text: portBinding, prompt: "5555")
+                    #if !SANDBOX_BUILD
                     field("adb path", text: adbBinding, prompt: "Blank finds Homebrew's adb")
+                    #endif
                     Button("Check connection") {
                         model.commitAddress()
                         model.refreshNow()
@@ -138,9 +140,11 @@ struct SettingsView: View {
         )
     }
 
+    #if !SANDBOX_BUILD
     private var adbBinding: Binding<String> {
         Binding(get: { model.settings.adbPath }, set: { value in model.update { $0.adbPath = value } })
     }
+    #endif
 
     private var wolBinding: Binding<Bool> {
         Binding(get: { model.settings.wolEnabled }, set: { value in model.update { $0.wolEnabled = value } })

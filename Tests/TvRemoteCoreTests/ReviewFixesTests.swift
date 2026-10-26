@@ -39,6 +39,28 @@ final class ReviewFixesTests: XCTestCase {
         #endif
     }
 
+    func testSandboxSettingsHidesTheAdbPathField() throws {
+        let source = try String(contentsOf: repoRoot().appendingPathComponent("macos/PohstepRemote/SettingsView.swift"), encoding: .utf8)
+        XCTAssertTrue(source.contains("#if !SANDBOX_BUILD"))
+        XCTAssertTrue(source.contains("Blank finds Homebrew's adb"))
+        let sandbox = sourceWithoutBlocks(source, marker: "#if !SANDBOX_BUILD")
+        XCTAssertFalse(sandbox.contains("Homebrew"), sandbox)
+        XCTAssertFalse(sandbox.contains("adb path"), sandbox)
+        XCTAssertFalse(sandbox.contains("adbBinding"), sandbox)
+    }
+
+    func testNormalBuildDoesNotStopTheSharedAdbServer() throws {
+        let source = try String(contentsOf: repoRoot().appendingPathComponent("macos/PohstepRemote/PohstepRemoteApp.swift"), encoding: .utf8)
+        let start = try XCTUnwrap(source.range(of: "func applicationWillTerminate"))
+        let tail = source[start.lowerBound...]
+        let end = tail.range(of: "\n    func ")?.lowerBound ?? tail.endIndex
+        let function = String(tail[..<end])
+        XCTAssertTrue(function.contains("#if SANDBOX_BUILD"))
+        XCTAssertTrue(function.contains("model.stopAdbServer()"))
+        let normal = sourceWithoutBlocks(function, marker: "#if SANDBOX_BUILD")
+        XCTAssertFalse(normal.contains("stopAdbServer"), normal)
+    }
+
     func testPrivateAdbPortAndKillServer() {
         XCTAssertEqual(AdbLaunch.serverSocket(sandboxed: false), "tcp:localhost:5037")
         XCTAssertEqual(AdbLaunch.serverSocket(sandboxed: true), "tcp:127.0.0.1:5038")
@@ -298,6 +320,19 @@ final class ReviewFixesTests: XCTestCase {
             }
         }
         XCTAssertTrue(finished)
+    }
+
+    /// Drops each `#if` block opened by `marker`, leaving the text compiled when that condition is false.
+    private func sourceWithoutBlocks(_ source: String, marker: String) -> String {
+        var rest = source
+        var kept = ""
+        while let start = rest.range(of: marker) {
+            kept += rest[..<start.lowerBound]
+            guard let end = rest.range(of: "#endif", range: start.upperBound..<rest.endIndex) else { break }
+            rest = String(rest[end.upperBound...])
+        }
+        kept += rest
+        return kept
     }
 
     private func repoRoot() -> URL {

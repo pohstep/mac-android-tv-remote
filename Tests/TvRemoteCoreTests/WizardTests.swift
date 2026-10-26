@@ -127,4 +127,36 @@ final class WizardTests: XCTestCase {
         let result = try ShellRunner().run("/bin/sh", arguments: [script], timeout: 30)
         XCTAssertEqual(result.status, 0, result.stdout + result.stderr)
     }
+
+    func testCopyScriptSkipsBuiltBundles() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let probe = "land" + "Sca" + "pe"
+        let files = [
+            root.appendingPathComponent("out/note.txt"),
+            root.appendingPathComponent("Fixture.app/Contents/Resources/Licenses/adb-NOTICE.txt"),
+            root.appendingPathComponent("Licenses/adb-NOTICE.txt")
+        ]
+        let hit = root.appendingPathComponent("zapbar-copy-probe.txt")
+        defer {
+            try? FileManager.default.removeItem(at: root.appendingPathComponent("out"))
+            try? FileManager.default.removeItem(at: root.appendingPathComponent("Fixture.app"))
+            try? FileManager.default.removeItem(at: root.appendingPathComponent("Licenses"))
+            try? FileManager.default.removeItem(at: hit)
+        }
+        for url in files {
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try probe.write(to: url, atomically: true, encoding: .utf8)
+        }
+        let script = root.appendingPathComponent("scripts/check-copy.sh").path
+        let skipped = try ShellRunner().run("/bin/sh", arguments: [script], timeout: 30)
+        XCTAssertEqual(skipped.status, 0, skipped.stdout + skipped.stderr)
+
+        try probe.write(to: hit, atomically: true, encoding: .utf8)
+        let caught = try ShellRunner().run("/bin/sh", arguments: [script], timeout: 30)
+        XCTAssertNotEqual(caught.status, 0)
+        XCTAssertTrue(caught.stdout.contains("zapbar-copy-probe.txt"), caught.stdout)
+    }
 }
