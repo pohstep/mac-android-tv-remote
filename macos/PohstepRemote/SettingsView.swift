@@ -7,10 +7,37 @@ struct SettingsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                Text("The address is an IP or a hostname. Tailscale MagicDNS works once this Mac and the Bravia are on the tailnet. Wake-on-LAN only travels a local network, or a subnet that forwards broadcasts.")
+                Text("The address is an IP or a hostname. Wake-on-LAN only travels a local network, or a subnet that forwards broadcasts.")
                     .font(.system(size: 12))
                     .foregroundColor(Palette.muted)
                     .fixedSize(horizontal: false, vertical: true)
+
+                group("TVs") {
+                    if model.settings.devices.isEmpty {
+                        Text("No TV saved yet.")
+                            .font(.system(size: 12))
+                            .foregroundColor(Palette.muted)
+                    }
+                    ForEach(model.settings.devices) { device in
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(device.name)
+                                Text(device.host)
+                                    .font(.system(size: 11))
+                                    .foregroundColor(Palette.muted)
+                            }
+                            Spacer()
+                            if device.id == model.settings.activeDeviceID {
+                                Text("Current")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(Palette.muted)
+                            }
+                            Button("Use") { model.selectDevice(device.id) }
+                            Button(device.preferred ? "Preferred" : "Make preferred") { model.preferDevice(device.id) }
+                        }
+                    }
+                    Button("Add a TV…") { model.showWizard() }
+                }
 
                 group("TV") {
                     field("Address", text: hostBinding, prompt: "TV IP (e.g. 192.0.2.10) or bravia.local")
@@ -24,7 +51,7 @@ struct SettingsView: View {
                 }
 
                 group("Sony IP control") {
-                    Text("Optional. On the TV, turn on IP control and set a pre-shared key, then enter the same key here. It is stored in the Keychain, not in settings.json. The app does not print it. When Sony IP answers, the remote uses it for power, volume, input names, and buttons, and uses adb for typing and apps.")
+                    Text("Optional, for a Sony TV. Turn on IP control and set a pre-shared key, then enter the same key here. It is stored in the Keychain, not in settings.json. The app does not print it. When Sony answers, the remote uses it for power, volume, input names, and buttons.")
                         .font(.system(size: 11))
                         .foregroundColor(Palette.muted)
                         .fixedSize(horizontal: false, vertical: true)

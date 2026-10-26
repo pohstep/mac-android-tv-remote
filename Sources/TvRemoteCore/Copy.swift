@@ -12,7 +12,7 @@ public enum Copy {
     }
 
     public static func refused(serial: String) -> String {
-        "The TV refused the connection to \(serial). On the Sony, turn on network debugging and check the address."
+        "The TV refused the connection to \(serial). Turn on network debugging and check the address."
     }
 
     public static func unauthorized(serial: String) -> String {

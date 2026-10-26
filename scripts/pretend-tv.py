@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 import os
-"""Stand-in for a Sony Bravia on this machine only.
+"""Stand-in for a Sony TV on this machine only.
 
 Binds to 127.0.0.1. Refuses to start if any argument contains the real TV address.
 The pre-shared key is compared and never written to the log.
@@ -10,8 +10,9 @@ import json
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-# Optional guard: refuse to start if any argument names your real TV.
-FORBIDDEN = os.environ.get("POHSTEP_REAL_TV", "") or "\0"
+# Refuse to start if any argument names a real TV. 192.0.2.57 is the
+# stand-in address the tests use. Override it with POHSTEP_REAL_TV.
+FORBIDDEN = os.environ.get("POHSTEP_REAL_TV", "192.0.2.57") or "\0"
 
 
 class State:

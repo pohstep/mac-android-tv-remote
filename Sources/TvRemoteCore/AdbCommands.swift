@@ -20,6 +20,7 @@ public struct CommandResult: Equatable {
 
 public protocol CommandRunning {
     func run(_ executable: String, arguments: [String], timeout: TimeInterval) throws -> CommandResult
+    func run(_ executable: String, arguments: [String], timeout: TimeInterval, environment: [String: String]) throws -> CommandResult
 }
 
 public enum ConnectOutcome: Equatable {
@@ -43,6 +44,10 @@ public enum DeviceState: Equatable {
 public enum AdbCommands {
     public static func connect(host: String, port: Int) -> [String] {
         ["connect", "\(host):\(port)"]
+    }
+
+    public static func pair(host: String, port: Int, code: String) -> [String] {
+        ["pair", "\(host):\(port)", code]
     }
 
     public static func devices() -> [String] {
@@ -88,6 +93,10 @@ public enum AdbCommands {
 }
 
 public enum AdbOutput {
+    public static func parsePair(_ text: String) -> Bool {
+        text.lowercased().contains("successfully paired")
+    }
+
     public static func parseConnect(_ text: String) -> ConnectOutcome {
         let lower = text.lowercased()
         if lower.contains("already connected") { return .alreadyConnected }

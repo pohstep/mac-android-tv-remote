@@ -4,6 +4,10 @@ public final class ShellRunner: CommandRunning {
     public init() {}
 
     public func run(_ executable: String, arguments: [String], timeout: TimeInterval) throws -> CommandResult {
+        try run(executable, arguments: arguments, timeout: timeout, environment: [:])
+    }
+
+    public func run(_ executable: String, arguments: [String], timeout: TimeInterval, environment: [String: String]) throws -> CommandResult {
         guard FileManager.default.isExecutableFile(atPath: executable) else {
             throw RemoteError.notFound(executable)
         }
@@ -11,6 +15,13 @@ public final class ShellRunner: CommandRunning {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = arguments
+        if !environment.isEmpty {
+            var env = ProcessInfo.processInfo.environment
+            for (key, value) in environment where !value.isEmpty {
+                env[key] = value
+            }
+            process.environment = env
+        }
 
         let stdoutPipe = Pipe()
         let stderrPipe = Pipe()

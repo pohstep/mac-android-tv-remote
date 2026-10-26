@@ -4,11 +4,26 @@ public struct AdbClient {
     public var runner: any CommandRunning
     public var adbPath: String
     public var timeout: TimeInterval
+    public var temporaryDirectory: String
+    public var serverSocket: String
 
-    public init(runner: any CommandRunning, adbPath: String, timeout: TimeInterval = 12) {
+    public init(
+        runner: any CommandRunning,
+        adbPath: String,
+        timeout: TimeInterval = 12,
+        temporaryDirectory: String? = nil,
+        serverSocket: String = AdbLaunch.defaultServerSocket
+    ) {
         self.runner = runner
         self.adbPath = adbPath
         self.timeout = timeout
+        self.temporaryDirectory = temporaryDirectory ?? FileManager.default.temporaryDirectory.path
+        self.serverSocket = serverSocket
+    }
+
+    public func pair(host: String, port: Int, code: String) throws -> Bool {
+        let result = try run(AdbCommands.pair(host: host, port: port, code: code))
+        return AdbOutput.parsePair(result.combined)
     }
 
     public func connect(host: String, port: Int) throws -> ConnectOutcome {
@@ -82,6 +97,11 @@ public struct AdbClient {
     }
 
     private func run(_ arguments: [String]) throws -> CommandResult {
-        try runner.run(adbPath, arguments: arguments, timeout: timeout)
+        try runner.run(
+            adbPath,
+            arguments: arguments,
+            timeout: timeout,
+            environment: AdbLaunch.environment(temporaryDirectory: temporaryDirectory, serverSocket: serverSocket)
+        )
     }
 }

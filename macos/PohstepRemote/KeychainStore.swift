@@ -15,16 +15,28 @@ enum KeychainError: Error, CustomStringConvertible {
     }
 }
 
-/// Generic password for the Bravia pre-shared key. The value is never included in errors.
+/// Generic password for a Sony pre-shared key. The value is never included in errors.
 struct KeychainStore {
     static let service = "app.pohstep.remote"
-    static let account = "bravia-psk"
+    /// v1.0 stored the only key here. New TVs use `psk.<device id>`.
+    static let legacyAccount = "bravia-psk"
+    static let account = legacyAccount
+
+    func account(for deviceID: String) -> String {
+        let trimmed = deviceID.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return Self.legacyAccount }
+        return "psk.\(trimmed)"
+    }
 
     func load() -> String {
+        load(account: Self.legacyAccount)
+    }
+
+    func load(account: String) -> String {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: Self.service,
-            kSecAttrAccount as String: Self.account,
+            kSecAttrAccount as String: account,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne
         ]
@@ -37,11 +49,15 @@ struct KeychainStore {
     }
 
     func save(_ value: String) throws {
-        clear()
+        try save(value, account: Self.legacyAccount)
+    }
+
+    func save(_ value: String, account: String) throws {
+        clear(account: account)
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: Self.service,
-            kSecAttrAccount as String: Self.account,
+            kSecAttrAccount as String: account,
             kSecValueData as String: Data(value.utf8),
             kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock
         ]
@@ -52,10 +68,14 @@ struct KeychainStore {
     }
 
     func clear() {
+        clear(account: Self.legacyAccount)
+    }
+
+    func clear(account: String) {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: Self.service,
-            kSecAttrAccount as String: Self.account
+            kSecAttrAccount as String: account
         ]
         SecItemDelete(query as CFDictionary)
     }

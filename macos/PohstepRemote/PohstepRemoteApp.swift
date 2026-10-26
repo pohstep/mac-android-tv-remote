@@ -99,10 +99,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.sizePanelToFit()
                 self.positionPanel()
             }
-            guard on, self.monitor?.canCaptureKeys == false, !self.didPromptForAccessibility else { return }
+            guard self.model.allowsKeyboardCapture, on, self.monitor?.canCaptureKeys == false, !self.didPromptForAccessibility else { return }
             self.didPromptForAccessibility = true
             self.monitor?.promptForAccessibility()
-            self.model.banner = "Allow Pohstep Remote in System Settings → Privacy & Security → Accessibility. \(Hotkey.default.display) already toggles this."
+            self.model.banner = "Allow Zapbar in System Settings → Privacy & Security → Accessibility. \(Hotkey.default.display) already toggles this."
             self.model.bannerIsError = true
         }
         model.onChromeChanged = { [weak self] in
@@ -116,8 +116,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         buildStatusItem()
         buildPanel()
         observeSettingsWindow()
+        model.onOpenPanel = { [weak self] in
+            self?.openPanel()
+        }
         model.start()
         applyIcon()
+        if model.shouldOfferSetup {
+            model.showWizard()
+        }
         NotificationCenter.default.addObserver(
             forName: NSApplication.didBecomeActiveNotification,
             object: nil,
@@ -125,7 +131,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ) { [weak self] _ in
             self?.monitor?.refreshCapture()
         }
-        if model.keyboardMode && monitor?.canCaptureKeys == false {
+        if model.allowsKeyboardCapture && model.keyboardMode && monitor?.canCaptureKeys == false {
             model.banner = "Keyboard mode is on, but Accessibility isn't allowed yet. Turn the toggle on again to open the prompt."
             model.bannerIsError = true
         }
@@ -152,7 +158,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             backing: .buffered,
             defer: false
         )
-        panel.title = "Pohstep Remote"
+        panel.title = "Zapbar"
         panel.contentView = hosting
         panel.isOpaque = false
         panel.backgroundColor = .clear
@@ -204,7 +210,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             panel.setContentSize(NSSize(width: width, height: height))
         }
         let line = "\(Date()) fitting=\(size.height) cap=\(cap) panel=\(height) expanded=\(model.appsExpanded)\n"
-        let url = URL(fileURLWithPath: NSHomeDirectory() + "/Library/Logs/Pohstep Remote/panel-size.log")
+        let url = URL(fileURLWithPath: NSHomeDirectory() + "/Library/Logs/Zapbar/panel-size.log")
         try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         if let h = try? FileHandle(forWritingTo: url) { h.seekToEndOfFile(); h.write(line.data(using: .utf8)!); try? h.close() }
         else { try? line.write(to: url, atomically: true, encoding: .utf8) }
@@ -220,7 +226,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .unknown:
             on = model.status.isConnected
         }
-        let image = MenuBarIcon.image(powerOn: on, keyboard: model.keyboardMode)
+        let image = MenuBarIcon.image(powerOn: on, keyboard: model.allowsKeyboardCapture && model.keyboardMode)
         image.accessibilityDescription = accessibilityLabel()
         statusItem.button?.image = image
         statusItem.button?.contentTintColor = nil
@@ -229,9 +235,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func accessibilityLabel() -> String {
-        let keys = model.keyboardMode ? "keyboard mode on" : "keyboard mode off"
+        let keys = model.allowsKeyboardCapture
+            ? (model.keyboardMode ? "keyboard mode on" : "keyboard mode off")
+            : "keyboard capture off"
         let app = TvPicture.shortName(model.picture.foregroundPackage)
-        return "Pohstep Remote, \(model.picture.statusLine(appName: app)), \(model.status.title), \(keys)"
+        return "Zapbar, \(model.picture.statusLine(appName: app)), \(model.status.title), \(keys)"
     }
 
     @objc private func statusClicked(_ sender: Any?) {
@@ -289,17 +297,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         show.target = self
         menu.addItem(show)
 
-        let toggle = NSMenuItem(title: "Keyboard Mode    \(Hotkey.default.display)", action: #selector(toggleFromMenu), keyEquivalent: "")
-        toggle.target = self
-        toggle.state = model.keyboardMode ? .on : .off
-        menu.addItem(toggle)
+        if model.allowsKeyboardCapture {
+            let toggle = NSMenuItem(title: "Keyboard Mode    \(Hotkey.default.display)", action: #selector(toggleFromMenu), keyEquivalent: "")
+            toggle.target = self
+            toggle.state = model.keyboardMode ? .on : .off
+            menu.addItem(toggle)
+        }
+
+        let wake = NSMenuItem(title: "Wake", action: #selector(wakeFromMenu), keyEquivalent: "")
+        wake.target = self
+        menu.addItem(wake)
+
+        if model.settings.devices.count > 1 {
+            let tvs = NSMenuItem(title: "TVs", action: nil, keyEquivalent: "")
+            let submenu = NSMenu()
+            for device in model.settings.devices {
+                let item = NSMenuItem(title: device.name, action: #selector(selectTV(_:)), keyEquivalent: "")
+                item.target = self
+                item.representedObject = device.id
+                item.state = device.id == model.settings.activeDeviceID ? .on : .off
+                submenu.addItem(item)
+            }
+            tvs.submenu = submenu
+            menu.addItem(tvs)
+        }
+
+        let add = NSMenuItem(title: "Add a TV…", action: #selector(wizardFromMenu), keyEquivalent: "")
+        add.target = self
+        menu.addItem(add)
 
         let settings = NSMenuItem(title: "Settings…", action: #selector(settingsFromMenu), keyEquivalent: "")
         settings.target = self
         menu.addItem(settings)
 
         menu.addItem(.separator())
-        let quit = NSMenuItem(title: "Quit Pohstep Remote", action: #selector(quit), keyEquivalent: "q")
+        let quit = NSMenuItem(title: "Quit Zapbar", action: #selector(quit), keyEquivalent: "q")
         quit.target = self
         menu.addItem(quit)
 
@@ -311,12 +343,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func openFromMenu() { openPanel() }
 
     @objc private func toggleFromMenu() {
+        guard model.allowsKeyboardCapture else { return }
         model.toggleKeyboardMode()
         if model.keyboardMode && monitor?.canCaptureKeys == false {
             monitor?.promptForAccessibility()
-            model.banner = "Allow Pohstep Remote in System Settings → Privacy & Security → Accessibility. \(Hotkey.default.display) already toggles this."
+            model.banner = "Allow Zapbar in System Settings → Privacy & Security → Accessibility. \(Hotkey.default.display) already toggles this."
             model.bannerIsError = true
         }
+    }
+
+    @objc private func wakeFromMenu() { model.wake() }
+
+    @objc private func wizardFromMenu() { model.showWizard() }
+
+    @objc private func selectTV(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? String else { return }
+        model.selectDevice(id)
     }
 
     @objc private func settingsFromMenu() { model.showSettings() }

@@ -228,7 +228,7 @@ public struct AppCatalogStore {
     }
 
     public static func fileURL(homeDirectory: String = NSHomeDirectory()) -> URL {
-        Settings.applicationSupportURL(homeDirectory: homeDirectory)
+        Settings.resolvedSettingsURL(homeDirectory: homeDirectory)
             .deletingLastPathComponent()
             .appendingPathComponent("apps.json")
     }

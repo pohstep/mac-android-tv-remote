@@ -9,6 +9,8 @@ struct RemotePanel: View {
     @State private var volumeIsLive = false
     @State private var inputOpen = false
     @State private var powerArmed = false
+    @State private var typeDraft = ""
+    @FocusState private var typeFocused: Bool
 
     @Environment(\.colorSchemeContrast) private var contrast
 
@@ -33,6 +35,12 @@ struct RemotePanel: View {
             if let value = model.picture.volume {
                 volumeDraft = Double(value)
             }
+            if model.typeFocusID > 0 {
+                typeFocused = true
+            }
+        }
+        .onChange(of: model.typeFocusID) { _ in
+            typeFocused = true
         }
     }
 
@@ -67,9 +75,13 @@ struct RemotePanel: View {
                 hairline
                 apps
                 hairline
-                keyboard
+                typeRow
+                if model.allowsKeyboardCapture {
+                    gap(8)
+                    keyboard
+                }
             }
-            if model.keyboardMode {
+            if model.allowsKeyboardCapture && model.keyboardMode {
                 gap(8)
                 legend
             }
@@ -106,6 +118,38 @@ struct RemotePanel: View {
                     .foregroundColor(Palette.text)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            if model.settings.devices.count > 1 {
+                Picker("TV", selection: deviceSelection) {
+                    ForEach(model.settings.devices) { device in
+                        Text(device.name).tag(device.id)
+                    }
+                }
+                .labelsHidden()
+                .frame(maxWidth: 200)
+            }
+        }
+    }
+
+    private var deviceSelection: Binding<String> {
+        Binding(
+            get: { model.settings.activeDeviceID },
+            set: { model.selectDevice($0) }
+        )
+    }
+
+    private var typeRow: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            TextField("Type to the TV", text: $typeDraft)
+                .textFieldStyle(.roundedBorder)
+                .focused($typeFocused)
+                .onSubmit {
+                    let text = typeDraft
+                    typeDraft = ""
+                    model.sendTypedText(text)
+                }
+            Text("Return sends. \(model.typeHotkey.display) focuses this field.")
+                .font(.system(size: 11))
+                .foregroundColor(tertiaryInk)
         }
     }
 
@@ -649,9 +693,18 @@ struct RemotePanel: View {
     }
 
     private var footerLine: String {
-        if model.picture.sonyReady { return "Sony Bravia · IP control" }
-        if model.picture.adbReady || model.status.isConnected { return "Sony Bravia · network adb" }
-        return "Sony Bravia · not connected"
+        switch model.settings.brand {
+        case .sony where model.picture.sonyReady:
+            return "Sony · IP control"
+        case .sony where model.status.isConnected:
+            return "Sony · network debugging"
+        case .sony:
+            return "Sony"
+        case .xiaomi:
+            return "Xiaomi"
+        case .generic:
+            return model.status.isConnected ? "Connected" : "Not connected"
+        }
     }
 
     private var secondaryInk: Color {

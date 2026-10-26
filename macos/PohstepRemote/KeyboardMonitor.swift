@@ -7,7 +7,8 @@ final class KeyboardMonitor {
     private weak var model: AppModel?
     private var tap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
-    private var hotKey: EventHotKeyRef?
+    private var toggleHotKey: EventHotKeyRef?
+    private var typeHotKey: EventHotKeyRef?
     private var handler: EventHandlerRef?
     private var swallowed = Set<Int64>()
     private var captureAvailable = false
@@ -17,9 +18,11 @@ final class KeyboardMonitor {
     }
 
     func start() {
+        installTypeHotkey()
+        guard model?.allowsKeyboardCapture == true else { return }
         installTapIfTrusted(prompt: false)
         if tap == nil {
-            installCarbonHotkey()
+            installToggleHotkey()
         }
     }
 
@@ -68,7 +71,7 @@ final class KeyboardMonitor {
             CFRunLoopAddSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
         }
         CGEvent.tapEnable(tap: created, enable: true)
-        removeCarbonHotkey()
+        removeToggleHotkey()
     }
 
     private func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
@@ -88,6 +91,14 @@ final class KeyboardMonitor {
 
         let chord = chord(from: event, keyCode: keyCode)
         guard let model else { return Unmanaged.passUnretained(event) }
+
+        if model.typeHotkey.matches(chord) {
+            swallowed.insert(keyCode)
+            DispatchQueue.main.async {
+                model.openTypeField()
+            }
+            return nil
+        }
 
         if model.settingsFieldsAreActive && !model.hotkey.matches(chord) {
             return Unmanaged.passUnretained(event)
@@ -128,32 +139,56 @@ final class KeyboardMonitor {
         return String(utf16CodeUnits: buffer, count: length)
     }
 
-    private func installCarbonHotkey() {
-        guard hotKey == nil else { return }
+    private func installTypeHotkey() {
+        installHandlerIfNeeded()
+        guard typeHotKey == nil else { return }
+        var hotKeyID = EventHotKeyID(signature: OSType(0x5048_524D), id: 2)
+        let modifiers = UInt32(controlKey | optionKey)
+        RegisterEventHotKey(UInt32(kVK_ANSI_T), modifiers, hotKeyID, GetApplicationEventTarget(), 0, &typeHotKey)
+    }
+
+    private func installToggleHotkey() {
+        guard model?.allowsKeyboardCapture == true else { return }
+        installHandlerIfNeeded()
+        guard toggleHotKey == nil else { return }
+        var hotKeyID = EventHotKeyID(signature: OSType(0x5048_524D), id: 1)
+        let modifiers = UInt32(controlKey | optionKey)
+        RegisterEventHotKey(UInt32(kVK_ANSI_K), modifiers, hotKeyID, GetApplicationEventTarget(), 0, &toggleHotKey)
+    }
+
+    private func installHandlerIfNeeded() {
+        guard handler == nil else { return }
         var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
         let refcon = Unmanaged.passUnretained(self).toOpaque()
-        InstallEventHandler(GetApplicationEventTarget(), { _, _, userData -> OSStatus in
-            guard let userData else { return noErr }
+        InstallEventHandler(GetApplicationEventTarget(), { _, event, userData -> OSStatus in
+            guard let userData, let event else { return noErr }
+            var hotKeyID = EventHotKeyID()
+            let status = GetEventParameter(
+                event,
+                EventParamName(kEventParamDirectObject),
+                EventParamType(typeEventHotKeyID),
+                nil,
+                MemoryLayout<EventHotKeyID>.size,
+                nil,
+                &hotKeyID
+            )
             let monitor = Unmanaged<KeyboardMonitor>.fromOpaque(userData).takeUnretainedValue()
+            let typeField = status == noErr && hotKeyID.id == 2
             DispatchQueue.main.async {
-                monitor.model?.toggleKeyboardMode()
+                if typeField {
+                    monitor.model?.openTypeField()
+                } else if monitor.model?.allowsKeyboardCapture == true {
+                    monitor.model?.toggleKeyboardMode()
+                }
             }
             return noErr
         }, 1, &eventType, refcon, &handler)
-
-        let hotKeyID = EventHotKeyID(signature: OSType(0x5048_524D), id: 1)
-        let modifiers = UInt32(controlKey | optionKey)
-        RegisterEventHotKey(UInt32(kVK_ANSI_K), modifiers, hotKeyID, GetApplicationEventTarget(), 0, &hotKey)
     }
 
-    private func removeCarbonHotkey() {
-        if let hotKey {
-            UnregisterEventHotKey(hotKey)
-            self.hotKey = nil
-        }
-        if let handler {
-            RemoveEventHandler(handler)
-            self.handler = nil
+    private func removeToggleHotkey() {
+        if let toggleHotKey {
+            UnregisterEventHotKey(toggleHotKey)
+            self.toggleHotKey = nil
         }
     }
 
