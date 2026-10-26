@@ -2,18 +2,27 @@
 
 ## 1.1 — 2026-10-26
 
+Release build: core setup, drop an app file, send a link, screenshot, send a file, and the approved icon.
+
 - Product name is Zapbar. Bundle id is `com.pohstep.tvremote`.
-- Sandboxed builds can embed a local `adb` (never downloaded at runtime) and launch it with `TMPDIR` and `ADB_SERVER_SOCKET`.
-- Finds TVs with Bonjour plus a small scan for Sony IP control and the experimental Xiaomi port.
-- Remembers more than one TV, reconnects to the last one, and wakes it from the menu bar. A v1.0 settings file becomes the first saved TV.
-- Setup is a short step-by-step flow: brand, address, debugging, pair or allow, save.
+- Setup is a short step-by-step flow: brand, address, debugging, pair or allow, save. Several TVs are remembered. The last one reconnects on launch, and wake is in the menu bar. A v1.0 settings file becomes the first saved TV.
+- Finds TVs with Bonjour plus a small scan for IP control and the experimental port 6095.
 - A text field types on the TV. `⌃⌥T` opens it. Global keyboard capture stays in the non-sandbox build only.
-- Experimental Xiaomi keys, app launch, and HDMI, checked against `scripts/mock-xiaomi.py`.
 - Drop an app file on the menu bar icon or the panel to install it. The result is one plain sentence, with the original message kept underneath.
-- Paste a web link, or press `⌃⌥L`. Screenshot to the clipboard or a chosen folder. Send a file to Downloads. A black or unreadable screenshot is reported as blocked protected video. Sending a file needs a player on the TV.
-- Clean-up with undo is built and excluded from the release build until Jim says go.
+- Paste a web link, or press `⌃⌥L`. Only `http` and `https` are sent.
+- Screenshot copies the picture to the clipboard or saves it. A black picture is kept, with a note that the TV may block protected video. Save asks for a name and will not overwrite an existing file silently.
+- Send a file to Downloads and ask the TV to open it. The TV needs a player. If the file arrives and does not open, it stays in Downloads.
 - The app icon and the menu bar glyph are the approved zap mark. The panel header and the first setup step show the Zapbar wordmark.
-- Transfers run one at a time, with Cancel on an install or a file send. A sandboxed build uses its own adb port and a hardened runtime. A black screenshot is kept, with a note that the TV may block protected video.
+- Transfers run one at a time. Cancel stops an install or a file send. A sandboxed build can embed a local helper (never downloaded at runtime), uses its own port, and is signed with the hardened runtime.
+- The Swift package asks for tools version 5.8.
+
+Built, and left out of the release app until Jim says go:
+
+- Clean-up with undo sits behind an Advanced section and the compile flag `ZAPBAR_ADVANCED`. `scripts/build-local.sh` leaves the flag off, so the release app has no clean-up code. `scripts/build-dev.sh` turns it on. `swift test` still covers it.
+
+Experimental, and included in the release build:
+
+- Port 6095 keys, app launch, and HDMI, checked against `scripts/mock-xiaomi.py`. It cannot type and cannot power the set on.
 
 ## 1.0.1 — 2026-10-26
 
