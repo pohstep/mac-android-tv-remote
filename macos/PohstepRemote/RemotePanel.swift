@@ -40,6 +40,7 @@ struct RemotePanel: View {
             }
         }
         .onAppear {
+            if !measuring { model.prefetchVisibleAppIcons() }
             if let value = model.picture.volume {
                 volumeDraft = Double(value)
             }
@@ -755,16 +756,17 @@ struct RemotePanel: View {
         let all = model.shownApps
         let pinned = Array(all.prefix(GlassMetrics.pinnedApps))
         let rest = Array(all.dropFirst(GlassMetrics.pinnedApps))
-        let columns = Array(repeating: GridItem(.fixed(GlassMetrics.tile), spacing: GlassMetrics.tileGap), count: 4)
+        let columns = Array(repeating: GridItem(.fixed(GlassMetrics.tileColumn), spacing: GlassMetrics.tileGap), count: 4)
         return VStack(alignment: .leading, spacing: GlassMetrics.tileGap) {
-            HStack(spacing: GlassMetrics.tileGap) {
-                ForEach(Array(pinned.enumerated()), id: \.element.id) { index, app in
-                    appTile(app, index: index)
+            HStack(alignment: .top, spacing: GlassMetrics.tileGap) {
+                ForEach(Array(pinned.enumerated()), id: \.element.id) { _, app in
+                    appTile(app)
                 }
                 Spacer(minLength: 0)
                 if !rest.isEmpty {
                     Button(action: {
                         model.appsExpanded.toggle()
+                        model.prefetchVisibleAppIcons()
                         DispatchQueue.main.async { model.onChromeChanged?() }
                     }) {
                         HStack(spacing: 2) {
@@ -775,22 +777,27 @@ struct RemotePanel: View {
                         .font(.system(size: 13))
                         .foregroundColor(secondaryInk)
                         .frame(height: 28)
+                        .padding(.top, (GlassMetrics.tile - 28) / 2)
                     }
                     .buttonStyle(.plain)
                 }
             }
             if model.appsExpanded && !rest.isEmpty {
                 LazyVGrid(columns: columns, alignment: .leading, spacing: GlassMetrics.tileGap) {
-                    ForEach(Array(rest.enumerated()), id: \.element.id) { offset, app in
-                        appTile(app, index: offset + GlassMetrics.pinnedApps)
+                    ForEach(Array(rest.enumerated()), id: \.element.id) { _, app in
+                        appTile(app)
                     }
                 }
             }
         }
     }
 
-    private func appTile(_ app: TvApp, index: Int) -> some View {
-        AppTile(app: app, tintIndex: index, selected: app.matches(package: model.picture.foregroundPackage)) {
+    private func appTile(_ app: TvApp) -> some View {
+        AppTile(
+            app: app,
+            icon: model.appIcons[app.packageName],
+            selected: app.matches(package: model.picture.foregroundPackage)
+        ) {
             model.launch(app)
         }
     }
@@ -1115,71 +1122,101 @@ private struct PanelTitleButtonStyle: ButtonStyle {
 
 private struct AppTile: View {
     var app: TvApp
-    var tintIndex: Int
+    var icon: NSImage?
     var selected: Bool
     var action: () -> Void
 
     @FocusState private var focused: Bool
+    @Environment(\.colorSchemeContrast) private var contrast
+
+    private var displayName: String {
+        AppNames.displayName(package: app.packageName, label: app.name)
+    }
 
     var body: some View {
         Button(action: action) {
-            ZStack {
-                RoundedRectangle(cornerRadius: GlassMetrics.tileRadius, style: .continuous)
-                    .fill(Folio.tilePair(index: tintIndex))
-                RoundedRectangle(cornerRadius: GlassMetrics.tileRadius, style: .continuous)
-                    .fill(Folio.ink.opacity(0.18))
-                tileMark
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundColor(Palette.text)
-                    .folioTextShadow()
+            VStack(spacing: 4) {
+                face
+                Text(displayName)
+                    .font(.system(size: 11))
+                    .foregroundColor(contrast == .increased ? Palette.text : Color.white.opacity(0.88))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .multilineTextAlignment(.center)
+                    .frame(width: GlassMetrics.tileColumn)
             }
-            .frame(width: GlassMetrics.tile, height: GlassMetrics.tile)
-            .overlay {
-                if selected {
-                    RoundedRectangle(cornerRadius: GlassMetrics.tileRadius, style: .continuous)
-                        .strokeBorder(Color.white, lineWidth: 1.5)
-                }
-            }
-            .overlay {
-                if focused {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(Color.white.opacity(0.25), lineWidth: 3)
-                        .padding(-1)
-                }
-            }
+            .frame(width: GlassMetrics.tileColumn)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PanelTitleButtonStyle())
+        .environment(\.controlActiveState, .key)
         .focused($focused)
         .focusable()
-        .help(app.name)
-        .accessibilityLabel(app.favourite ? "Open \(app.name), favourite" : "Open \(app.name)")
+        .help(displayName)
+        .accessibilityLabel(app.favourite ? "Open \(displayName), favourite" : "Open \(displayName)")
+    }
+
+    private var face: some View {
+        let swatch = AppSwatch.pair(for: app.packageName)
+        let stops = [Folio.cyan, Folio.blue, Folio.magenta, Folio.amber]
+        return ZStack {
+            RoundedRectangle(cornerRadius: GlassMetrics.tileRadius, style: .continuous)
+                .fill(LinearGradient(
+                    colors: [stops[swatch.start], stops[swatch.end]],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ))
+            RoundedRectangle(cornerRadius: GlassMetrics.tileRadius, style: .continuous)
+                .fill(Folio.ink.opacity(0.18))
+            tileMark
+        }
+        .frame(width: GlassMetrics.tile, height: GlassMetrics.tile)
+        .clipShape(RoundedRectangle(cornerRadius: GlassMetrics.tileRadius, style: .continuous))
+        .overlay {
+            if selected {
+                RoundedRectangle(cornerRadius: GlassMetrics.tileRadius, style: .continuous)
+                    .strokeBorder(Color.white, lineWidth: 1.5)
+            }
+        }
+        .overlay {
+            if focused {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(Color.white.opacity(0.25), lineWidth: 3)
+                    .padding(-1)
+            }
+        }
     }
 
     @ViewBuilder
     private var tileMark: some View {
-        if let icon = app.iconURL, let url = URL(string: icon) {
+        if let icon {
+            Image(nsImage: icon)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: GlassMetrics.tile, height: GlassMetrics.tile)
+        } else if let remote = app.iconURL, let url = URL(string: remote) {
             AsyncImage(url: url) { phase in
                 if let image = phase.image {
-                    image.resizable().scaledToFill()
-                        .frame(width: GlassMetrics.tile, height: GlassMetrics.tile)
-                        .clipShape(RoundedRectangle(cornerRadius: GlassMetrics.tileRadius, style: .continuous))
+                    image.resizable().aspectRatio(contentMode: .fit)
                 } else {
-                    letterMark
+                    nameMark
                 }
             }
+            .frame(width: GlassMetrics.tile, height: GlassMetrics.tile)
         } else {
-            letterMark
+            nameMark
         }
     }
 
-    @ViewBuilder
-    private var letterMark: some View {
-        if app.name.lowercased().contains("spotify") || app.name.lowercased().contains("music") {
-            Image(systemName: "music.note")
-        } else {
-            Text(String(app.name.filter { $0.isLetter || $0.isNumber }.prefix(1)).uppercased())
-                .font(.system(size: 15, weight: .bold))
-        }
+    private var nameMark: some View {
+        Text(AppNames.faceText(package: app.packageName, label: app.name))
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundColor(Palette.text)
+            .multilineTextAlignment(.center)
+            .lineLimit(2)
+            .minimumScaleFactor(0.9)
+            .folioTextShadow()
+            .padding(2)
+            .frame(width: GlassMetrics.tile, height: GlassMetrics.tile)
     }
 }
 

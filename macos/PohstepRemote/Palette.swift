@@ -152,6 +152,8 @@ enum GlassMetrics {
     static let tile: CGFloat = 36
     static let tileRadius: CGFloat = 10
     static let tileGap: CGFloat = 10
+    /// Wide enough for a short name under the 36pt face, and still leaves room for More.
+    static let tileColumn: CGFloat = 48
     static let transportGap: CGFloat = 20
     static let footerHeight: CGFloat = 28
     static let primaryHeight: CGFloat = 38

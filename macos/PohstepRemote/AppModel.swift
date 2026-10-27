@@ -10,6 +10,7 @@ final class AppModel: ObservableObject {
     @Published var picture: TvPicture
     @Published var pskSaved: Bool
     @Published var shownApps: [TvApp]
+    @Published var appIcons: [String: NSImage] = [:]
     @Published var appsLoading: Bool
     @Published var appsFromSavedCatalog: Bool
     @Published var volumeHUD: String?
@@ -56,6 +57,8 @@ final class AppModel: ObservableObject {
     private let secrets = KeychainStore()
     private let catalogStore = AppCatalogStore(url: AppCatalogStore.fileURL())
     private var appsFresh = false
+    private let iconWork = DispatchQueue(label: "zapbar.app-icons", qos: .utility)
+    private let iconSchedule = AppIconSchedule()
 
     var settingsWindow: NSWindow?
     var wizardWindow: NSWindow?
@@ -273,6 +276,7 @@ final class AppModel: ObservableObject {
                             self.applyLiveApps(apps)
                         }
                     }
+                    self.prefetchVisibleAppIcons()
                 } else {
                     self.appsFresh = false
                 }
@@ -316,6 +320,43 @@ final class AppModel: ObservableObject {
             session.replaceSettings(settings)
             try? store.save(settings)
         }
+        prefetchVisibleAppIcons()
+    }
+
+    /// Icons for the tiles on screen. One package at a time, off the main queue and off key presses.
+    func prefetchVisibleAppIcons() {
+        guard !demoOn, status.isConnected else { return }
+        let limit = appsExpanded ? shownApps.count : min(GlassMetrics.pinnedApps, shownApps.count)
+        let packages = shownApps.prefix(limit).map(\.packageName).filter { appIcons[$0] == nil }
+        let cache = Self.iconCacheDirectory()
+        iconWork.async { [weak self] in
+            guard let self else { return }
+            self.iconSchedule.enqueue(packages)
+            self.pumpIcons(cache: cache)
+        }
+    }
+
+    private func pumpIcons(cache: URL) {
+        guard let package = iconSchedule.next() else { return }
+        let url = session.loadAppIcon(package: package, cacheDirectory: cache)
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            var loaded = false
+            if let url, let image = NSImage(contentsOf: url), image.isValid {
+                self.appIcons[package] = image
+                loaded = true
+            }
+            self.iconWork.async {
+                self.iconSchedule.finish(package, success: loaded)
+                self.pumpIcons(cache: cache)
+            }
+        }
+    }
+
+    private static func iconCacheDirectory() -> URL {
+        let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+        return base.appendingPathComponent("Zapbar/app-icons", isDirectory: true)
     }
 
     func toggleKeyboardMode() {
