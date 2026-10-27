@@ -59,8 +59,9 @@ final class SessionTests: XCTestCase {
         guard case .adbMissing(let message) = status else {
             return XCTFail("expected adb missing, got \(status)")
         }
-        XCTAssertTrue(message.contains("adb isn't installed"))
-        XCTAssertTrue(message.contains("brew install android-platform-tools"))
+        XCTAssertEqual(message, Copy.helperMissing)
+        XCTAssertFalse(message.localizedCaseInsensitiveContains("homebrew"))
+        XCTAssertFalse(message.contains("android-platform-tools"))
     }
 
     func testRefreshReportsRefusal() {
@@ -252,13 +253,12 @@ final class SessionTests: XCTestCase {
             return XCTFail("expected unauthorized, got \(status)")
         }
         XCTAssertEqual(serial, "tv.tailnet.ts.net:5555")
-        XCTAssertTrue(status.detail.contains("Accept the debugging prompt"))
+        XCTAssertTrue(status.detail.contains("isn't allowed yet"))
     }
 
     func testPowerSendsWakeKeyWhenConnectedAndMagicPacketWhenNot() {
         var settings = Settings.factoryDefaults()
         settings.host = "192.0.2.20"
-        settings.wolEnabled = true
         settings.macAddress = "aa-bb-cc-dd-ee-ff"
         let fake = FakeRunner()
         fake.handler = { arguments in
@@ -290,6 +290,7 @@ final class SessionTests: XCTestCase {
         XCTAssertTrue(wake.sent.isEmpty)
 
         let asleep = RemoteSession(settings: settings, runner: FakeRunner(), wol: wake, fileExists: { _ in false })
+        XCTAssertTrue(asleep.canWakeOnLan)
         armFastPower(asleep)
         let packet = asleep.pressPower()
         XCTAssertEqual(packet.title, PowerActions.didNotRespond)
@@ -302,6 +303,7 @@ final class SessionTests: XCTestCase {
         var settings = Settings.factoryDefaults()
         settings.host = "192.0.2.20"
         let session = RemoteSession(settings: settings, runner: FakeRunner(), fileExists: { _ in true })
+        XCTAssertFalse(session.canWakeOnLan)
         let report = session.pressPower()
         XCTAssertEqual(report.title, "The TV isn't reachable")
         XCTAssertTrue(report.detail.contains("Wake-on-LAN"))
@@ -311,7 +313,6 @@ final class SessionTests: XCTestCase {
     func testSleepRequiresAConnection() {
         var settings = Settings.factoryDefaults()
         settings.host = "192.0.2.20"
-        settings.wolEnabled = true
         settings.macAddress = "aa:bb:cc:dd:ee:ff"
         let session = RemoteSession(settings: settings, runner: FakeRunner(), fileExists: { _ in false })
         let report = session.pressSleep()
@@ -356,7 +357,7 @@ final class SessionTests: XCTestCase {
         let serial = "192.0.2.8:5555"
         XCTAssertEqual(
             Copy.unreachable(serial: serial),
-            "Couldn't reach the TV at \(serial). Check that it is on, on the same network, and that network debugging is enabled."
+            "Couldn't reach the TV at \(serial). Check that it is on and on the same network, then try again."
         )
         XCTAssertFalse(Copy.unreachable(serial: serial).contains("Local Network"))
         XCTAssertFalse(Copy.unreachable(serial: serial).localizedCaseInsensitiveContains("android"))

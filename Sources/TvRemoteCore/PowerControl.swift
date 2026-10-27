@@ -269,17 +269,32 @@ public enum PowerActions {
         now: () -> Date
     ) -> PowerReading {
         let deadline = now().addingTimeInterval(verifyWindow)
+        var unknownStreak = 0
         for _ in 0..<8 {
             let reading = transport.readPower()
             if reading == want { return reading }
-            if want == .off && reading == .unknown { return reading }
+            if want == .off && reading == .unknown {
+                unknownStreak += 1
+                if unknownStreak >= 2 { return .unknown }
+                let clock = now()
+                if clock >= deadline { return .reachableOnly }
+                let pause = min(0.4, deadline.timeIntervalSince(clock))
+                if pause <= 0 { return .reachableOnly }
+                sleep(pause)
+                continue
+            }
+            unknownStreak = 0
             let clock = now()
             if clock >= deadline { return reading }
             let slice = min(1, deadline.timeIntervalSince(clock))
             if slice <= 0 { return transport.readPower() }
             sleep(slice)
         }
-        return transport.readPower()
+        let last = transport.readPower()
+        if want == .off && last == .unknown {
+            return unknownStreak >= 1 ? .unknown : .reachableOnly
+        }
+        return last
     }
 
     private static func label(_ step: PowerStep) -> String {

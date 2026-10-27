@@ -159,7 +159,8 @@ final class SonyPathTests: XCTestCase {
         let session = RemoteSession(settings: settings, runner: FakeRunner(), http: http, fileExists: { _ in false })
         let report = session.setVolume(10)
         XCTAssertTrue(report.isError)
-        XCTAssertTrue(report.detail.contains("pre-shared key"))
+        XCTAssertEqual(report.title, "Exact volume isn't set up for this TV")
+        XCTAssertTrue(report.detail.contains("Open Settings"))
         XCTAssertTrue(http.calls.isEmpty)
     }
 
@@ -210,6 +211,7 @@ final class SonyPathTests: XCTestCase {
         let text = String(data: saved, encoding: .utf8) ?? ""
         XCTAssertFalse(text.contains("psk"))
         XCTAssertFalse(text.contains(secret))
+        XCTAssertFalse(text.contains("wolEnabled"))
         XCTAssertEqual(Settings.factoryDefaults().host, "")
         XCTAssertEqual(Settings.factoryDefaults().port, 5555)
     }

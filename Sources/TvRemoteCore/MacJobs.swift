@@ -71,6 +71,9 @@ public enum InstallExplain {
 
     /// What to do next. Install failures always have a step. Screenshot failures use their own.
     public static func recovery(for sentence: String, kind: JobKind = .install) -> String? {
+        if sentence == TransferGate.busySentence {
+            return TransferGate.busyStep
+        }
         if kind == .screenshot {
             return screenshotRecovery(sentence)
         }
@@ -102,10 +105,12 @@ public enum InstallExplain {
             return "Check the TV, then choose the .apk again."
         case "That file can't be read.":
             return "Choose the .apk again."
-        case "This needs a network debugging connection.":
+        case Copy.notConnected:
             return reconnectStep
+        case Copy.helperMissing, Copy.helperDidNotStart:
+            return nil
         default:
-            if sentence.hasPrefix("This Mac isn't authorized") {
+            if sentence.hasPrefix("This Mac isn't allowed yet") || sentence.hasPrefix("This Mac isn't authorized") {
                 return "Accept the prompt on the TV, then choose the .apk again."
             }
             if sentence.hasSuffix("is offline. The TV may be asleep or still booting.") {
@@ -145,8 +150,10 @@ public enum ApkPick {
     }
 
     public static func skipped(_ count: Int) -> String {
-        let files = count == 1 ? "file" : "files"
-        return "Skipped \(count) \(files) that aren't .apk."
+        if count == 1 {
+            return "Skipped 1 file that isn't an .apk."
+        }
+        return "Skipped \(count) files that aren't .apk."
     }
 
     /// Adds the skipped-file sentence onto a finished install result.
@@ -184,7 +191,7 @@ public enum ScreenshotCapture {
     public static let remotePath = "/sdcard/Download/zapbar-screen.png"
     /// A sleeping TV gives no picture, and asking it takes about half a minute. Say so first.
     public static let asleep = "The TV is asleep. Turn it on first."
-    public static let needsLink = "A screenshot needs a network debugging connection."
+    public static let needsLink = "The TV isn't connected."
 
     /// A valid PNG, including an all-black frame, is kept. A broken exec-out result uses the fallback bytes.
     public static func resolve(execOut: Data, fallbackRaw: String = "", fallback: () -> (Data, String)) -> ScreenshotResult {

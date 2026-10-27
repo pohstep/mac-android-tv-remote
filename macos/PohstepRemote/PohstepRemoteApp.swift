@@ -92,6 +92,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var didPromptForAccessibility = false
     private var globalClick: Any?
     private var localClick: Any?
+    private var menuPowerItem: NSMenuItem?
 
     func applicationWillTerminate(_ notification: Notification) {
         // The normal build uses the user's adb server on 5037. Quitting must not stop it.
@@ -122,6 +123,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model.onChromeChanged = { [weak self] in
             guard let self else { return }
             self.applyIcon()
+            self.applyMenuPowerItem()
             if self.panel.isVisible {
                 self.sizePanelToFit()
                 self.positionPanel()
@@ -347,6 +349,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let power = NSMenuItem(title: model.powerButton.label, action: #selector(powerFromMenu), keyEquivalent: "")
         power.target = self
         power.isEnabled = model.powerButton.enabled
+        menuPowerItem = power
         menu.addItem(power)
 
         if model.settings.devices.count > 1 {
@@ -377,8 +380,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(quit)
 
         statusItem.menu = menu
+        model.refreshNow()
+        let timer = Timer(timeInterval: 3, repeats: true) { [weak self] _ in
+            self?.model.refreshNow()
+        }
+        RunLoop.current.add(timer, forMode: .eventTracking)
         statusItem.button?.performClick(nil)
+        timer.invalidate()
+        menuPowerItem = nil
         statusItem.menu = nil
+    }
+
+    private func applyMenuPowerItem() {
+        guard let item = menuPowerItem else { return }
+        let button = model.powerButton
+        item.title = button.label
+        item.isEnabled = button.enabled
     }
 
     @objc private func openFromMenu() { openPanel() }

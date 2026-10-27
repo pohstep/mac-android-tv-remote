@@ -153,6 +153,39 @@ final class FlowTests: XCTestCase {
         XCTAssertTrue(missing.buttonEnabled)
     }
 
+    func testOneUnknownAfterSleepIsNotOff() {
+        let once = ScriptedPower()
+        once.adbCanPressPower = true
+        once.sonyCanPressPower = true
+        once.readings = [.unknown] + Array(repeating: .on, count: 40)
+        let onceClock = FlowClock()
+        let missed = PowerActions.turnOff(transport: once, sleep: onceClock.sleep, now: onceClock.now)
+        XCTAssertTrue(missed.report.isError)
+        XCTAssertNotEqual(missed.report.title, "Turned off.")
+        XCTAssertNotEqual(missed.report.title, "Turned off. The TV stopped answering.")
+        XCTAssertEqual(missed.tried, [.adbSleep, .sonyOff])
+
+        let twice = ScriptedPower()
+        twice.adbCanPressPower = true
+        twice.sonyCanPressPower = true
+        twice.readings = [.unknown, .unknown] + Array(repeating: .on, count: 10)
+        let twiceClock = FlowClock()
+        let quiet = PowerActions.turnOff(transport: twice, sleep: twiceClock.sleep, now: twiceClock.now)
+        XCTAssertFalse(quiet.report.isError)
+        XCTAssertEqual(quiet.report.title, "Turned off. The TV stopped answering.")
+        XCTAssertEqual(quiet.tried, [.adbSleep])
+
+        let standby = ScriptedPower()
+        standby.adbCanPressPower = true
+        standby.sonyCanPressPower = true
+        standby.readings = [.unknown, .off] + Array(repeating: .on, count: 10)
+        let standbyClock = FlowClock()
+        let off = PowerActions.turnOff(transport: standby, sleep: standbyClock.sleep, now: standbyClock.now)
+        XCTAssertFalse(off.report.isError)
+        XCTAssertEqual(off.report.title, "Turned off.")
+        XCTAssertEqual(off.tried, [.adbSleep])
+    }
+
     func testOnePowerButtonAndPlainWords() {
         let samples: [(PowerReading, Bool, Bool)] = [
             (.on, false, true),

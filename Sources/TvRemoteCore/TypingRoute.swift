@@ -29,6 +29,6 @@ public enum TypingRoute {
         if brand == .sony && sonyAvailable {
             return .sony
         }
-        return .unsupported("Typing needs a network debugging connection, or a Sony TV with a text field open.")
+        return .unsupported("Typing needs the TV to be connected, with a text field open.")
     }
 }

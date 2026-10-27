@@ -33,7 +33,7 @@ public enum LinkStatus: Equatable {
         case .idle: return "No TV address yet"
         case .connecting: return "Connecting"
         case .connected: return "Connected"
-        case .adbMissing: return "adb isn't installed"
+        case .adbMissing: return "Connection helper is missing"
         case .helperDown: return "Helper didn't start"
         case .unauthorized: return "Waiting for the TV"
         case .refused: return "The TV refused the connection"
@@ -46,7 +46,7 @@ public enum LinkStatus: Equatable {
     public var detail: String {
         switch self {
         case .idle:
-            return "Add an IP or Tailscale hostname in Settings."
+            return "Add the TV's address in Settings."
         case .connecting(let serial):
             return "Reaching \(serial)"
         case .connected(let serial):

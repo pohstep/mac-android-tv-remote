@@ -154,7 +154,7 @@ final class AppModel: ObservableObject {
     func savePreSharedKey(_ value: String) {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
-            banner = "Enter the pre-shared key from the TV, or leave it blank to use adb only."
+            banner = "Enter the control key from the TV, or leave the field blank."
             bannerIsError = true
             return
         }
@@ -162,7 +162,7 @@ final class AppModel: ObservableObject {
             try saveKey(trimmed, deviceID: settings.activeDeviceID)
             pskSaved = true
             session.setPreSharedKey(trimmed)
-            banner = "Pre-shared key saved in the Keychain."
+            banner = "Control key saved."
             bannerIsError = false
             refreshNow()
         } catch {
@@ -185,7 +185,7 @@ final class AppModel: ObservableObject {
         #endif
         pskSaved = false
         session.setPreSharedKey("")
-        banner = "Pre-shared key removed from the Keychain."
+        banner = "Control key removed."
         bannerIsError = false
         refreshNow()
     }
@@ -286,8 +286,9 @@ final class AppModel: ObservableObject {
                 }
                 self.picture = shown
                 if !self.settingsFieldsAreActive {
-                    self.settings.host = self.session.settings.host
-                    self.settings.port = self.session.settings.port
+                    let snapshot = self.session.settingsSnapshot()
+                    self.settings.host = snapshot.host
+                    self.settings.port = snapshot.port
                 }
                 if status.isConnected {
                     if shouldReadApps {
@@ -499,9 +500,8 @@ final class AppModel: ObservableObject {
                 self.powerGeneration += 1
                 self.powerBusy = false
                 self.powerLine = ""
-                if learned.macAddress != self.settings.macAddress || learned.wolEnabled != self.settings.wolEnabled {
+                if learned.macAddress != self.settings.macAddress {
                     self.settings.macAddress = learned.macAddress
-                    self.settings.wolEnabled = learned.wolEnabled
                     self.pushSettings()
                 }
                 self.picture = self.session.currentPicture()
@@ -624,7 +624,7 @@ final class AppModel: ObservableObject {
         typeNotice = ""
         typeCanRetry = false
         typeNeedsSetup = false
-        let connected = demoOn || session.status.isConnected
+        let connected = demoOn || session.statusSnapshot().isConnected
         let work: () -> ActionReport = { [weak self] in
             guard let self else {
                 return ActionReport(title: "Couldn't type", detail: "", isError: true)

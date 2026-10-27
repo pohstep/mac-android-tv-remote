@@ -119,10 +119,10 @@ struct SetupWizardView: View {
         case .find: return "Find the TV"
         case .manual: return "Enter an address"
         case .sonyTyping: return "Typing"
-        case .debugging: return "Turn on debugging"
+        case .debugging: return "Connect this Mac"
         case .pair: return "Pair"
         case .allow: return "Allow this Mac"
-        case .sonyKey: return "Sony key"
+        case .sonyKey: return "Control key"
         case .remember: return "Save this TV"
         case .done: return "Saved"
         }
@@ -156,7 +156,7 @@ struct SetupWizardView: View {
             }
             Button("Enter an address") { model.sendWizard(.wantManual) }
         case .manual:
-            TextField("IP address or hostname", text: $manualHost)
+            TextField("Address", text: $manualHost)
                 .folioFieldChrome(focused: false)
             TextField("Port (optional)", text: $manualPort)
                 .folioFieldChrome(focused: false)
@@ -172,10 +172,10 @@ struct SetupWizardView: View {
         case .debugging:
             Button("Pair with a code") { model.sendWizard(.chooseWireless) }
                 .buttonStyle(FolioPrimaryStyle(wizard: true))
-            Button("Use port 5555") { model.sendWizard(.chooseLegacy) }
+            Button("Connect without a code") { model.sendWizard(.chooseLegacy) }
                 .buttonStyle(FolioPrimaryStyle(wizard: true))
         case .pair:
-            TextField("Pairing port", text: $pairPort)
+            TextField("Port shown on the TV", text: $pairPort)
                 .folioFieldChrome(focused: false)
             TextField("Pairing code", text: $pairCode)
                 .folioFieldChrome(focused: false)
@@ -186,7 +186,7 @@ struct SetupWizardView: View {
             Button("Check again") { model.retryAllow() }
                 .buttonStyle(FolioPrimaryStyle(wizard: true))
         case .sonyKey:
-            SecureField("Pre-shared key", text: $psk)
+            SecureField("Control key", text: $psk)
                 .folioFieldChrome(focused: false)
             HStack {
                 Button("Save key and continue") {

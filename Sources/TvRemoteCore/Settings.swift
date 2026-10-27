@@ -79,7 +79,6 @@ public struct Settings: Codable, Equatable {
     public var host: String
     public var port: Int
     public var adbPath: String
-    public var wolEnabled: Bool
     public var macAddress: String
     public var broadcastAddress: String
     public var apps: [TvApp]
@@ -96,7 +95,6 @@ public struct Settings: Codable, Equatable {
         host: String,
         port: Int,
         adbPath: String,
-        wolEnabled: Bool,
         macAddress: String,
         broadcastAddress: String,
         apps: [TvApp],
@@ -110,7 +108,6 @@ public struct Settings: Codable, Equatable {
         self.host = host
         self.port = port
         self.adbPath = adbPath
-        self.wolEnabled = wolEnabled
         self.macAddress = macAddress
         self.broadcastAddress = broadcastAddress
         self.apps = apps
@@ -127,7 +124,6 @@ public struct Settings: Codable, Equatable {
             host: "",
             port: 5555,
             adbPath: "",
-            wolEnabled: false,
             macAddress: "",
             broadcastAddress: "255.255.255.255",
             apps: TvApp.defaults,
@@ -160,7 +156,7 @@ public struct Settings: Codable, Equatable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case host, port, adbPath, wolEnabled, macAddress, broadcastAddress, apps, keyboardMode, sonyPort
+        case host, port, adbPath, macAddress, broadcastAddress, apps, keyboardMode, sonyPort
         case devices, activeDeviceID, brand, useDebugging
     }
 
@@ -169,7 +165,6 @@ public struct Settings: Codable, Equatable {
         host = try container.decodeIfPresent(String.self, forKey: .host) ?? ""
         port = try container.decodeIfPresent(Int.self, forKey: .port) ?? 5555
         adbPath = try container.decodeIfPresent(String.self, forKey: .adbPath) ?? ""
-        wolEnabled = try container.decodeIfPresent(Bool.self, forKey: .wolEnabled) ?? false
         macAddress = try container.decodeIfPresent(String.self, forKey: .macAddress) ?? ""
         broadcastAddress = try container.decodeIfPresent(String.self, forKey: .broadcastAddress) ?? "255.255.255.255"
         apps = try container.decodeIfPresent([TvApp].self, forKey: .apps) ?? TvApp.defaults
@@ -195,7 +190,6 @@ public struct Settings: Codable, Equatable {
         try container.encode(host, forKey: .host)
         try container.encode(port, forKey: .port)
         try container.encode(adbPath, forKey: .adbPath)
-        try container.encode(wolEnabled, forKey: .wolEnabled)
         try container.encode(macAddress, forKey: .macAddress)
         try container.encode(broadcastAddress, forKey: .broadcastAddress)
         try container.encode(apps, forKey: .apps)

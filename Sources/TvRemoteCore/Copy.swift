@@ -1,41 +1,29 @@
 import Foundation
 
 public enum Copy {
-    public static let helperMissing = "Zapbar's built-in helper is missing. Reinstall Zapbar."
+    public static let helperMissing = "Zapbar's connection helper is missing. Reinstall Zapbar."
     public static let helperDidNotStart = "Zapbar's helper couldn't start. Quit and reopen Zapbar."
     public static let stoppedAnswering = "The TV stopped answering."
+    public static let notConnected = "The TV isn't connected."
 
     public static func adbMissing() -> String {
-        #if SANDBOX_BUILD
         helperMissing
-        #else
-        "adb isn't installed. \(developerBrewHint)"
-        #endif
     }
 
-    public static func adbMissing(at path: String) -> String {
-        #if SANDBOX_BUILD
+    public static func adbMissing(at _: String) -> String {
         helperMissing
-        #else
-        "adb wasn't found at \(path). \(developerBrewHint)"
-        #endif
     }
-
-    #if !SANDBOX_BUILD
-    /// Developer builds only. The sandboxed app does not compile this sentence.
-    static let developerBrewHint = "Install it with Homebrew: brew install android-platform-tools"
-    #endif
 
     public static func refused(serial: String) -> String {
-        "The TV refused the connection to \(serial). Turn on network debugging and check the address."
+        "The TV refused the connection to \(serial). On the TV, allow this Mac, and check the address in Settings."
     }
 
     public static func unreachable(serial: String) -> String {
-        "Couldn't reach the TV at \(serial). Check that it is on, on the same network, and that network debugging is enabled."
+        "Couldn't reach the TV at \(serial). Check that it is on and on the same network, then try again."
     }
 
     public static func unauthorized(serial: String) -> String {
-        "This Mac isn't authorized yet. Accept the debugging prompt on the TV (\(serial))."
+        "This Mac isn't allowed yet. Accept the prompt on the TV (\(serial))."
     }
 
     public static func offline(serial: String) -> String {

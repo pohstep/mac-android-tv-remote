@@ -5,7 +5,8 @@
 - Send text only when the TV keyboard is actually shown. A hidden keyboard keeps the text and offers Retry. Dropped text is added to the field. An .apk dropped on the field installs. Command-modified keys reach the menu.
 - Install is .apk only. A disconnected TV, and any other install error, says what to do next. The log keeps one entry per file and notes files that were skipped. A new install or a screenshot clears it.
 - A screenshot can be cancelled. If the picture doesn't come back, Retry sits beside the next step. A failed save says to choose another folder and keeps the system error in the log.
-- One power button. It says Turn on, Turn off, or Checking…. Turn on tries the wake key, then Sony, then a packet on ports 9 and 7, and writes the method to the log only. A set that goes quiet after sleep counts as off. Xiaomi shows that power isn't supported.
+- One power button. It says Turn on, Turn off, or Checking…. The menu label refreshes when the menu opens and while it stays open. Turn on tries the wake key, then Sony, then a packet on ports 9 and 7 whenever a MAC address is known, and writes the method to the log only. There is no separate switch for the packet. After sleep, one missed reading is not off. A second missed reading, or standby, is off. Xiaomi shows that power isn't supported.
+- Setup, banners, and errors say what to do next. One skipped file says "isn't an .apk"; more than one says "aren't .apk." A second transfer says to wait for the current one.
 - A failed login-item change shows in Settings, with Open Login Items.
 - The app list comes from the leanback query.
 

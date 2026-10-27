@@ -28,7 +28,7 @@ Zapbar was called Mac Android TV Remote up to v1.0.1. Same project, new name.
 - **Volume** slider, steps and mute.
 - **App tiles** with names, and the TV's own icon where the TV provides one, with **More apps…** for the rest of the list.
 - **Inputs** with the names the TV reports.
-- **Power** reads the TV's wake state. Asleep shows **Turn on** (wake key, then Sony, then a magic packet). Awake shows **Turn off**, which still asks for a second click. Open debugging ports are not treated as on.
+- **Power** is one button. The label follows the TV: **Turn off** when it is on, **Turn on** when it is off or still unknown. While Zapbar is checking, the button says **Checking…**. Turn on and Turn off try the other ways on their own. The button does not name those ways.
 - **Several TVs.** The last one reconnects on launch. Wake is in the menu bar. Release and sandbox builds leave a v1.0 settings file and the old keychain item unread, so the first launch does not ask for Keychain access. `scripts/build-dev.sh` sets `ZAPBAR_MIGRATE_V1` and can bring that TV and key across.
 - **Setup** walks through brand, finding the TV (or typing an address), debugging, pairing or Allow, and saving.
 - **Type on the TV.** A field in the panel sends on Return, including a pasted URL as plain text. Cut, Copy, Paste, and Select All are on the Edit menu, and Command-V still works while keyboard-as-remote is on. `⌃⌥T` opens the panel and focuses the field. If no text field is focused on the TV, the text stays and **Retry** sends it again. A drop adds to the field. An empty send asks you to type something.

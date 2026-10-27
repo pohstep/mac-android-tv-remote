@@ -84,6 +84,10 @@ public final class RemoteSession {
         lock.critical { settings }
     }
 
+    public func statusSnapshot() -> LinkStatus {
+        lock.critical { status }
+    }
+
     public func currentPicture() -> TvPicture {
         lock.critical { picture }
     }
@@ -310,11 +314,11 @@ public final class RemoteSession {
             return selectHdmi(port)
         }
         if sendSonyPlay(uri: uri) {
-            return report("Input", "Sent over Sony IP", error: false)
+            return report("Input", "Sent.", error: false)
         }
         return ActionReport(
-            title: "That input needs Sony IP",
-            detail: "Save the pre-shared key, or pick an HDMI port.",
+            title: "That input isn't set up for this TV",
+            detail: "Open Settings to add it, or pick another input.",
             isError: true
         )
     }
@@ -325,7 +329,7 @@ public final class RemoteSession {
             return TvBackends.make(brand).selectHDMI(port, context: makeContext(allowSony: brand == .sony))
         }
         guard (1...4).contains(port) else {
-            return ActionReport(title: "Unknown input", detail: "HDMI ports are 1 to 4.", isError: true)
+            return ActionReport(title: "Unknown input", detail: "Choose HDMI 1, 2, 3, or 4.", isError: true)
         }
         return press(AndroidKey.hdmiPorts[port - 1])
     }
@@ -333,8 +337,8 @@ public final class RemoteSession {
     public func setVolume(_ level: Int) -> ActionReport {
         guard let target = sonyCredentials() else {
             return ActionReport(
-                title: "Exact volume needs Sony IP",
-                detail: "Save the pre-shared key in Settings, or use volume up and down over adb.",
+                title: "Exact volume isn't set up for this TV",
+                detail: "Open Settings to add it.",
                 isError: true
             )
         }
@@ -345,12 +349,12 @@ public final class RemoteSession {
                 picture.volume = level
                 picture.sonyReady = true
             }
-            return report("Volume \(level)", "Sent over Sony IP", error: false)
+            return report("Volume \(level)", "Sent.", error: false)
         }
         noteSonyFailure()
         return ActionReport(
-            title: "Exact volume needs Sony IP",
-            detail: "Sony IP didn't accept the volume. Volume up and down still work over adb.",
+            title: "The TV didn't accept that volume",
+            detail: "Use the volume buttons.",
             isError: true
         )
     }
@@ -520,7 +524,7 @@ public final class RemoteSession {
         }
         if brand == .sony, let uri = app.uri, let target = sonyCredentials() {
             if SonyClient(http: http).setActiveApp(uri: uri, host: target.host, port: target.port, psk: target.psk) {
-                return ActionReport(title: "Opening \(app.name)", detail: "Sony IP", isError: false)
+                return ActionReport(title: "Opening \(app.name)", detail: "", isError: false)
             }
         }
         let packageName = app.packageName.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -534,8 +538,8 @@ public final class RemoteSession {
         guard let serial = connectedSerial() else {
             if sonyCredentials() != nil {
                 return ActionReport(
-                    title: "Apps need adb",
-                    detail: "IP control doesn't launch apps. Connect network debugging.",
+                    title: "Apps can't be listed yet",
+                    detail: "Open Settings and check the TV connection.",
                     isError: true
                 )
             }
@@ -670,7 +674,6 @@ public final class RemoteSession {
         guard let found else { return }
         lock.critical {
             settings.macAddress = found
-            settings.wolEnabled = true
             if let index = settings.devices.firstIndex(where: { $0.id == settings.activeDeviceID }) {
                 settings.devices[index].macAddress = found
             }
@@ -765,7 +768,7 @@ public final class RemoteSession {
     }
 
     private func debuggingRequired() -> JobReport {
-        JobReport(sentence: "This needs a network debugging connection.", raw: "", isError: true)
+        JobReport(sentence: Copy.notConnected, raw: "", isError: true)
     }
 
     private func debuggingSerial() -> String? {
@@ -889,7 +892,7 @@ public final class RemoteSession {
 
     private func refreshSonyOnly(host: String) -> LinkStatus {
         guard let target = sonyCredentials() else {
-            return assign(.failed(message: "Save the pre-shared key for this Sony TV."))
+            return assign(.failed(message: "Open Settings and add the control key for this TV."))
         }
         let serial = "\(host):\(target.port)"
         if SonyClient(http: http).powerStatus(host: target.host, port: target.port, psk: target.psk) != nil {
@@ -1000,8 +1003,7 @@ extension RemoteSession: PowerTransport {
     }
 
     public var canWakeOnLan: Bool {
-        let snapshot = lock.critical { settings }
-        return snapshot.wolEnabled && MACAddress.bytes(snapshot.macAddress) != nil
+        MACAddress.bytes(settingsSnapshot().macAddress) != nil
     }
 
     public func readPower() -> PowerReading {

@@ -120,7 +120,7 @@ public struct GenericTVBackend: TvBackend {
 
     public func selectHDMI(_ port: Int, context: TvActionContext) -> ActionReport {
         guard (1...4).contains(port) else {
-            return ActionReport(title: "Unknown input", detail: "HDMI ports are 1 to 4.", isError: true)
+            return ActionReport(title: "Unknown input", detail: "Choose HDMI 1, 2, 3, or 4.", isError: true)
         }
         return sendKey(AndroidKey.hdmiPorts[port - 1], context: context)
     }
@@ -165,7 +165,7 @@ public struct SonyIPBackend: TvBackend {
 
     public func selectHDMI(_ port: Int, context: TvActionContext) -> ActionReport {
         guard (1...4).contains(port) else {
-            return ActionReport(title: "Unknown input", detail: "HDMI ports are 1 to 4.", isError: true)
+            return ActionReport(title: "Unknown input", detail: "Choose HDMI 1, 2, 3, or 4.", isError: true)
         }
         if context.allowSony {
             let sony = SonyClient(http: context.http)
@@ -223,7 +223,7 @@ public struct XiaomiTVBackend: TvBackend {
 
     public func selectHDMI(_ port: Int, context: TvActionContext) -> ActionReport {
         guard (1...4).contains(port) else {
-            return ActionReport(title: "Unknown input", detail: "HDMI ports are 1 to 4.", isError: true)
+            return ActionReport(title: "Unknown input", detail: "Choose HDMI 1, 2, 3, or 4.", isError: true)
         }
         let client = XiaomiClient(reader: context.reader)
         let control = context.controlPort == 0 ? 6095 : context.controlPort

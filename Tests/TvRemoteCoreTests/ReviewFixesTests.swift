@@ -23,26 +23,20 @@ final class ReviewFixesTests: XCTestCase {
     }
 
     func testSandboxCopyOmitsTheHomebrewSentence() throws {
-        XCTAssertEqual(Copy.helperMissing, "Zapbar's built-in helper is missing. Reinstall Zapbar.")
+        XCTAssertEqual(Copy.helperMissing, "Zapbar's connection helper is missing. Reinstall Zapbar.")
+        XCTAssertEqual(Copy.adbMissing(), Copy.helperMissing)
+        XCTAssertEqual(Copy.adbMissing(at: "/usr/local/bin/adb"), Copy.helperMissing)
         XCTAssertFalse(Copy.helperMissing.localizedCaseInsensitiveContains("homebrew"))
         XCTAssertFalse(Copy.helperMissing.contains("android-platform-tools"))
         let source = try String(contentsOf: repoRoot().appendingPathComponent("Sources/TvRemoteCore/Copy.swift"), encoding: .utf8)
-        let branches = source.components(separatedBy: "#if SANDBOX_BUILD").dropFirst()
-        XCTAssertGreaterThanOrEqual(branches.count, 2)
-        for branch in branches {
-            let sandboxOnly = branch.components(separatedBy: "#else").first ?? ""
-            XCTAssertFalse(sandboxOnly.contains("android-platform-tools"))
-            XCTAssertFalse(sandboxOnly.contains("Homebrew"))
-        }
-        #if !SANDBOX_BUILD
-        XCTAssertTrue(Copy.adbMissing().contains("android-platform-tools"))
-        #endif
+        XCTAssertFalse(source.localizedCaseInsensitiveContains("homebrew"))
+        XCTAssertFalse(source.contains("android-platform-tools"))
     }
 
     func testSandboxSettingsHidesTheAdbPathField() throws {
         let source = try String(contentsOf: repoRoot().appendingPathComponent("macos/PohstepRemote/SettingsView.swift"), encoding: .utf8)
         XCTAssertTrue(source.contains("#if !SANDBOX_BUILD"))
-        XCTAssertTrue(source.contains("Blank finds Homebrew's adb"))
+        XCTAssertTrue(source.contains("Leave blank to use the built-in helper"))
         let sandbox = sourceWithoutBlocks(source, marker: "#if !SANDBOX_BUILD")
         XCTAssertFalse(sandbox.contains("Homebrew"), sandbox)
         XCTAssertFalse(sandbox.contains("adb path"), sandbox)
@@ -150,6 +144,8 @@ final class ReviewFixesTests: XCTestCase {
         XCTAssertEqual(gate.finish(token: 1), ["/tmp/zapbar-transfer-a"])
         XCTAssertFalse(gate.busy)
         XCTAssertEqual(TransferGate.busySentence, "One transfer at a time.")
+        XCTAssertEqual(TransferGate.busyStep, "Wait for the current transfer.")
+        XCTAssertEqual(InstallExplain.recovery(for: TransferGate.busySentence), TransferGate.busyStep)
 
         var order: [String] = []
         let done = SerialTransfers.run(["a.apk", "b.apk"]) { path in

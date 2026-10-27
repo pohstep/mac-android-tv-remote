@@ -214,7 +214,7 @@ extension AppModel {
                 case .missingData:
                     self.cleanupLine = "Clean-up data is missing from this build."
                 case .offline:
-                    self.cleanupLine = "This needs a network debugging connection."
+                    self.cleanupLine = "The TV isn't connected."
                 case .ready(let preview):
                     self.cleanupRows = preview.rows
                     self.cleanupWarnings = preview.warnings
@@ -275,7 +275,7 @@ extension AppModel {
             } else if CleanupFiles.rules() == nil || CleanupFiles.catalog() == nil {
                 report = CleanupReport(sentence: "Clean-up data is missing from this build.", isError: true)
             } else {
-                report = CleanupReport(sentence: "This needs a network debugging connection.", isError: true)
+                report = CleanupReport(sentence: "The TV isn't connected.", isError: true)
             }
             DispatchQueue.main.async {
                 self.cleanupBusy = false

@@ -82,11 +82,11 @@ final class MacJobTests: XCTestCase {
 
     func testInstallRecoveryHasItsOwnNextStep() {
         XCTAssertEqual(
-            InstallExplain.recovery(for: "This needs a network debugging connection."),
+            InstallExplain.recovery(for: Copy.notConnected),
             InstallExplain.reconnectStep
         )
         XCTAssertEqual(
-            InstallExplain.recovery(for: "This needs a network debugging connection.", kind: .screenshot),
+            InstallExplain.recovery(for: Copy.notConnected, kind: .screenshot),
             "Check the connection, then press Screenshot."
         )
         XCTAssertEqual(
@@ -94,9 +94,14 @@ final class MacJobTests: XCTestCase {
             "Check the connection, then press Screenshot."
         )
         XCTAssertEqual(InstallExplain.recovery(for: Copy.stoppedAnswering), InstallExplain.unknownStep)
-        XCTAssertEqual(InstallExplain.recovery(for: "adb isn't installed."), InstallExplain.unknownStep)
+        XCTAssertNil(InstallExplain.recovery(for: Copy.helperMissing))
+        XCTAssertEqual(
+            InstallExplain.recovery(for: "This Mac isn't allowed yet. Accept the prompt on the TV (192.0.2.8:5555)."),
+            "Accept the prompt on the TV, then choose the .apk again."
+        )
+        XCTAssertEqual(InstallExplain.recovery(for: TransferGate.busySentence), TransferGate.busyStep)
         XCTAssertEqual(InstallExplain.recovery(for: "The install didn't finish."), "Check the TV, then choose the .apk again.")
-        XCTAssertEqual(ApkPick.skipped(1), "Skipped 1 file that aren't .apk.")
+        XCTAssertEqual(ApkPick.skipped(1), "Skipped 1 file that isn't an .apk.")
         XCTAssertEqual(ApkPick.skipped(3), "Skipped 3 files that aren't .apk.")
         let noted = ApkPick.notingSkipped(
             JobReport(sentence: "Installed.", raw: "Success", isError: false),
@@ -105,7 +110,7 @@ final class MacJobTests: XCTestCase {
         XCTAssertEqual(noted.sentence, "Installed. Skipped 2 files that aren't .apk.")
         XCTAssertEqual(
             InstallLog.append("Installed.\nSuccess", ApkPick.skipped(1)),
-            "Installed.\nSuccess\n\nSkipped 1 file that aren't .apk."
+            "Installed.\nSuccess\n\nSkipped 1 file that isn't an .apk."
         )
         XCTAssertEqual(InstallLog.append("", "Installed."), "Installed.")
     }
@@ -232,7 +237,7 @@ final class MacJobTests: XCTestCase {
         let session = RemoteSession(settings: settings, runner: fake, reader: AliveReader(), fileExists: { _ in true })
         _ = session.refresh()
         let report = session.installApk(at: apk.path)
-        XCTAssertEqual(report.sentence, "This needs a network debugging connection.")
+        XCTAssertEqual(report.sentence, Copy.notConnected)
         XCTAssertFalse(fake.calls.contains { $0.arguments.contains("install") })
     }
 
