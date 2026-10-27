@@ -76,11 +76,11 @@ You can always type an IP address instead of waiting for discovery.
 
 ## First launch (unsigned app)
 
-The app is not signed with an Apple developer account, so macOS blocks it the first time. Allow it once:
+Zapbar is ad-hoc signed (not notarized), so Gatekeeper blocks it the first time with a message like *“Apple cannot check it for malicious software.”* Allow it once (same pattern as other unsigned Mac apps):
 
-- **macOS 13 or 14:** in Applications, right-click **Zapbar**, choose **Open**, then **Open** again.
-- **macOS 15 or newer:** try to open it, then go to **System Settings → Privacy & Security** and click **Open Anyway**.
-- **Or, in Terminal:**
+1. **Right-click → Open** (macOS 13 / 14): in Finder, right-click **Zapbar** → **Open** → **Open** again in the dialog.
+2. **Open Anyway** (macOS 15+): try to open it, then **System Settings → Privacy & Security** → **Open Anyway**.
+3. **Or clear quarantine in Terminal:**
 
   ```sh
   xattr -dr com.apple.quarantine "/Applications/Zapbar.app"
