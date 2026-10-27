@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.0 — unreleased
+
+- Setup looks for a Sony and a Xiaomi set in one search. Pick the set. Type an address only if nothing is found.
+- Where a switch on the TV cannot be turned on from the Mac, setup shows that one step, waits until the TV answers, and continues. If it does not answer, it says what to try.
+- A saved TV reconnects on launch. The panel and the menu say Connecting… first. Setup opens only when there is no saved TV, or the reconnect fails and you choose Set up a new TV.
+- One television is one choice, named Sony TV or Xiaomi TV. Two sets with that same name stay two choices. Setup says Connected only after the TV answers, and Saved when it was stored without that check. One power button stays. Build 3.
+
 ## 1.1.1 — unreleased
 
 - Send text only when the TV keyboard is actually shown. A hidden keyboard keeps the text and offers Retry. Dropped text is added to the field. An .apk dropped on the field installs. Command-modified keys reach the menu.

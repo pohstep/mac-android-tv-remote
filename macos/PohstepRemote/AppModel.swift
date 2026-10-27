@@ -87,6 +87,8 @@ final class AppModel: ObservableObject {
     private var hudItem: DispatchWorkItem?
     private var pendingKey = ""
     private var lastSeenWrite = Date.distantPast
+    private var switchGeneration = 0
+    private var switchPolling = false
     private let transfers = TransferGate()
     private let stageLock = NSLock()
     private var pendingStage: [String] = []
@@ -198,6 +200,17 @@ final class AppModel: ObservableObject {
 
     func start() {
         refreshLoginItem()
+        if !settings.devices.isEmpty {
+            status = .connecting(serial: settings.host)
+        }
+        refreshNow()
+    }
+
+    /// A saved TV failed to reconnect. Show Connecting… again and try the same TV.
+    func retryReconnect() {
+        guard !demoOn, !settings.devices.isEmpty else { return }
+        status = .connecting(serial: settings.host)
+        onChromeChanged?()
         refreshNow()
     }
 
@@ -1087,6 +1100,7 @@ final class AppModel: ObservableObject {
     }
 
     func sendWizard(_ event: WizardEvent) {
+        wizard.setAdbReady(session.typingHelperAvailable())
         let effect = wizard.handle(event)
         if case .choose = event {
             discoverTVs()
@@ -1098,8 +1112,98 @@ final class AppModel: ObservableObject {
             runPair(host: host, pairPort: pairPort, code: code, connectPort: connectPort)
         case .connectLegacy(let host, let port):
             beginLegacyConnect(host: host, port: port)
+        case .testSony(let host, let port, let psk):
+            runSonyTest(host: host, port: port, psk: psk)
+        case .testXiaomi(let host, let port):
+            runXiaomiTest(host: host, port: port)
         case .save(let device):
             remember(device)
+        }
+        syncSwitchPoll()
+    }
+
+    private func syncSwitchPoll() {
+        let waiting: Bool
+        if let phase = wizard.switchWatch?.phase, phase == .waiting {
+            waiting = true
+        } else {
+            waiting = false
+        }
+        if !waiting {
+            switchPolling = false
+            switchGeneration += 1
+            return
+        }
+        if switchPolling { return }
+        switchPolling = true
+        let generation = switchGeneration
+        pollSwitch(generation: generation, started: Date())
+    }
+
+    private func pollSwitch(generation: Int, started: Date) {
+        let kind = wizard.switchWatch?.kind
+        let host = wizard.host
+        let port = wizard.controlPort
+        DispatchQueue.global(qos: .utility).async {
+            let probed = AppModel.probeSwitch(kind: kind, host: host, port: port)
+            DispatchQueue.main.async { [weak self] in
+                guard let self, generation == self.switchGeneration, self.switchPolling else { return }
+                guard self.wizard.switchWatch?.phase == .waiting else { return }
+                let elapsed = Date().timeIntervalSince(started)
+                self.sendWizard(.watch(answered: probed.answered, elapsed: elapsed, legacyPort: probed.legacyPort))
+                guard generation == self.switchGeneration, self.switchPolling else { return }
+                guard self.wizard.switchWatch?.phase == .waiting else { return }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+                    guard let self, generation == self.switchGeneration, self.switchPolling else { return }
+                    self.pollSwitch(generation: generation, started: started)
+                }
+            }
+        }
+    }
+
+    private static func probeSwitch(kind: TvSwitch?, host: String, port: Int) -> (answered: Bool, legacyPort: Int?) {
+        guard let kind else { return (false, nil) }
+        switch kind {
+        case .sonyNetwork:
+            let up = SonyClient(http: URLSessionHttp(), timeout: 1.5).serviceIsUp(host: host, port: port)
+            return (up, nil)
+        case .networkDebugging:
+            if LivePortProbe().isOpen(host: host, port: 5555) {
+                return (true, 5555)
+            }
+            return (false, nil)
+        }
+    }
+
+    private func runSonyTest(host: String, port: Int, psk: String) {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let verdict = SonyClient(http: URLSessionHttp()).checkConnection(host: host, port: port, psk: psk)
+            DispatchQueue.main.async {
+                guard let self, self.wizard.phase == .sonyKey else { return }
+                switch verdict {
+                case .connected:
+                    self.stagePreSharedKey(psk)
+                    self.sendWizard(.testSucceeded)
+                case .rejected:
+                    self.sendWizard(.testFailed(WizardCopy.keyRefused))
+                case .unanswered:
+                    self.sendWizard(.testFailed(LaunchFlow.couldNotReach(self.wizard.name)))
+                }
+            }
+        }
+    }
+
+    private func runXiaomiTest(host: String, port: Int) {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let name = XiaomiClient(reader: URLSessionHttp()).alive(host: host, port: port)
+            DispatchQueue.main.async {
+                guard let self, self.wizard.phase == .xiaomiCheck else { return }
+                if name != nil {
+                    self.sendWizard(.testSucceeded)
+                } else {
+                    self.sendWizard(.testFailed(WizardCopy.xiaomiUnanswered))
+                }
+            }
         }
     }
 
@@ -1120,10 +1224,15 @@ final class AppModel: ObservableObject {
 
     private func runDiscovery() -> [DiscoveredTV] {
         let http = URLSessionHttp()
+        let addresses = IPv4Interfaces.addresses()
         let coordinator = DiscoveryCoordinator(
             listing: BonjourListing(),
             prober: LiveSubnetProbe(http: http, reader: http),
-            localAddresses: IPv4Interfaces.addresses()
+            localAddresses: addresses,
+            ssdp: LiveSsdpSearch(localAddresses: addresses),
+            portProbe: LivePortProbe(),
+            namer: LiveTvNaming(http: http, reader: http),
+            neighbours: SystemNeighbourLookup()
         )
         return coordinator.find().found
     }

@@ -426,6 +426,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func showMenu() {
         let menu = NSMenu()
         AppearanceLock.apply(to: menu)
+        appendLaunchItems(to: menu)
         let show = NSMenuItem(title: "Show Remote", action: #selector(openFromMenu), keyEquivalent: "")
         show.target = self
         menu.addItem(show)
@@ -489,7 +490,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item.isEnabled = button.enabled
     }
 
+    private func appendLaunchItems(to menu: NSMenu) {
+        let devices = model.settings.devices
+        let device = devices.first { $0.id == model.settings.activeDeviceID }
+        var name = ""
+        if let device {
+            if !device.name.isEmpty {
+                name = device.name
+            } else {
+                name = device.host
+            }
+        }
+        let phase = LaunchFlow.phase(savedTVs: devices.count, status: model.status, name: name)
+        switch phase {
+        case .setup, .connected:
+            return
+        case .connecting:
+            let item = NSMenuItem(title: LaunchFlow.connectingTitle, action: nil, keyEquivalent: "")
+            item.isEnabled = false
+            menu.addItem(item)
+        case .failed(let failedName):
+            let item = NSMenuItem(title: LaunchFlow.couldNotReach(failedName), action: nil, keyEquivalent: "")
+            item.isEnabled = false
+            menu.addItem(item)
+            let retry = NSMenuItem(title: LaunchFlow.retryTitle, action: #selector(retryFromMenu), keyEquivalent: "")
+            retry.target = self
+            menu.addItem(retry)
+            let setup = NSMenuItem(title: LaunchFlow.setupNewTitle, action: #selector(wizardFromMenu), keyEquivalent: "")
+            setup.target = self
+            menu.addItem(setup)
+        }
+    }
+
     @objc private func openFromMenu() { openPanel() }
+
+    @objc private func retryFromMenu() { model.retryReconnect() }
 
     @objc private func toggleFromMenu() {
         guard model.allowsKeyboardCapture else { return }

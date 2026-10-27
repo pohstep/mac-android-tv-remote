@@ -535,7 +535,7 @@ final class CleanupTests: XCTestCase {
     }
 
     func testSetupDoesNotMentionCleanUp() {
-        let phases: [WizardPhase] = [.pickBrand, .find, .manual, .sonyTyping, .debugging, .pair, .allow, .sonyKey, .remember, .done]
+        let phases: [WizardPhase] = [.pickBrand, .find, .manual, .sonyTyping, .debugging, .pair, .allow, .sonyKey, .xiaomiCheck, .remember, .done]
         for phase in phases {
             for brand in [TvBrand.sony, .generic, .xiaomi] {
                 for line in SetupCopy.lines(phase: phase, brand: brand, wantsTyping: true) {

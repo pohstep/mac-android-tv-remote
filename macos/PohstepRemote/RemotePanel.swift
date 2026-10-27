@@ -82,9 +82,14 @@ struct RemotePanel: View {
     /// No saved TV uses the searching screen. A saved TV that is not answering uses offline.
     private var chrome: Chrome {
         if model.demoOn || tvIsOn || model.status.isConnected { return .connected }
-        if case .connecting = model.status, !model.settings.devices.isEmpty { return .connected }
-        if model.settings.devices.isEmpty { return .searching }
-        return .offline
+        switch LaunchFlow.phase(savedTVs: model.settings.devices.count, status: model.status, name: savedTVName) {
+        case .connecting, .connected:
+            return .connected
+        case .setup:
+            return .searching
+        case .failed:
+            return .offline
+        }
     }
 
     private var panel: some View {
@@ -144,7 +149,7 @@ struct RemotePanel: View {
             Button(action: { model.showWizard() }) {
                 HStack(spacing: 7) {
                     Image(systemName: "plus.circle")
-                    Text("Set up a new TV")
+                    Text(LaunchFlow.setupNewTitle)
                 }
             }
             .buttonStyle(FolioPrimaryStyle(expands: true))
@@ -160,10 +165,17 @@ struct RemotePanel: View {
             header(status: offlineStatus, dot: Palette.dotOffline, showsPower: true)
             failureLine
             VStack(spacing: 8) {
-                Button(action: { model.refreshNow() }) {
+                Button(action: { model.retryReconnect() }) {
                     HStack(spacing: 7) {
                         Image(systemName: "arrow.clockwise")
-                        Text("Retry")
+                        Text(LaunchFlow.retryTitle)
+                    }
+                }
+                .buttonStyle(FolioPrimaryStyle(expands: true))
+                Button(action: { model.showWizard() }) {
+                    HStack(spacing: 7) {
+                        Image(systemName: "plus.circle")
+                        Text(LaunchFlow.setupNewTitle)
                     }
                 }
                 .buttonStyle(FolioPrimaryStyle(expands: true))
@@ -239,7 +251,7 @@ struct RemotePanel: View {
                         Image(systemName: "tv")
                             .font(.system(size: 15))
                             .foregroundColor(secondaryInk)
-                        Text(tv.name)
+                        Text(tv.listTitle)
                             .font(.system(size: 13))
                             .foregroundColor(Palette.text)
                             .lineLimit(1)
@@ -1052,7 +1064,9 @@ struct RemotePanel: View {
     }
 
     private var liveStatusLine: String {
-        if case .connecting = model.status, !tvIsOn, !model.demoOn { return "Connecting" }
+        if model.demoOn || tvIsOn { return "Connected" }
+        let phase = LaunchFlow.phase(savedTVs: model.settings.devices.count, status: model.status, name: savedTVName)
+        if case .connecting = phase { return LaunchFlow.connectingTitle }
         return "Connected"
     }
 
@@ -1071,8 +1085,15 @@ struct RemotePanel: View {
         return Palette.dotOffline
     }
 
+    private var savedTVName: String {
+        guard let device = activeDevice else { return "" }
+        if !device.name.isEmpty { return device.name }
+        return device.host
+    }
+
     private var searchingLine: String {
-        if model.discovering || isConnecting { return "Searching for your TV…" }
+        if case .connecting = model.status { return LaunchFlow.connectingTitle }
+        if model.discovering { return "Searching for your TV…" }
         if model.status.detail.isEmpty { return model.status.title }
         return model.status.detail
     }
@@ -1081,7 +1102,9 @@ struct RemotePanel: View {
         switch model.status {
         case .idle, .connecting, .connected:
             return nil
-        case .adbMissing, .helperDown, .unauthorized, .refused, .unreachable, .offline, .failed:
+        case .unreachable, .offline, .failed, .refused:
+            return LaunchFlow.couldNotReach(savedTVName)
+        case .adbMissing, .helperDown, .unauthorized:
             let detail = model.status.detail
             return detail.isEmpty ? nil : detail
         }

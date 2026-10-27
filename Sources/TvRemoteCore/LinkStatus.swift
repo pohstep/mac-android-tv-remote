@@ -31,7 +31,7 @@ public enum LinkStatus: Equatable {
     public var title: String {
         switch self {
         case .idle: return "No TV address yet"
-        case .connecting: return "Connecting"
+        case .connecting: return LaunchFlow.connectingTitle
         case .connected: return "Connected"
         case .adbMissing: return "Connection helper is missing"
         case .helperDown: return "Helper didn't start"
@@ -78,6 +78,38 @@ public struct ActionReport: Equatable {
         self.title = title
         self.detail = detail
         self.isError = isError
+    }
+}
+
+public enum LaunchPhase: Equatable {
+    case setup
+    case connecting
+    case connected
+    case failed(name: String)
+}
+
+public enum LaunchFlow {
+    public static let connectingTitle = "Connecting…"
+    public static let retryTitle = "Retry"
+    public static let setupNewTitle = "Set up a new TV"
+
+    /// Saved TVs reconnect without opening setup. No saved TV opens setup.
+    public static func phase(savedTVs: Int, status: LinkStatus, name: String) -> LaunchPhase {
+        if savedTVs <= 0 { return .setup }
+        switch status {
+        case .connected:
+            return .connected
+        case .idle, .connecting:
+            return .connecting
+        case .adbMissing, .helperDown, .unauthorized, .refused, .unreachable, .offline, .failed:
+            return .failed(name: name)
+        }
+    }
+
+    public static func couldNotReach(_ name: String) -> String {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let shown = trimmed.isEmpty ? "the TV" : trimmed
+        return "Couldn't reach \(shown). Check it's on and on the same Wi-Fi, then try again."
     }
 }
 
