@@ -550,6 +550,7 @@ struct RemotePanel: View {
         }
     }
 
+    @ViewBuilder
     private var powerControl: some View {
         let button = model.powerButton
         VStack(alignment: .trailing, spacing: 4) {
