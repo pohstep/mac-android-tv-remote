@@ -18,8 +18,8 @@ enum MenuBarIcon {
 /// Clicks are forwarded to the button.
 final class StatusDrop: NSView {
     weak var button: NSStatusBarButton?
-    var onApks: ([URL], Int) -> Void = { _, _ in }
-    var onRefused: () -> Void = {}
+    var onFiles: ([URL]) -> Void = { _ in }
+    var onDragEntered: () -> Void = {}
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -29,7 +29,8 @@ final class StatusDrop: NSView {
     required init?(coder: NSCoder) { nil }
 
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
-        draggingUpdated(sender)
+        onDragEntered()
+        return draggingUpdated(sender)
     }
 
     override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
@@ -38,13 +39,8 @@ final class StatusDrop: NSView {
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
         let dropped = urls(from: sender)
-        let apks = dropped.filter { ApkPick.isApk($0.path) }
-        let skipped = dropped.count - apks.count
-        if apks.isEmpty {
-            if !dropped.isEmpty { onRefused() }
-            return false
-        }
-        onApks(apks, skipped)
+        guard !dropped.isEmpty else { return false }
+        onFiles(dropped)
         return true
     }
 
@@ -89,6 +85,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var panel: RemotePanelWindow!
     private var hosting: NSHostingView<RemotePanel>!
     private var suppressCloseUntil = Date.distantPast
+    private var fileDragActive = false
+    private var outsideClickPending = false
+    private var restingDragCount = 0
     private var didPromptForAccessibility = false
     private var globalClick: Any?
     private var localClick: Any?
@@ -135,6 +134,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model.onOpenPanel = { [weak self] in
             self?.openPanel()
         }
+        model.onFileDrag = { [weak self] in
+            self?.fileDragActive = true
+            self?.outsideClickPending = false
+        }
+        model.onDropAccepted = { [weak self] in
+            guard let self else { return }
+            self.fileDragActive = true
+            self.outsideClickPending = false
+            if !self.panel.isVisible {
+                self.openPanel()
+            }
+        }
         model.start()
         applyIcon()
         if model.shouldOfferSetup {
@@ -162,11 +173,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let overlay = StatusDrop(frame: button.bounds)
         overlay.autoresizingMask = [.width, .height]
         overlay.button = button
-        overlay.onApks = { [weak self] urls, skipped in
-            self?.model.receiveApks(urls, skipped: skipped)
+        overlay.onDragEntered = { [weak self] in
+            self?.fileDragActive = true
+            self?.outsideClickPending = false
         }
-        overlay.onRefused = { [weak self] in
-            self?.model.refuseNonApk()
+        overlay.onFiles = { [weak self] urls in
+            self?.model.receiveApks(urls)
         }
         button.addSubview(overlay)
     }
@@ -202,15 +214,67 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.isFloatingPanel = true
         sizePanelToFit()
 
-        globalClick = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
-            self?.closeIfOutside()
+        restingDragCount = NSPasteboard(name: .drag).changeCount
+        let pointer: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown, .leftMouseDragged, .leftMouseUp, .rightMouseUp]
+        globalClick = NSEvent.addGlobalMonitorForEvents(matching: pointer) { [weak self] event in
+            self?.handlePointer(event)
         }
-        localClick = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
-            guard let self, self.panel.isVisible else { return event }
-            if event.window !== self.panel && event.window !== self.model.settingsWindow {
-                self.closeIfOutside()
-            }
+        localClick = NSEvent.addLocalMonitorForEvents(matching: pointer) { [weak self] event in
+            self?.handlePointer(event)
             return event
+        }
+    }
+
+    /// A Finder drag starts with a mouse-down outside the panel. Closing there hides the drop target.
+    /// The click only closes on mouse-up, and a drag pasteboard change keeps the panel up until the next click.
+    private func handlePointer(_ event: NSEvent) {
+        let type = event.type
+        if type == .leftMouseDown || type == .rightMouseDown {
+            if isOutside(event) {
+                outsideClickPending = true
+            }
+            noteDragPasteboard(fromDraggedEvent: false)
+            return
+        }
+        if type == .leftMouseDragged {
+            noteDragPasteboard(fromDraggedEvent: true)
+            return
+        }
+        guard type == .leftMouseUp || type == .rightMouseUp else { return }
+        noteDragPasteboard(fromDraggedEvent: false)
+        let drag = fileDragActive || cursorIsOverDropTarget()
+        let click = outsideClickPending
+        let focusLost = !NSApp.isActive && !panel.isKeyWindow
+        fileDragActive = false
+        outsideClickPending = false
+        guard panel.isVisible, Date() > suppressCloseUntil else { return }
+        if PanelDismiss.shouldClose(dragInProgress: drag, focusLost: focusLost, clickOutside: click) {
+            hidePanel()
+        }
+    }
+
+    private func isOutside(_ event: NSEvent) -> Bool {
+        if event.window === panel || event.window === model.settingsWindow { return false }
+        if let button = statusItem?.button, event.window === button.window { return false }
+        return true
+    }
+
+    private func cursorIsOverDropTarget() -> Bool {
+        let point = NSEvent.mouseLocation
+        if panel.isVisible && panel.frame.contains(point) { return true }
+        guard let button = statusItem?.button, let window = button.window else { return false }
+        let rect = window.convertToScreen(button.convert(button.bounds, to: nil))
+        return rect.contains(point)
+    }
+
+    private func noteDragPasteboard(fromDraggedEvent: Bool) {
+        let board = NSPasteboard(name: .drag)
+        guard board.changeCount != restingDragCount else { return }
+        restingDragCount = board.changeCount
+        let files = board.canReadObject(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true])
+        if files || fromDraggedEvent {
+            fileDragActive = true
+            outsideClickPending = false
         }
     }
 
@@ -325,11 +389,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             originY = buttonRect.maxY + 6
         }
         panel.setFrameOrigin(NSPoint(x: originX, y: originY))
-    }
-
-    private func closeIfOutside() {
-        guard panel.isVisible, Date() > suppressCloseUntil else { return }
-        hidePanel()
     }
 
     private func showMenu() {

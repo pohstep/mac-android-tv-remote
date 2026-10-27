@@ -78,6 +78,10 @@ final class AppModel: ObservableObject {
     var onKeyboardModeChanged: ((Bool) -> Void)?
     var onChromeChanged: (() -> Void)?
     var onOpenPanel: (() -> Void)?
+    /// A file drag is over the panel. The window stays up until the drag ends.
+    var onFileDrag: (() -> Void)?
+    /// A drop finished. Open the panel if it was closed so the result is visible.
+    var onDropAccepted: (() -> Void)?
     private var hudItem: DispatchWorkItem?
     private var pendingKey = ""
     private var lastSeenWrite = Date.distantPast
@@ -680,72 +684,77 @@ final class AppModel: ObservableObject {
         stageReadableCopy(of: url)
     }
 
+    func noteFileDrag() {
+        onFileDrag?()
+    }
+
     func receiveStaged(_ paths: [String], skipped: Int = 0) {
+        onDropAccepted?()
+        let route = FileDrop.route(paths, alreadySkipped: skipped)
         if demoOn {
             discard(takePendingStages())
-            let apks = paths.filter { ApkPick.isApk($0) }
-            guard !apks.isEmpty else {
-                noteJob(JobReport(sentence: ApkPick.onlyApk, raw: "", isError: true))
-                return
-            }
-            let held = skipped
-            jobKind = .install
-            installLog = ""
-            showInstallLog = false
-            runJob("Installing…", cancellable: false) { [weak self] _ in
-                let report = self?.demo.installApk(at: apks[0]) ?? JobReport(sentence: "Cancelled.", raw: "", isError: true)
-                return ApkPick.notingSkipped(report, skipped: held)
+            switch route {
+            case .refused(let sentence):
+                noteJob(JobReport(sentence: sentence, raw: "", isError: true))
+            case .install(let apks, let skipped):
+                jobKind = .install
+                installLog = ""
+                showInstallLog = false
+                runJob("Installing…", cancellable: false) { [weak self] _ in
+                    let report = self?.demo.installApk(at: apks[0]) ?? JobReport(sentence: "Cancelled.", raw: "", isError: true)
+                    return ApkPick.notingSkipped(report, skipped: skipped)
+                }
             }
             return
         }
-        let directories = takePendingStages()
-        let apks = paths.filter { ApkPick.isApk($0) }
-        guard !apks.isEmpty else {
-            discard(directories)
-            noteJob(JobReport(sentence: ApkPick.onlyApk, raw: "", isError: true))
-            return
+        switch route {
+        case .refused(let sentence):
+            discard(takePendingStages())
+            noteJob(JobReport(sentence: sentence, raw: "", isError: true))
+        case .install(let apks, let skipped):
+            runInstalls(apks, directories: takePendingStages(), skipped: skipped)
         }
-        runInstalls(apks, directories: directories, skipped: skipped)
     }
 
     func receiveApks(_ urls: [URL], skipped extraSkipped: Int = 0) {
+        onDropAccepted?()
+        let route = FileDrop.route(urls.map(\.path), alreadySkipped: extraSkipped)
         if demoOn {
-            let apks = urls.filter { $0.path.lowercased().hasSuffix(".apk") }
-            guard !apks.isEmpty else {
-                noteJob(JobReport(sentence: ApkPick.onlyApk, raw: "", isError: true))
+            switch route {
+            case .refused(let sentence):
+                noteJob(JobReport(sentence: sentence, raw: "", isError: true))
+            case .install(let apks, let skipped):
+                jobKind = .install
+                installLog = ""
+                showInstallLog = false
+                runJob("Installing…", cancellable: false) { [weak self] _ in
+                    let report = self?.demo.installApk(at: apks[0]) ?? JobReport(sentence: "Cancelled.", raw: "", isError: true)
+                    return ApkPick.notingSkipped(report, skipped: skipped)
+                }
+            }
+            return
+        }
+        switch route {
+        case .refused(let sentence):
+            noteJob(JobReport(sentence: sentence, raw: "", isError: true))
+        case .install(let apks, let skipped):
+            let wanted = Set(apks)
+            var paths: [String] = []
+            for url in urls where wanted.contains(url.path) {
+                let scoped = url.startAccessingSecurityScopedResource()
+                if let staged = stageReadableCopy(of: url) {
+                    paths.append(staged)
+                }
+                if scoped { url.stopAccessingSecurityScopedResource() }
+            }
+            let directories = takePendingStages()
+            guard !paths.isEmpty else {
+                discard(directories)
+                noteJob(JobReport(sentence: "That file can't be read.", raw: "", isError: true))
                 return
             }
-            let skipped = extraSkipped + (urls.count - apks.count)
-            jobKind = .install
-            installLog = ""
-            showInstallLog = false
-            runJob("Installing…", cancellable: false) { [weak self] _ in
-                let report = self?.demo.installApk(at: apks[0].path) ?? JobReport(sentence: "Cancelled.", raw: "", isError: true)
-                return ApkPick.notingSkipped(report, skipped: skipped)
-            }
-            return
+            runInstalls(paths, directories: directories, skipped: skipped)
         }
-        let apks = urls.filter { ApkPick.isApk($0.path) }
-        let skipped = extraSkipped + (urls.count - apks.count)
-        guard !apks.isEmpty else {
-            noteJob(JobReport(sentence: ApkPick.onlyApk, raw: "", isError: true))
-            return
-        }
-        var paths: [String] = []
-        for url in apks {
-            let scoped = url.startAccessingSecurityScopedResource()
-            if let staged = stageReadableCopy(of: url) {
-                paths.append(staged)
-            }
-            if scoped { url.stopAccessingSecurityScopedResource() }
-        }
-        let directories = takePendingStages()
-        guard !paths.isEmpty else {
-            discard(directories)
-            noteJob(JobReport(sentence: "That file can't be read.", raw: "", isError: true))
-            return
-        }
-        runInstalls(paths, directories: directories, skipped: skipped)
     }
 
     func installApk(at path: String) {

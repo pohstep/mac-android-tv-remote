@@ -51,6 +51,9 @@ struct RemotePanel: View {
         .onDrop(of: [.fileURL], isTargeted: $dropTargeted) { providers in
             loadDroppedFiles(providers)
         }
+        .onChange(of: dropTargeted) { targeted in
+            if targeted { model.noteFileDrag() }
+        }
     }
 
     private var stack: some View {

@@ -142,6 +142,40 @@ public enum InstallExplain {
     }
 }
 
+public enum PanelDismiss {
+    /// A click outside, or focus leaving, closes the panel. A file drag in progress does not.
+    public static func shouldClose(dragInProgress: Bool, focusLost: Bool, clickOutside: Bool) -> Bool {
+        if dragInProgress { return false }
+        return focusLost || clickOutside
+    }
+}
+
+public enum FileDrop {
+    public enum Route: Equatable {
+        case refused(String)
+        case install(paths: [String], skipped: Int)
+    }
+
+    /// `.txt` is refused. An `.apk` is installed. A mix keeps the skipped-file line.
+    public static func route(_ paths: [String], alreadySkipped: Int = 0) -> Route {
+        let apks = paths.filter(ApkPick.isApk)
+        let skipped = alreadySkipped + (paths.count - apks.count)
+        if apks.isEmpty {
+            return .refused(ApkPick.onlyApk)
+        }
+        return .install(paths: apks, skipped: skipped)
+    }
+
+    public static func handle(_ paths: [String], install: (String) -> JobReport) -> JobReport {
+        switch route(paths) {
+        case .refused(let sentence):
+            return JobReport(sentence: sentence, raw: "", isError: true)
+        case .install(let paths, let skipped):
+            return ApkPick.notingSkipped(SerialTransfers.run(paths, body: install), skipped: skipped)
+        }
+    }
+}
+
 public enum ApkPick {
     public static let onlyApk = "Only .apk files can be installed. Choose an .apk…"
 
@@ -192,6 +226,12 @@ public enum ScreenshotCapture {
     /// A sleeping TV gives no picture, and asking it takes about half a minute. Say so first.
     public static let asleep = "The TV is asleep. Turn it on first."
     public static let needsLink = "The TV isn't connected."
+    /// Log only. A pull that writes no bytes is not "1 file pulled".
+    public static let emptyImageLog = "the screenshot image was empty"
+
+    public static func pulledLog(bytes: Data, commandRaw: String) -> String {
+        bytes.isEmpty ? emptyImageLog : commandRaw
+    }
 
     /// A valid PNG, including an all-black frame, is kept. A broken exec-out result uses the fallback bytes.
     public static func resolve(execOut: Data, fallbackRaw: String = "", fallback: () -> (Data, String)) -> ScreenshotResult {
@@ -208,7 +248,12 @@ public enum ScreenshotCapture {
             case .blank:
                 return ScreenshotResult(png: pulled.0, sentence: ScreenshotBytes.blankSentence, raw: pulled.1, isError: false)
             case .broken:
-                return ScreenshotResult(png: nil, sentence: "The screenshot didn't come back.", raw: pulled.1, isError: true)
+                return ScreenshotResult(
+                    png: nil,
+                    sentence: "The screenshot didn't come back.",
+                    raw: pulledLog(bytes: pulled.0, commandRaw: pulled.1),
+                    isError: true
+                )
             }
         }
     }

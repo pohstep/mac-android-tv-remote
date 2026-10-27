@@ -115,6 +115,50 @@ final class MacJobTests: XCTestCase {
         XCTAssertEqual(InstallLog.append("", "Installed."), "Installed.")
     }
 
+    func testPanelStaysOpenWhileAFileIsDragged() {
+        XCTAssertFalse(PanelDismiss.shouldClose(dragInProgress: true, focusLost: true, clickOutside: true))
+        XCTAssertFalse(PanelDismiss.shouldClose(dragInProgress: true, focusLost: false, clickOutside: false))
+        XCTAssertTrue(PanelDismiss.shouldClose(dragInProgress: false, focusLost: true, clickOutside: false))
+        XCTAssertTrue(PanelDismiss.shouldClose(dragInProgress: false, focusLost: false, clickOutside: true))
+        XCTAssertFalse(PanelDismiss.shouldClose(dragInProgress: false, focusLost: false, clickOutside: false))
+    }
+
+    func testFileDropRefusesTextInstallsAnApkAndNotesAMixedDrop() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("zapbar-drop-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let apk = folder.appendingPathComponent("Show.apk")
+        try Data([0x50]).write(to: apk)
+        let text = folder.appendingPathComponent("notes.txt")
+        try Data("hello".utf8).write(to: text)
+
+        let refused = FileDrop.handle([text.path]) { _ in
+            XCTFail("a text file must not be installed")
+            return JobReport(sentence: "Installed.", raw: "", isError: false)
+        }
+        XCTAssertEqual(refused.sentence, "Only .apk files can be installed. Choose an .apk…")
+        XCTAssertTrue(refused.isError)
+
+        let fake = FakeRunner()
+        let session = connectedSession(fake, temporaryDirectory: NSTemporaryDirectory())
+        fake.handler = { arguments in
+            if arguments == ["-P", "5037", "devices"] {
+                return .success(CommandResult(status: 0, stdout: "List of devices attached\n192.0.2.20:5555\tdevice\n", stderr: ""))
+            }
+            if arguments.contains("install") {
+                return .success(CommandResult(status: 0, stdout: "Success\n", stderr: ""))
+            }
+            return .success(CommandResult(status: 0, stdout: "", stderr: ""))
+        }
+        let installed = FileDrop.handle([apk.path]) { session.installApk(at: $0) }
+        XCTAssertEqual(installed.sentence, "Installed.")
+        XCTAssertFalse(installed.isError)
+        XCTAssertTrue(fake.calls.contains { $0.arguments.contains("install") && $0.arguments.contains(apk.path) })
+
+        let mixed = FileDrop.handle([apk.path, text.path]) { session.installApk(at: $0) }
+        XCTAssertEqual(mixed.sentence, "Installed. Skipped 1 file that isn't an .apk.")
+        XCTAssertFalse(mixed.isError)
+    }
+
     func testScreenshotFailureSaysWhatToDoNext() {
         XCTAssertEqual(
             InstallExplain.recovery(for: "The screenshot didn't come back.", kind: .screenshot),
@@ -162,6 +206,18 @@ final class MacJobTests: XCTestCase {
         XCTAssertEqual(stillBlank.sentence, ScreenshotBytes.blankSentence)
         XCTAssertFalse(stillBlank.isError)
         XCTAssertEqual(stillBlank.raw, "adb: broken pipe")
+
+        let emptyPull = ScreenshotCapture.resolve(execOut: Data("broken".utf8)) {
+            (Data(), "1 file pulled, 0 skipped")
+        }
+        XCTAssertNil(emptyPull.png)
+        XCTAssertEqual(emptyPull.sentence, "The screenshot didn't come back.")
+        XCTAssertEqual(emptyPull.raw, "the screenshot image was empty")
+        XCTAssertFalse(emptyPull.raw.contains("1 file pulled"))
+        XCTAssertEqual(
+            InstallExplain.recovery(for: emptyPull.sentence, kind: .screenshot),
+            "Press Screenshot again. If the TV is showing protected video, try another screen."
+        )
 
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("zapbar-shot-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
