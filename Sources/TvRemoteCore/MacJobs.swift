@@ -80,7 +80,9 @@ public enum InstallExplain {
     private static func installRecovery(_ sentence: String) -> String? {
         switch sentence {
         case "Installed.", "Cancelled.", "Taking a screenshot…", "Screenshot ready.",
-             "Copied.", "Saved", "Couldn't save", ScreenshotCapture.asleep, ApkPick.onlyApk:
+             "Copied.", "Saved", "Couldn't save",
+             "Couldn't save. Choose another folder and press Save… again.",
+             ScreenshotCapture.asleep, ApkPick.onlyApk:
             return nil
         case "The TV already has a newer version of this app.":
             return "Choose a newer .apk."
