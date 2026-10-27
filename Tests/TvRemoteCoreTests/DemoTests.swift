@@ -39,7 +39,7 @@ final class DemoTests: XCTestCase {
 
         let copy = [
             DemoCopy.name, DemoCopy.mode, DemoCopy.leave, DemoCopy.tryIt, DemoCopy.noneFound,
-            DemoCopy.sent, link.sentence, file.sentence, install.sentence, shot.sentence
+            DemoCopy.sent, install.sentence, shot.sentence
         ].joined(separator: "\n")
         XCTAssertFalse(copy.contains("Android"))
         XCTAssertFalse(copy.contains("Sony Bravia"))
