@@ -9,6 +9,7 @@ public enum WizardPhase: Equatable {
     case pair
     case allow
     case sonyKey
+    case xiaomiCheck
     case remember
     case done
 }
@@ -37,6 +38,9 @@ public enum WizardEvent: Equatable {
     case allowAccepted
     case allowWaiting
     case connectFailed(String)
+    case testKey(String)
+    case testSucceeded
+    case testFailed(String)
     case continueAhead
     case remember(name: String)
     case back
@@ -46,6 +50,8 @@ public enum WizardEffect: Equatable {
     case none
     case pairAndConnect(host: String, pairPort: Int, code: String, connectPort: Int)
     case connectLegacy(host: String, port: Int)
+    case testSony(host: String, port: Int, psk: String)
+    case testXiaomi(host: String, port: Int)
     case save(StoredTV)
 }
 
@@ -66,8 +72,17 @@ public enum SetupCopy {
             return lines
         case .sonyKey:
             return [
-                SetupLine(key: "setup.sony.ip.1", text: "On the TV, turn on IP control."),
-                SetupLine(key: "setup.sony.ip.2", text: "Set a pre-shared key. Enter the same key here. It stays in the Keychain.")
+                SetupLine(key: "setup.sony.ip.1", text: "On the TV, open Settings, then Network, then IP control."),
+                SetupLine(key: "setup.sony.ip.2", text: "Turn on IP control. Set Authentication to Normal and Pre-Shared Key, then choose a pre-shared key."),
+                SetupLine(key: "setup.sony.ip.3", text: "Enter that key here. Test checks the set. The key is saved in the Keychain on this Mac.")
+            ]
+        case .xiaomiCheck:
+            return [
+                SetupLine(key: "setup.xiaomi.check.1", text: "Experimental. This TV uses local control on port 6095. Typing and power-on are not available.")
+            ]
+        case .find:
+            return [
+                SetupLine(key: "setup.find.1", text: "Pick a TV on this network, or enter an address.")
             ]
         case .remember where brand == .xiaomi:
             return [
@@ -85,7 +100,7 @@ public enum SetupCopy {
             return [
                 SetupLine(key: "setup.sony.choice.1", text: "IP control runs the remote. Turn on network debugging only if you want to type.")
             ]
-        default:
+        case .pickBrand, .manual, .remember, .done:
             return []
         }
     }
@@ -99,6 +114,9 @@ public struct SetupWizard: Equatable {
     public private(set) var controlPort: Int
     public private(set) var macAddress: String
     public private(set) var pairingPortHint: Int?
+    public private(set) var legacyAdbPort: Int?
+    /// False when this copy of Zapbar has no helper that can type. Defaults to true so a test can opt out.
+    public private(set) var adbReady: Bool
     public private(set) var wantsTyping: Bool
     public private(set) var message: String?
     public private(set) var name: String
@@ -112,10 +130,16 @@ public struct SetupWizard: Equatable {
         controlPort = 80
         macAddress = ""
         pairingPortHint = nil
+        legacyAdbPort = nil
+        adbReady = true
         wantsTyping = false
         message = nil
         name = ""
         stack = []
+    }
+
+    public mutating func setAdbReady(_ ready: Bool) {
+        adbReady = ready
     }
 
     public func lines() -> [SetupLine] {
@@ -167,6 +191,9 @@ public struct SetupWizard: Equatable {
                 return .none
             }
             host = normalized.host
+            pairingPortHint = nil
+            legacyAdbPort = nil
+            macAddress = ""
             if let explicit = rawPort ?? normalized.port {
                 port = explicit
             }
@@ -180,7 +207,41 @@ public struct SetupWizard: Equatable {
             return routeAfterFound()
         case (.sonyTyping, .typing(let yes)):
             wantsTyping = yes
-            go(yes ? .debugging : .sonyKey)
+            if !yes {
+                go(.remember)
+                return .none
+            }
+            guard adbReady else {
+                wantsTyping = false
+                message = "Typing needs the built-in helper, and this copy does not have it. Remote keys still work."
+                return .none
+            }
+            return routeDebugging()
+        case (.sonyKey, .testKey(let raw)):
+            let key = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !key.isEmpty else {
+                message = "Enter the pre-shared key from the TV."
+                return .none
+            }
+            message = "Checking the key…"
+            return .testSony(host: host, port: controlPort, psk: key)
+        case (.sonyKey, .testSucceeded):
+            go(.sonyTyping)
+            return .none
+        case (.sonyKey, .testFailed(let detail)):
+            message = detail
+            return .none
+        case (.sonyKey, .continueAhead):
+            go(.sonyTyping)
+            return .none
+        case (.xiaomiCheck, .testSucceeded):
+            go(.remember)
+            return .none
+        case (.xiaomiCheck, .testFailed(let detail)):
+            message = detail
+            return .none
+        case (.xiaomiCheck, .continueAhead):
+            go(.remember)
             return .none
         case (.debugging, .chooseWireless):
             go(.pair)
@@ -214,9 +275,6 @@ public struct SetupWizard: Equatable {
         case (.allow, .connectFailed(let detail)):
             message = detail
             return .none
-        case (.sonyKey, .continueAhead):
-            go(.remember)
-            return .none
         case (.remember, .remember(let chosen)):
             let trimmed = chosen.trimmingCharacters(in: .whitespacesAndNewlines)
             name = trimmed.isEmpty ? host : trimmed
@@ -236,16 +294,17 @@ public struct SetupWizard: Equatable {
         host = tv.host
         macAddress = tv.macAddress
         pairingPortHint = tv.pairingPort
-        if !tv.name.isEmpty { name = tv.name }
+        legacyAdbPort = tv.legacyAdbPort
+        name = tv.friendlyName
         switch tv.brand {
         case .sony:
             controlPort = tv.controlPort == 0 ? 80 : tv.controlPort
-            port = 5555
+            port = tv.legacyAdbPort ?? 5555
         case .xiaomi:
-            controlPort = tv.port == 0 ? 6095 : tv.port
+            controlPort = tv.controlPort == 0 ? 6095 : tv.controlPort
             port = controlPort
         case .generic:
-            port = tv.port == 0 ? 5555 : tv.port
+            port = tv.legacyAdbPort ?? (tv.port == 0 ? 5555 : tv.port)
             controlPort = port
         }
     }
@@ -253,14 +312,33 @@ public struct SetupWizard: Equatable {
     private mutating func routeAfterFound() -> WizardEffect {
         switch brand {
         case .sony:
-            go(.sonyTyping)
+            go(.sonyKey)
+            return .none
         case .generic:
-            go(.debugging)
+            return routeDebugging()
         case .xiaomi:
-            go(.remember)
+            go(.xiaomiCheck)
+            message = "Checking this TV…"
+            return .testXiaomi(host: host, port: controlPort)
         case nil:
-            break
+            return .none
         }
+    }
+
+    /// Least clicks: an open legacy debugging port goes straight to Allow.
+    /// A pairing advertisement opens the code screen with the port filled in.
+    private mutating func routeDebugging() -> WizardEffect {
+        if let adbPort = legacyAdbPort {
+            port = adbPort
+            if brand == .generic { controlPort = adbPort }
+            go(.allow)
+            return .connectLegacy(host: host, port: adbPort)
+        }
+        if pairingPortHint != nil {
+            go(.pair)
+            return .none
+        }
+        go(.debugging)
         return .none
     }
 

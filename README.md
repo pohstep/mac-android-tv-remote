@@ -30,7 +30,7 @@ Zapbar was called Mac Android TV Remote up to v1.0.1. Same project, new name.
 - **Inputs** with the names the TV reports.
 - **Power on from standby** where the TV allows it: Sony IP control, then Wake-on-LAN, then a wake key, then a status check. Power off asks for a second click.
 - **Several TVs.** The last one reconnects on launch. Wake is in the menu bar. Release and sandbox builds leave a v1.0 settings file and the old keychain item unread, so the first launch does not ask for Keychain access. `scripts/build-dev.sh` sets `ZAPBAR_MIGRATE_V1` and can bring that TV and key across.
-- **Setup** walks through brand, finding the TV (or typing an address), debugging, pairing or Allow, and saving.
+- **Setup** finds a Sony set with SSDP, and lists a Xiaomi set or another set found on the network (Bonjour, Cast, or a port scan). You can still type an address. Demo mode stays available when nothing is found.
 - **Type on the TV.** A field in the panel sends on Return; paste text or a link into it too. `⌃⌥T` opens the panel and focuses it. Plain letters go over the debugging connection. If a route can't type, the panel says so.
 - **Try demo TV** opens a connected panel with no TV on the network. It is on the find step when nothing is found, and in Settings. Leave demo returns to a saved TV. Demo mode is not saved.
 - **Drop an APK** (an app file) on the menu bar icon or the panel. Zapbar installs it and shows one plain sentence for the result. The original message stays under that sentence. Filenames can contain spaces.
@@ -56,16 +56,34 @@ Xiaomi control (port 6095: keys, apps, HDMI) is **experimental**. It was written
 1. **Settings → Network → IP control**
    - **Authentication**: *Normal and Pre-Shared Key*
    - **Pre-Shared Key**: choose a key
-2. **Remote start**: **On**, if you want the set to wake from standby.
-3. Optional, for typing: turn on network debugging and accept the prompt the first time this Mac connects. Skip this if you only want the remote buttons.
+2. In Zapbar, pick the set. The list shows the IP and the model when the set answers `getSystemInformation`. Enter the key and choose **Test connection**. A successful test reads power status only. It does not change a setting on the TV. The key is saved in the Keychain when you save the TV.
+3. **Remote start**: **On**, if you want the set to wake from standby.
+4. Optional, for typing: choose **Also set up typing**. If port 5555 or wireless debugging is already announced, Zapbar goes straight to Allow or the pairing code. Skip this if you only want the remote buttons.
+
+### On a Xiaomi set
+
+Pick **Xiaomi**. Zapbar looks for an SSDP banner (MiTV, Xiaomi, Redmi) and for port 6095. The check calls `isalive`. This path is experimental. Typing and power-on are not available. You can save the set if the check does not answer.
 
 ### On another TV
 
 1. Open the setup window and pick **Other TV**.
-2. For current wireless debugging, enter the pairing port and the 6-digit code. Zapbar runs `adb pair`, then `adb connect`.
-3. For an older set, use port 5555 and accept **Allow** on the TV.
+2. A set that announces `_adb._tcp`, port 5555, wireless debugging, Android TV remote, or a TV-like Cast name shows up with its IP. Speakers are left out.
+3. When debugging is already there, Zapbar opens Allow or the pairing code. Otherwise it shows the debugging steps.
+4. For current wireless debugging, enter the pairing port and the 6-digit code. Zapbar runs `adb pair`, then `adb connect`.
+5. For an older set, use port 5555 and accept **Allow** on the TV.
 
-You can always type an IP address instead of waiting for discovery.
+You can always type an IP address instead of waiting for discovery. **Try demo TV** remains on the find step when the search finishes with nothing.
+
+### Check discovery on a Mac
+
+This needs Jim's Mac and a real set. The Linux tests only parse fixture packets.
+
+1. Build with `scripts/build-local.sh` and open Zapbar. Allow **Local Network** if macOS asks.
+2. Sony: turn the set on, same LAN (not a guest network). **Add a TV…**, pick **Sony**. The list should include the set's IP. If `getSystemInformation` answers without a key, the model is on that row. Enter the pre-shared key, **Test connection**, then save. Remote keys should work. Skip typing if you only want those keys.
+3. Optional typing: turn on network debugging. Run setup again (or **Also set up typing**). If `_adb._tcp` or port 5555 is open, Zapbar should jump to Allow. Accept Allow on the TV. If the helper is missing, the typing step says so and remote keys still save.
+4. Xiaomi (port 6095): pick **Xiaomi**. The set should appear without typing an IP, named when `isalive` answers. Continue and save. A Google TV Xiaomi that has no port 6095 will not use this path; it shows under **Other TV** when Cast or debugging announces it.
+5. Nothing found: **Try demo TV** still opens a connected panel, and **Enter an address** still works.
+6. If the Sony row is missing, Bonjour and the /24 scan still run. Multicast on macOS does not use the iOS-only multicast entitlement. Local Network permission is the usual block. Guest Wi-Fi and AP isolation also hide SSDP.
 
 ### On the Mac
 
@@ -123,7 +141,7 @@ With an explicit directory and a signing identity:
 SANDBOX=1 PLATFORM_TOOLS="$HOME/platform-tools" SIGN_IDENTITY="-" NO_INSTALL=1 scripts/build-local.sh
 ```
 
-The host is signed with `macos/PohstepRemote/Zapbar.entitlements` (`app-sandbox`, `network.client`, `network.server`) and the hardened runtime. The helper at `Contents/Helpers/adb` is signed with `macos/PohstepRemote/adb-helper.entitlements` (`app-sandbox` and `inherit` only) and the hardened runtime. Every `adb` launch sets `TMPDIR` to the app temporary directory. A sandboxed build sets `ADB_SERVER_SOCKET` to `tcp:localhost:5038` and passes `-P 5038`, so the helper starts its own server. The other build uses `tcp:localhost:5037` and `-P 5037`. The non-sandbox build still looks for a user-installed `adb` when the helper is absent.
+The host is signed with `macos/PohstepRemote/Zapbar.entitlements` (`app-sandbox`, `network.client`, `network.server`) and the hardened runtime. SSDP uses those network entitlements. The iOS multicast entitlement is not added: Apple does not require it on macOS, and an ad-hoc signature cannot carry that restricted entitlement. The helper at `Contents/Helpers/adb` is signed with `macos/PohstepRemote/adb-helper.entitlements` (`app-sandbox` and `inherit` only) and the hardened runtime. Every `adb` launch sets `TMPDIR` to the app temporary directory. A sandboxed build sets `ADB_SERVER_SOCKET` to `tcp:localhost:5038` and passes `-P 5038`, so the helper starts its own server. The other build uses `tcp:localhost:5037` and `-P 5037`. The non-sandbox build still looks for a user-installed `adb` when the helper is absent.
 
 See [docs/adb-notice.md](docs/adb-notice.md) for the Apache-2.0 notice.
 

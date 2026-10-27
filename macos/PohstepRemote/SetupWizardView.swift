@@ -80,7 +80,7 @@ struct SetupWizardView: View {
             return 0
         case .find, .manual:
             return 1
-        case .sonyTyping, .debugging, .pair, .allow, .sonyKey:
+        case .sonyTyping, .debugging, .pair, .allow, .sonyKey, .xiaomiCheck:
             return 2
         case .remember:
             return 3
@@ -91,9 +91,9 @@ struct SetupWizardView: View {
 
     private var showsPicture: Bool {
         switch model.wizard.phase {
-        case .debugging, .pair, .allow:
+        case .debugging, .pair, .allow, .sonyKey, .xiaomiCheck:
             return true
-        case .pickBrand, .find, .manual, .sonyTyping, .sonyKey, .remember, .done:
+        case .pickBrand, .find, .manual, .sonyTyping, .remember, .done:
             return false
         }
     }
@@ -108,6 +108,8 @@ struct SetupWizardView: View {
             return "checkmark.shield"
         case .sonyKey:
             return "lock"
+        case .xiaomiCheck:
+            return "tv"
         case .remember, .done:
             return "square.and.arrow.down"
         }
@@ -122,7 +124,8 @@ struct SetupWizardView: View {
         case .debugging: return "Turn on debugging"
         case .pair: return "Pair"
         case .allow: return "Allow this Mac"
-        case .sonyKey: return "Sony key"
+        case .sonyKey: return "Pre-shared key"
+        case .xiaomiCheck: return "Check this TV"
         case .remember: return "Save this TV"
         case .done: return "Saved"
         }
@@ -144,7 +147,7 @@ struct SetupWizardView: View {
                     .font(.system(size: 12))
             }
             ForEach(Array(model.discovered.enumerated()), id: \.offset) { _, tv in
-                Button("\(tv.name) · \(tv.host)") { model.sendWizard(.pick(tv)) }
+                Button(tv.listTitle) { model.sendWizard(.pick(tv)) }
                     .buttonStyle(FolioPrimaryStyle(wizard: true))
             }
             if DemoOffer.showWhenNoneFound(searching: model.discovering, matchCount: model.discovered.count) {
@@ -166,9 +169,9 @@ struct SetupWizardView: View {
             }
             .buttonStyle(FolioPrimaryStyle(wizard: true))
         case .sonyTyping:
-            Button("Skip typing") { model.sendWizard(.typing(false)) }
-            Button("I want to type") { model.sendWizard(.typing(true)) }
+            Button("Use remote keys only") { model.sendWizard(.typing(false)) }
                 .buttonStyle(FolioPrimaryStyle(wizard: true))
+            Button("Also set up typing") { model.sendWizard(.typing(true)) }
         case .debugging:
             Button("Pair with a code") { model.sendWizard(.chooseWireless) }
                 .buttonStyle(FolioPrimaryStyle(wizard: true))
@@ -189,13 +192,13 @@ struct SetupWizardView: View {
             SecureField("Pre-shared key", text: $psk)
                 .folioFieldChrome(focused: false)
             HStack {
-                Button("Save key and continue") {
-                    model.stagePreSharedKey(psk)
-                    model.sendWizard(.continueAhead)
-                }
-                .buttonStyle(FolioPrimaryStyle(wizard: true))
+                Button("Test connection") { model.sendWizard(.testKey(psk)) }
+                    .buttonStyle(FolioPrimaryStyle(wizard: true))
                 Button("Skip") { model.sendWizard(.continueAhead) }
             }
+        case .xiaomiCheck:
+            Button("Continue") { model.sendWizard(.continueAhead) }
+                .buttonStyle(FolioPrimaryStyle(wizard: true))
         case .remember:
             TextField("Name", text: $deviceName)
                 .folioFieldChrome(focused: false)

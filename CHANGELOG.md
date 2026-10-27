@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+Connect wizard for 1.2. Version strings stay at 1.1 until the release.
+
+- Sony sets are found with an SSDP search for ScalarWebAPI, then listed with IP and model when `getSystemInformation` answers. The /24 scan remains the fallback.
+- Xiaomi sets are listed from an MiTV / Xiaomi / Redmi SSDP banner and from the existing port 6095 probe. Another set can show up from `_adb._tcp`, wireless debugging, Android TV remote, or a TV-like Cast name. Speakers are left out.
+- After you pick a Sony set: IP control steps, pre-shared key, a power-status test, then an optional typing step. Port 5555 or a pairing advertisement skips the extra debugging choice. Demo mode and manual addresses stay.
+
 ## 1.1 — 2026-10-26
 
 Release build: core setup, drop an app file, send a link, screenshot, send a file, and the approved icon.

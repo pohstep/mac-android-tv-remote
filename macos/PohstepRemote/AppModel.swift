@@ -851,6 +851,7 @@ final class AppModel: ObservableObject {
     }
 
     func sendWizard(_ event: WizardEvent) {
+        wizard.setAdbReady(session.typingHelperAvailable())
         let effect = wizard.handle(event)
         if case .choose = event {
             discoverTVs()
@@ -862,8 +863,44 @@ final class AppModel: ObservableObject {
             runPair(host: host, pairPort: pairPort, code: code, connectPort: connectPort)
         case .connectLegacy(let host, let port):
             beginLegacyConnect(host: host, port: port)
+        case .testSony(let host, let port, let psk):
+            runSonyTest(host: host, port: port, psk: psk)
+        case .testXiaomi(let host, let port):
+            runXiaomiTest(host: host, port: port)
         case .save(let device):
             remember(device)
+        }
+    }
+
+    private func runSonyTest(host: String, port: Int, psk: String) {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let verdict = SonyClient(http: URLSessionHttp()).checkConnection(host: host, port: port, psk: psk)
+            DispatchQueue.main.async {
+                guard let self, self.wizard.phase == .sonyKey else { return }
+                switch verdict {
+                case .connected:
+                    self.stagePreSharedKey(psk)
+                    _ = self.wizard.handle(.testSucceeded)
+                case .rejected:
+                    _ = self.wizard.handle(.testFailed("That key was refused. Check the pre-shared key on the TV."))
+                case .unanswered:
+                    _ = self.wizard.handle(.testFailed("The TV did not answer. Check the address and that IP control is on."))
+                }
+            }
+        }
+    }
+
+    private func runXiaomiTest(host: String, port: Int) {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let name = XiaomiClient(reader: URLSessionHttp()).alive(host: host, port: port)
+            DispatchQueue.main.async {
+                guard let self, self.wizard.phase == .xiaomiCheck else { return }
+                if name != nil {
+                    _ = self.wizard.handle(.testSucceeded)
+                } else {
+                    _ = self.wizard.handle(.testFailed("This TV did not answer on port 6095. You can save it and try again later."))
+                }
+            }
         }
     }
 
@@ -884,10 +921,14 @@ final class AppModel: ObservableObject {
 
     private func runDiscovery() -> [DiscoveredTV] {
         let http = URLSessionHttp()
+        let addresses = IPv4Interfaces.addresses()
         let coordinator = DiscoveryCoordinator(
             listing: BonjourListing(),
             prober: LiveSubnetProbe(http: http, reader: http),
-            localAddresses: IPv4Interfaces.addresses()
+            localAddresses: addresses,
+            ssdp: LiveSsdpSearch(localAddresses: addresses),
+            portProbe: LivePortProbe(),
+            namer: LiveTvNaming(http: http, reader: http)
         )
         return coordinator.find().found
     }

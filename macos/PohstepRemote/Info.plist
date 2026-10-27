@@ -34,6 +34,9 @@
 	<array>
 		<string>_adb-tls-connect._tcp</string>
 		<string>_adb-tls-pairing._tcp</string>
+		<string>_adb._tcp</string>
+		<string>_androidtvremote2._tcp</string>
+		<string>_googlecast._tcp</string>
 	</array>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Zapbar looks for your TV on your home network and sends it remote commands.</string>

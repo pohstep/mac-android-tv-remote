@@ -242,6 +242,26 @@ public struct SonyClient {
         return SonyParse.power(data)
     }
 
+    /// Setup test. Reads power status only. Does not change a setting on the TV.
+    public func checkConnection(host: String, port: Int, psk: String) -> SonyConnectCheck.Verdict {
+        guard let url = SonyURL.make(host: host, port: port, path: "/sony/system"),
+              let body = try? JSONSerialization.data(withJSONObject: [
+                "method": "getPowerStatus",
+                "params": [],
+                "id": 1,
+                "version": "1.0"
+              ]) else { return .unanswered }
+        let headers = [
+            "Content-Type": "application/json",
+            "X-Auth-PSK": psk
+        ]
+        guard let reply = try? http.send(url: url, headers: headers, body: body, timeout: timeout) else {
+            return .unanswered
+        }
+        let text = String(data: reply.body, encoding: .utf8) ?? ""
+        return SonyConnectCheck.verdict(status: reply.status, body: text)
+    }
+
     public func setPower(on: Bool, host: String, port: Int, psk: String) -> Bool {
         // The TV answers HTTP 200 with {"error":[7,"Illegal State"]} when it can't wake (Remote Start off).
         guard let data = call(host: host, port: port, path: "/sony/system", psk: psk, method: "setPowerStatus", params: [["status": on]], version: "1.0"),
@@ -332,6 +352,33 @@ public struct SonyClient {
         if !(200...299).contains(reply.status) { return nil }
         if SonyParse.failed(reply.body) { return nil }
         return reply
+    }
+}
+
+public enum SonyConnectCheck {
+    public enum Verdict: Equatable {
+        case connected(PowerReading)
+        case rejected
+        case unanswered
+    }
+
+    public static func verdict(status: Int, body: String) -> Verdict {
+        if status == 403 { return .rejected }
+        guard let data = body.data(using: .utf8) else { return .unanswered }
+        if (200...299).contains(status), let power = SonyParse.power(data) {
+            return .connected(power)
+        }
+        if let code = errorCode(data), code == 403 { return .rejected }
+        return .unanswered
+    }
+
+    private static func errorCode(_ data: Data) -> Int? {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let error = json["error"] as? [Any],
+              let first = error.first else { return nil }
+        if let code = first as? Int { return code }
+        if let code = first as? NSNumber { return code.intValue }
+        return nil
     }
 }
 
