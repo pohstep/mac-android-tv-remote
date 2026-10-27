@@ -95,7 +95,8 @@ final class WizardTests: XCTestCase {
         _ = wizard.handle(.continueAhead)
         XCTAssertEqual(wizard.handle(.typing(true)), .none)
         XCTAssertEqual(wizard.phase, .debugging)
-        XCTAssertTrue(wizard.lines().contains { $0.key == "setup.sony.typing.1" })
+        XCTAssertEqual(wizard.lines().map(\.text), [SwitchWatch(kind: .networkDebugging).instruction])
+        XCTAssertFalse(wizard.showsDebugChoices)
     }
 
     func testOtherTelevisionOffersWirelessPairingAndPort5555() {
@@ -261,7 +262,13 @@ final class WizardTests: XCTestCase {
         XCTAssertEqual(slow.handle(.watch(answered: false, elapsed: SwitchWatch.limit, legacyPort: nil)), .none)
         XCTAssertEqual(slow.switchWatch?.phase, .timedOut)
         XCTAssertEqual(slow.phase, .debugging)
+        XCTAssertTrue(slow.showsDebugChoices)
+        XCTAssertEqual(slow.lines().count, 5)
+        XCTAssertTrue(slow.lines().contains { $0.key == "setup.debug.wireless.3" })
+        XCTAssertTrue(slow.lines().contains { $0.key == "setup.debug.legacy.2" })
         XCTAssertEqual(slow.handle(.watchRetry), .none)
+        XCTAssertFalse(slow.showsDebugChoices)
+        XCTAssertEqual(slow.lines().count, 1)
         XCTAssertEqual(slow.switchWatch?.phase, .waiting)
         XCTAssertEqual(slow.handle(.watch(answered: true, elapsed: 1, legacyPort: nil)), .none)
         XCTAssertEqual(slow.phase, .pair)
@@ -272,13 +279,41 @@ final class WizardTests: XCTestCase {
         var wizard = SetupWizard()
         _ = wizard.handle(.choose(.sony))
         _ = wizard.handle(.pick(DiscoveredTV(name: "Living Room", brand: .sony, host: "192.0.2.8", port: 5555, controlPort: 80, source: "ssdp-scalar")))
-        _ = wizard.handle(.continueAhead)
+        XCTAssertEqual(wizard.handle(.testSucceeded), .none)
+        XCTAssertTrue(wizard.verified)
         _ = wizard.handle(.typing(false))
         guard case .save = wizard.handle(.remember(name: "Living Room")) else {
             return XCTFail("expected save")
         }
         XCTAssertEqual(wizard.phase, .done)
         XCTAssertEqual(wizard.message, "Connected to Living Room.")
+    }
+
+    func testFinishSaysSavedWhenTheKeyIsSkipped() {
+        var wizard = SetupWizard()
+        _ = wizard.handle(.choose(.sony))
+        _ = wizard.handle(.pick(DiscoveredTV(name: "Living Room", brand: .sony, host: "192.0.2.8", port: 5555, controlPort: 80, source: "ssdp-scalar")))
+        _ = wizard.handle(.continueAhead)
+        _ = wizard.handle(.typing(false))
+        XCTAssertFalse(wizard.verified)
+        guard case .save = wizard.handle(.remember(name: "Living Room")) else {
+            return XCTFail("expected save")
+        }
+        XCTAssertEqual(wizard.phase, .done)
+        XCTAssertEqual(wizard.message, "Saved Living Room.")
+    }
+
+    func testFinishSaysSavedWhenXiaomiDidNotAnswer() {
+        var wizard = SetupWizard()
+        _ = wizard.handle(.choose(.xiaomi))
+        _ = wizard.handle(.pick(DiscoveredTV(name: "Den", brand: .xiaomi, host: "192.0.2.40", port: 6095, controlPort: 6095, source: "ssdp-xiaomi")))
+        XCTAssertEqual(wizard.handle(.testFailed(WizardCopy.xiaomiUnanswered)), .none)
+        XCTAssertEqual(wizard.handle(.continueAhead), .none)
+        XCTAssertFalse(wizard.verified)
+        guard case .save = wizard.handle(.remember(name: "Den")) else {
+            return XCTFail("expected save")
+        }
+        XCTAssertEqual(wizard.message, "Saved Den.")
     }
 
     func testLaunchGoesConnectingThenConnectedOrFailed() {
@@ -331,8 +366,10 @@ final class WizardTests: XCTestCase {
         let brands: [TvBrand?] = [nil, .sony, .generic, .xiaomi]
         for phase in phases {
             for brand in brands {
-                for line in SetupCopy.lines(phase: phase, brand: brand, wantsTyping: true) {
-                    texts.append(line.text)
+                for choices in [false, true] {
+                    for line in SetupCopy.lines(phase: phase, brand: brand, wantsTyping: true, debugChoices: choices) {
+                        texts.append(line.text)
+                    }
                 }
             }
         }

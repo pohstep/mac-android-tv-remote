@@ -116,7 +116,7 @@ final class DiscoveryTests: XCTestCase {
         XCTAssertEqual(byHost["192.0.2.9"]?.brand, .sony)
         XCTAssertEqual(byHost["192.0.2.9"]?.controlPort, 80)
         XCTAssertEqual(byHost["192.0.2.9"]?.model, "BRAVIA 4K")
-        XCTAssertEqual(byHost["192.0.2.9"]?.listTitle, "Bravia · BRAVIA 4K · 192.0.2.9")
+        XCTAssertEqual(byHost["192.0.2.9"]?.listTitle, "Sony TV")
         XCTAssertNil(byHost["192.0.2.11"])
         XCTAssertEqual(byHost["192.0.2.12"]?.brand, .generic)
         XCTAssertEqual(byHost["192.0.2.12"]?.name, "Shield")
@@ -173,7 +173,215 @@ final class DiscoveryTests: XCTestCase {
         XCTAssertEqual(named[0].name, "Living Room")
         XCTAssertEqual(named[0].model, "KD-55X80L")
         XCTAssertEqual(named[0].macAddress, "AA:BB:CC:DD:EE:FF")
-        XCTAssertEqual(named[0].listTitle, "Living Room · KD-55X80L · 192.0.2.8")
+        XCTAssertEqual(named[0].listTitle, "Sony TV")
+    }
+
+    func testSameMACBecomesOneCardWithTheIPv4AndTheDebuggingPort() {
+        let sony = DiscoveredTV(
+            name: "Sony TV",
+            brand: .sony,
+            host: "192.168.50.57",
+            port: 5555,
+            controlPort: 80,
+            macAddress: "88:c9:e8:5f:28:76",
+            source: "sony-scan"
+        )
+        let adb = DiscoveredTV(
+            name: "adb-9415bf001511520",
+            brand: .generic,
+            host: "fe80::dbfa:3006:82fb:fbdc%en0",
+            port: 41234,
+            controlPort: 41234,
+            pairingPort: 37123,
+            macAddress: "88:C9:E8:5F:28:76",
+            source: DiscoveryService.connectType
+        )
+        let cards = DiscoveryCards.present([adb, sony])
+        XCTAssertEqual(cards.count, 1)
+        XCTAssertEqual(cards[0].host, "192.168.50.57")
+        XCTAssertEqual(cards[0].controlPort, 80)
+        XCTAssertEqual(cards[0].port, 41234)
+        XCTAssertEqual(cards[0].pairingPort, 37123)
+        XCTAssertEqual(cards[0].macAddress, "88:c9:e8:5f:28:76")
+        XCTAssertEqual(cards[0].listTitle, "Sony TV")
+        assertCardIsPlain(cards[0].listTitle)
+    }
+
+    func testSameIPv4BecomesOneCard() {
+        let sony = DiscoveredTV(name: "Sony TV", brand: .sony, host: "192.0.2.8", port: 5555, controlPort: 80, source: "sony-scan")
+        let adb = DiscoveredTV(
+            name: "adb-abc",
+            brand: .generic,
+            host: "192.0.2.8",
+            port: 41234,
+            controlPort: 41234,
+            source: DiscoveryService.legacyAdbType,
+            legacyAdbPort: 5555
+        )
+        let cards = DiscoveryCards.present([sony, adb])
+        XCTAssertEqual(cards.count, 1)
+        XCTAssertEqual(cards[0].host, "192.0.2.8")
+        XCTAssertEqual(cards[0].controlPort, 80)
+        XCTAssertEqual(cards[0].legacyAdbPort, 5555)
+        XCTAssertEqual(cards[0].listTitle, "Sony TV")
+        assertCardIsPlain(cards[0].listTitle)
+    }
+
+    func testResolvedIPv4OnAnAdbAdvertisementMatchesTheScan() {
+        let adb = DiscoveryParse.bonjour([
+            ServiceEndpoint(
+                name: "adb-9415bf001511520",
+                host: "fe80::dbfa:3006:82fb:fbdc%en0",
+                port: 41234,
+                serviceType: DiscoveryService.connectType,
+                addresses: ["192.168.50.57", "fe80::dbfa:3006:82fb:fbdc%en0"]
+            )
+        ])
+        let sony = DiscoveredTV(name: "Sony TV", brand: .sony, host: "192.168.50.57", port: 5555, controlPort: 80, source: "sony-scan")
+        let cards = DiscoveryCards.present(adb + [sony])
+        XCTAssertEqual(cards.count, 1)
+        XCTAssertEqual(cards[0].host, "192.168.50.57")
+        XCTAssertEqual(cards[0].port, 41234)
+        XCTAssertEqual(cards[0].listTitle, "Sony TV")
+    }
+
+    func testLinkLocalAdbBesideANamedSonyIsOneCard() {
+        let sony = DiscoveredTV(name: "Sony TV", brand: .sony, host: "192.168.50.57", port: 5555, controlPort: 80, source: "sony-scan")
+        let adb = DiscoveredTV(
+            name: "adb-9415bf001511520",
+            brand: .generic,
+            host: "fe80::dbfa:3006:82fb:fbdc%en0",
+            port: 41234,
+            controlPort: 41234,
+            source: DiscoveryService.connectType
+        )
+        let cards = DiscoveryCards.present([sony, adb])
+        XCTAssertEqual(cards.count, 1)
+        XCTAssertEqual(cards[0].host, "192.168.50.57")
+        XCTAssertEqual(cards[0].listTitle, "Sony TV")
+        XCTAssertEqual(cards[0].brand, .sony)
+        assertCardIsPlain(cards[0].listTitle)
+    }
+
+    func testNeighbourCacheMergesLinkLocalAdbOntoTheSonyIPv4() {
+        let sony = DiscoveredTV(name: "Sony TV", brand: .sony, host: "192.168.50.57", port: 5555, controlPort: 80, source: "sony-scan")
+        let adb = DiscoveredTV(
+            name: "adb-9415bf001511520",
+            brand: .generic,
+            host: "fe80::dbfa:3006:82fb:fbdc%en0",
+            port: 41234,
+            controlPort: 41234,
+            source: DiscoveryService.connectType
+        )
+        let cards = DiscoveryCards.present([sony, adb], neighbours: FixtureNeighbours())
+        XCTAssertEqual(cards.count, 1)
+        XCTAssertEqual(cards[0].host, "192.168.50.57")
+        XCTAssertEqual(cards[0].macAddress, "88:c9:e8:5f:28:76")
+        XCTAssertEqual(cards[0].port, 41234)
+        XCTAssertEqual(cards[0].controlPort, 80)
+        assertCardIsPlain(cards[0].listTitle)
+    }
+
+    func testTwoTelevisionsStayTwoCardsWithPlainNames() {
+        let living = DiscoveredTV(
+            name: "Living Room",
+            brand: .sony,
+            host: "192.0.2.8",
+            port: 5555,
+            controlPort: 80,
+            macAddress: "aa:bb:cc:dd:ee:01",
+            source: "sony-scan"
+        )
+        let den = DiscoveredTV(
+            name: "Den",
+            brand: .xiaomi,
+            host: "192.0.2.40",
+            port: 6095,
+            controlPort: 6095,
+            macAddress: "aa:bb:cc:dd:ee:02",
+            source: "xiaomi-scan"
+        )
+        let cards = DiscoveryCards.present([den, living])
+        XCTAssertEqual(cards.map(\.listTitle), ["Sony TV", "Xiaomi TV"])
+        XCTAssertEqual(cards.map(\.host), ["192.0.2.8", "192.0.2.40"])
+        cards.forEach { assertCardIsPlain($0.listTitle) }
+
+        let second = DiscoveredTV(
+            name: "Sony TV",
+            brand: .sony,
+            host: "192.0.2.41",
+            port: 5555,
+            controlPort: 80,
+            macAddress: "aa:bb:cc:dd:ee:03",
+            source: "sony-scan"
+        )
+        let numbered = DiscoveryCards.present([living, second])
+        XCTAssertEqual(numbered.map(\.listTitle), ["Sony TV", "Sony TV 2"])
+        numbered.forEach { assertCardIsPlain($0.listTitle) }
+    }
+
+    func testPhoneIsHiddenAndBareDebuggingIsLast() {
+        let phone = DiscoveredTV(
+            name: "Pixel phone",
+            brand: .generic,
+            host: "192.0.2.20",
+            port: 5555,
+            controlPort: 5555,
+            source: DiscoveryService.legacyAdbType
+        )
+        let sony = DiscoveredTV(name: "Sony TV", brand: .sony, host: "192.0.2.50", port: 5555, controlPort: 80, source: "sony-scan")
+        let cast = DiscoveredTV(
+            name: "Shield",
+            brand: .generic,
+            host: "192.0.2.9",
+            port: 6466,
+            controlPort: 6466,
+            source: DiscoveryService.androidTvRemoteType
+        )
+        let adb = DiscoveredTV(
+            name: "adb-deadbeef",
+            brand: .generic,
+            host: "192.0.2.3",
+            port: 5555,
+            controlPort: 5555,
+            source: DiscoveryService.connectType
+        )
+        let cards = DiscoveryCards.present([adb, phone, cast, sony])
+        XCTAssertEqual(cards.map(\.listTitle), ["Sony TV", "Android TV"])
+        XCTAssertEqual(cards.map(\.host), ["192.0.2.50", "192.0.2.9"])
+        cards.forEach { assertCardIsPlain($0.listTitle) }
+
+        let only = DiscoveryCards.present([adb])
+        XCTAssertEqual(only.map(\.listTitle), ["Android device"])
+        XCTAssertFalse(only[0].listTitle.contains("deadbeef"))
+        assertCardIsPlain(only[0].listTitle)
+    }
+
+    func testNeighbourTextMapsTheLinkLocalAddressToTheIPv4() {
+        let ndp = """
+        Neighbor                        Linklayer Address  Netif
+        fe80::dbfa:3006:82fb:fbdc%en0   88:c9:e8:5f:28:76  en0
+        """
+        let arp = "? (192.168.50.57) at 88:c9:e8:5f:28:76 on en0 ifscope [ethernet]\n"
+        XCTAssertEqual(NeighbourParse.mac(forIPv6: "fe80::dbfa:3006:82fb:fbdc%en0", ndp: ndp), "88:c9:e8:5f:28:76")
+        XCTAssertEqual(NeighbourParse.ipv4s(forMAC: "88:C9:E8:5F:28:76", arp: arp), ["192.168.50.57"])
+    }
+}
+
+private func assertCardIsPlain(_ title: String, file: StaticString = #filePath, line: UInt = #line) {
+    XCTAssertNil(title.range(of: #"\d+\.\d+\.\d+\.\d+"#, options: .regularExpression), title, file: file, line: line)
+    XCTAssertFalse(title.lowercased().contains("adb-"), title, file: file, line: line)
+    XCTAssertFalse(title.contains(":"), title, file: file, line: line)
+    XCTAssertFalse(title.contains("%"), title, file: file, line: line)
+}
+
+private struct FixtureNeighbours: NeighbourLooking {
+    func mac(forIPv6 host: String) -> String? {
+        host.lowercased().hasPrefix("fe80:") ? "88:c9:e8:5f:28:76" : nil
+    }
+
+    func ipv4s(forMAC mac: String) -> [String] {
+        mac.lowercased() == "88:c9:e8:5f:28:76" ? ["192.168.50.57"] : []
     }
 }
 

@@ -5,7 +5,7 @@
 - Setup looks for a Sony and a Xiaomi set in one search. Pick the set. Type an address only if nothing is found.
 - Where a switch on the TV cannot be turned on from the Mac, setup shows that one step, waits until the TV answers, and continues. If it does not answer, it says what to try.
 - A saved TV reconnects on launch. The panel and the menu say Connecting… first. Setup opens only when there is no saved TV, or the reconnect fails and you choose Set up a new TV.
-- Setup finishes with Connected to the TV's name. One power button stays. Build 1.
+- One television is one choice, named Sony TV or Xiaomi TV. Setup says Connected only after the TV answers, and Saved when it was stored without that check. One power button stays. Build 2.
 
 ## 1.1.1 — unreleased
 

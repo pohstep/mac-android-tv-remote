@@ -111,6 +111,10 @@ public enum WizardCopy {
         "Connected to \(name)."
     }
 
+    public static func saved(to name: String) -> String {
+        "Saved \(name)."
+    }
+
     public static var sentences: [String] {
         [
             enterKey,
@@ -118,7 +122,8 @@ public enum WizardCopy {
             networkOn,
             xiaomiUnanswered,
             enterNumberAndCode,
-            connected(to: "Living Room")
+            connected(to: "Living Room"),
+            saved(to: "Living Room")
         ]
     }
 }
@@ -147,18 +152,20 @@ public enum WizardEffect: Equatable {
 }
 
 public enum SetupCopy {
-    public static func lines(phase: WizardPhase, brand: TvBrand?, wantsTyping: Bool) -> [SetupLine] {
+    public static func lines(phase: WizardPhase, brand: TvBrand?, wantsTyping: Bool, debugChoices: Bool = false) -> [SetupLine] {
+        _ = wantsTyping
         switch phase {
         case .debugging:
             var lines = [
-                SetupLine(key: "setup.debug.wireless.1", text: SwitchWatch(kind: .networkDebugging).instruction),
-                SetupLine(key: "setup.debug.wireless.2", text: "When the TV shows a number and a code, enter both."),
-                SetupLine(key: "setup.debug.wireless.3", text: "Choose pair with a code. You will need the number and the code shown on the TV."),
-                SetupLine(key: "setup.debug.legacy.1", text: "Older sets connect without a pairing code."),
-                SetupLine(key: "setup.debug.legacy.2", text: "When this Mac connects, accept Allow on the TV.")
+                SetupLine(key: "setup.debug.wireless.1", text: SwitchWatch(kind: .networkDebugging).instruction)
             ]
-            if brand == .sony && wantsTyping {
-                lines.insert(SetupLine(key: "setup.sony.typing.1", text: "Typing needs this Mac to be allowed on the TV, as well as the control key."), at: 0)
+            if debugChoices {
+                lines.append(contentsOf: [
+                    SetupLine(key: "setup.debug.wireless.2", text: "When the TV shows a number and a code, enter both."),
+                    SetupLine(key: "setup.debug.wireless.3", text: "Choose pair with a code. You will need the number and the code shown on the TV."),
+                    SetupLine(key: "setup.debug.legacy.1", text: "Older sets connect without a pairing code."),
+                    SetupLine(key: "setup.debug.legacy.2", text: "When this Mac connects, accept Allow on the TV.")
+                ])
             }
             return lines
         case .sonyKey:
@@ -211,6 +218,8 @@ public struct SetupWizard: Equatable {
     public private(set) var message: String?
     public private(set) var switchWatch: SwitchWatch?
     public private(set) var name: String
+    /// True only after the TV answered a connection check.
+    public private(set) var verified: Bool
     private var stack: [WizardPhase]
 
     public init() {
@@ -227,6 +236,7 @@ public struct SetupWizard: Equatable {
         message = nil
         switchWatch = nil
         name = ""
+        verified = false
         stack = []
     }
 
@@ -234,8 +244,13 @@ public struct SetupWizard: Equatable {
         adbReady = ready
     }
 
+    /// Choice buttons stay off while the debugging step is still waiting.
+    public var showsDebugChoices: Bool {
+        phase == .debugging && switchWatch?.phase == .timedOut
+    }
+
     public func lines() -> [SetupLine] {
-        SetupCopy.lines(phase: phase, brand: brand, wantsTyping: wantsTyping)
+        SetupCopy.lines(phase: phase, brand: brand, wantsTyping: wantsTyping, debugChoices: showsDebugChoices)
     }
 
     public func draft(id: String = UUID().uuidString) -> StoredTV {
@@ -319,6 +334,7 @@ public struct SetupWizard: Equatable {
             message = "Checking the key…"
             return .testSony(host: host, port: controlPort, psk: key)
         case (.sonyKey, .testSucceeded):
+            verified = true
             switchWatch = nil
             go(.sonyTyping)
             return .none
@@ -338,6 +354,7 @@ public struct SetupWizard: Equatable {
             }
             return .none
         case (.xiaomiCheck, .testSucceeded):
+            verified = true
             go(.remember)
             return .none
         case (.xiaomiCheck, .testFailed(let detail)):
@@ -385,7 +402,7 @@ public struct SetupWizard: Equatable {
             name = trimmed.isEmpty ? host : trimmed
             switchWatch = nil
             phase = .done
-            message = WizardCopy.connected(to: name)
+            message = verified ? WizardCopy.connected(to: name) : WizardCopy.saved(to: name)
             return .save(draft())
         case (_, .back):
             switchWatch = nil

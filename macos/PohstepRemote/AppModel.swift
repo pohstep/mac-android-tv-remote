@@ -1231,7 +1231,8 @@ final class AppModel: ObservableObject {
             localAddresses: addresses,
             ssdp: LiveSsdpSearch(localAddresses: addresses),
             portProbe: LivePortProbe(),
-            namer: LiveTvNaming(http: http, reader: http)
+            namer: LiveTvNaming(http: http, reader: http),
+            neighbours: SystemNeighbourLookup()
         )
         return coordinator.find().found
     }

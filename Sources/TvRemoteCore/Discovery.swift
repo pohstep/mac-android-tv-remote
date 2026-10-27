@@ -30,13 +30,16 @@ public struct ServiceEndpoint: Equatable {
     public var serviceType: String
     /// Cast TXT `md`, when the browser has it.
     public var model: String
+    /// Other addresses for this same advertisement, when the resolver returned more than one.
+    public var addresses: [String]
 
-    public init(name: String, host: String, port: Int, serviceType: String, model: String = "") {
+    public init(name: String, host: String, port: Int, serviceType: String, model: String = "", addresses: [String] = []) {
         self.name = name
         self.host = host
         self.port = port
         self.serviceType = serviceType
         self.model = model
+        self.addresses = addresses
     }
 }
 
@@ -53,6 +56,10 @@ public struct DiscoveredTV: Equatable {
     public var model: String
     /// Port of `_adb._tcp`, or 5555 when that TCP port answered. Nil when debugging was not seen.
     public var legacyAdbPort: Int?
+    /// Extra addresses for the same device. The card uses an IPv4 from here when `host` is not one.
+    public var otherHosts: [String]
+    /// Label on the Find card. Empty until the list is assembled, then a brand name with no address.
+    public var cardTitle: String
 
     public init(
         name: String,
@@ -64,7 +71,9 @@ public struct DiscoveredTV: Equatable {
         macAddress: String = "",
         source: String,
         model: String = "",
-        legacyAdbPort: Int? = nil
+        legacyAdbPort: Int? = nil,
+        otherHosts: [String] = [],
+        cardTitle: String = ""
     ) {
         self.name = name
         self.brand = brand
@@ -76,24 +85,25 @@ public struct DiscoveredTV: Equatable {
         self.source = source
         self.model = model
         self.legacyAdbPort = legacyAdbPort
+        self.otherHosts = otherHosts
+        self.cardTitle = cardTitle
     }
 
     /// Name for the remember step. A placeholder yields the model, then the host.
     public var friendlyName: String {
-        if !name.isEmpty, name != host, !Self.placeholderNames.contains(name) { return name }
-        if !model.isEmpty { return model }
-        if !name.isEmpty { return name }
-        return host
+        if !name.isEmpty, name != host, !Self.placeholderNames.contains(name), !DiscoveryCards.isAnonymous(name) {
+            return name
+        }
+        if !model.isEmpty, !DiscoveryCards.isAnonymous(model) { return model }
+        if !cardTitle.isEmpty { return cardTitle }
+        if !name.isEmpty, !DiscoveryCards.isAnonymous(name) { return name }
+        return DiscoveryCards.baseTitle(self)
     }
 
-    /// Row label: name, model when it adds something, and the IP.
+    /// Find-step card. Brand and the word TV, never an address or a serial.
     public var listTitle: String {
-        let label = friendlyName
-        let modelText = model.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !modelText.isEmpty, modelText.caseInsensitiveCompare(label) != .orderedSame {
-            return "\(label) · \(modelText) · \(host)"
-        }
-        return "\(label) · \(host)"
+        if !cardTitle.isEmpty { return cardTitle }
+        return DiscoveryCards.baseTitle(self)
     }
 
     private static let placeholderNames: Set<String> = ["Sony TV", "Xiaomi TV"]
@@ -181,6 +191,11 @@ public enum DiscoveryParse {
                 source: type
             )
             applyService(endpoint, type: type, to: &tv)
+            for address in endpoint.addresses {
+                let extra = address.trimmingCharacters(in: .whitespacesAndNewlines)
+                if extra.isEmpty || extra == tv.host || tv.otherHosts.contains(extra) { continue }
+                tv.otherHosts.append(extra)
+            }
             if tv.name.isEmpty { tv.name = host }
             byHost[host] = tv
         }
@@ -441,6 +456,7 @@ public struct DiscoveryCoordinator {
     public var ssdp: any SsdpSearching
     public var portProbe: any HostPortProbing
     public var namer: any TvNaming
+    public var neighbours: any NeighbourLooking
 
     public init(
         listing: any ServiceListing,
@@ -448,7 +464,8 @@ public struct DiscoveryCoordinator {
         localAddresses: [String],
         ssdp: any SsdpSearching = StaticSsdpSearch(found: []),
         portProbe: any HostPortProbing = StaticPortProbe(),
-        namer: any TvNaming = EmptyTvNaming()
+        namer: any TvNaming = EmptyTvNaming(),
+        neighbours: any NeighbourLooking = EmptyNeighbourLookup()
     ) {
         self.listing = listing
         self.prober = prober
@@ -456,6 +473,7 @@ public struct DiscoveryCoordinator {
         self.ssdp = ssdp
         self.portProbe = portProbe
         self.namer = namer
+        self.neighbours = neighbours
     }
 
     public func find() -> DiscoveryOutcome {
@@ -467,7 +485,8 @@ public struct DiscoveryCoordinator {
             ssdpFound: gathered.ssdp,
             portProbe: portProbe
         ).find()
-        return DiscoveryOutcome(found: DiscoveryNaming.apply(outcome.found, namer: namer))
+        let named = DiscoveryNaming.apply(outcome.found, namer: namer)
+        return DiscoveryOutcome(found: DiscoveryCards.present(named, neighbours: neighbours))
     }
 
     /// Bonjour and SSDP overlap. The /24 probe runs after both, inside `DiscoveryEngine`.
@@ -663,5 +682,343 @@ public struct LiveSubnetProbe: SubnetProbing {
             }
         }
         return nil
+    }
+}
+
+public protocol NeighbourLooking {
+    /// MAC from the neighbour cache for an IPv6 address. Nil when the cache has no row.
+    func mac(forIPv6 host: String) -> String?
+    /// IPv4 addresses that share a MAC in the neighbour cache.
+    func ipv4s(forMAC mac: String) -> [String]
+}
+
+public struct EmptyNeighbourLookup: NeighbourLooking {
+    public init() {}
+    public func mac(forIPv6 host: String) -> String? { nil }
+    public func ipv4s(forMAC mac: String) -> [String] { [] }
+}
+
+/// Reads `ndp -an` and `arp -an`. Those print the cache. They do not send a probe.
+/// A sandbox that blocks them yields an empty cache, and the card list uses the fallback.
+public struct SystemNeighbourLookup: NeighbourLooking {
+    public init() {}
+
+    public func mac(forIPv6 host: String) -> String? {
+        NeighbourParse.mac(forIPv6: host, ndp: commandOutput("/usr/sbin/ndp", ["-an"]))
+    }
+
+    public func ipv4s(forMAC mac: String) -> [String] {
+        NeighbourParse.ipv4s(forMAC: mac, arp: commandOutput("/usr/sbin/arp", ["-an"]))
+    }
+
+    private func commandOutput(_ path: String, _ args: [String]) -> String {
+        guard FileManager.default.isExecutableFile(atPath: path) else { return "" }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: path)
+        process.arguments = args
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = Pipe()
+        do {
+            try process.run()
+        } catch {
+            return ""
+        }
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else { return "" }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        return String(data: data, encoding: .utf8) ?? ""
+    }
+}
+
+public enum NeighbourParse {
+    public static func mac(forIPv6 host: String, ndp text: String) -> String? {
+        let needle = stripZone(host)
+        guard !needle.isEmpty else { return nil }
+        for line in text.split(whereSeparator: \.isNewline) {
+            let fields = line.split(whereSeparator: { $0 == " " || $0 == "\t" }).map(String.init)
+            guard let first = fields.first else { continue }
+            let address = stripZone(first)
+            guard address == needle else { continue }
+            if let mac = fields.dropFirst().first(where: { looksLikeMAC($0) }) {
+                return normalizeMAC(mac)
+            }
+        }
+        return nil
+    }
+
+    public static func ipv4s(forMAC mac: String, arp text: String) -> [String] {
+        let wanted = normalizeMAC(mac)
+        guard !wanted.isEmpty else { return [] }
+        var found: [String] = []
+        for raw in text.split(whereSeparator: \.isNewline) {
+            let line = String(raw)
+            guard line.lowercased().contains(wanted) else { continue }
+            guard let address = firstIPv4(in: line), !found.contains(address) else { continue }
+            found.append(address)
+        }
+        return found
+    }
+
+    public static func normalizeMAC(_ text: String) -> String {
+        let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().replacingOccurrences(of: "-", with: ":")
+        let parts = cleaned.split(separator: ":").map(String.init)
+        guard parts.count == 6, parts.allSatisfy({ $0.count == 2 && $0.allSatisfy(\.isHexDigit) }) else { return "" }
+        return parts.joined(separator: ":")
+    }
+
+    private static func looksLikeMAC(_ text: String) -> Bool {
+        !normalizeMAC(text).isEmpty
+    }
+
+    private static func stripZone(_ host: String) -> String {
+        let trimmed = host.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard let zone = trimmed.firstIndex(of: "%") else { return trimmed }
+        return String(trimmed[..<zone])
+    }
+
+    private static func firstIPv4(in text: String) -> String? {
+        var token = ""
+        func finish() -> String? {
+            defer { token = "" }
+            return DiscoveryCards.isIPv4(token) ? token : nil
+        }
+        for character in text {
+            if character.isNumber || character == "." {
+                token.append(character)
+            } else if let address = finish() {
+                return address
+            }
+        }
+        return finish()
+    }
+}
+
+/// One card per television. Addresses stay off the card.
+public enum DiscoveryCards {
+    public static func present(_ found: [DiscoveredTV], neighbours: any NeighbourLooking = EmptyNeighbourLookup()) -> [DiscoveredTV] {
+        let visible = found.filter { !isPhoneOrTablet($0) }
+        let enriched = visible.map { enrich($0, neighbours: neighbours) }
+        let merged = mergeSameDevice(enriched)
+        let kept = hideLooseDebugging(merged)
+        let ordered = kept.sorted { left, right in
+            let rankLeft = rank(left)
+            let rankRight = rank(right)
+            if rankLeft != rankRight { return rankLeft < rankRight }
+            return left.host < right.host
+        }
+        return assignTitles(ordered)
+    }
+
+    public static func baseTitle(_ tv: DiscoveredTV) -> String {
+        switch tv.brand {
+        case .sony: return "Sony TV"
+        case .xiaomi: return "Xiaomi TV"
+        case .generic:
+            return isTVClass(tv) ? "Android TV" : "Android device"
+        }
+    }
+
+    public static func isAnonymous(_ name: String) -> Bool {
+        let text = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if text.isEmpty { return true }
+        if text.lowercased().hasPrefix("adb-") { return true }
+        if isIPv4(text) || isIPv6(text) { return true }
+        return false
+    }
+
+    public static func isIPv4(_ text: String) -> Bool {
+        let parts = text.split(separator: ".").compactMap { Int($0) }
+        return parts.count == 4 && parts.allSatisfy { (0...255).contains($0) } && text.split(separator: ".").count == 4
+    }
+
+    public static func isIPv6(_ text: String) -> Bool {
+        text.contains(":")
+    }
+
+    private static func enrich(_ tv: DiscoveredTV, neighbours: any NeighbourLooking) -> DiscoveredTV {
+        var copy = tv
+        if copy.macAddress.isEmpty, isLinkLocal(copy.host), let mac = neighbours.mac(forIPv6: copy.host) {
+            copy.macAddress = NeighbourParse.normalizeMAC(mac)
+        }
+        let mac = NeighbourParse.normalizeMAC(copy.macAddress)
+        if !mac.isEmpty {
+            copy.macAddress = mac
+            for address in neighbours.ipv4s(forMAC: mac) where address != copy.host && !copy.otherHosts.contains(address) {
+                copy.otherHosts.append(address)
+            }
+        }
+        return copy
+    }
+
+    /// (a) MAC, (b) IPv4, (c) any resolved address of the same advertisement, (d) the same hostname.
+    private static func mergeSameDevice(_ rows: [DiscoveredTV]) -> [DiscoveredTV] {
+        guard !rows.isEmpty else { return [] }
+        var parent = Array(rows.indices)
+        func find(_ index: Int) -> Int {
+            var cursor = index
+            while parent[cursor] != cursor { cursor = parent[cursor] }
+            return cursor
+        }
+        func link(_ left: Int, _ right: Int) {
+            let rootLeft = find(left)
+            let rootRight = find(right)
+            if rootLeft != rootRight { parent[rootRight] = rootLeft }
+        }
+        for left in rows.indices {
+            for right in rows.indices where right > left {
+                if sameDevice(rows[left], rows[right]) { link(left, right) }
+            }
+        }
+        var groups: [Int: [DiscoveredTV]] = [:]
+        for index in rows.indices {
+            groups[find(index), default: []].append(rows[index])
+        }
+        return rows.indices.compactMap { index in
+            guard parent[index] == index else { return nil }
+            return combine(groups[index] ?? [])
+        }
+    }
+
+    private static func sameDevice(_ left: DiscoveredTV, _ right: DiscoveredTV) -> Bool {
+        let leftMAC = NeighbourParse.normalizeMAC(left.macAddress)
+        let rightMAC = NeighbourParse.normalizeMAC(right.macAddress)
+        if !leftMAC.isEmpty, leftMAC == rightMAC { return true }
+        let shared = Set(ipv4s(left)).intersection(ipv4s(right))
+        if !shared.isEmpty { return true }
+        if let name = serviceName(left), name == serviceName(right) { return true }
+        return false
+    }
+
+    private static func ipv4s(_ tv: DiscoveredTV) -> [String] {
+        ([tv.host] + tv.otherHosts).filter { isIPv4($0) }
+    }
+
+    /// A repeated service name ties two resolutions of one advertisement. Placeholder card names do not.
+    private static func serviceName(_ tv: DiscoveredTV) -> String? {
+        let name = tv.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let key = name.lowercased()
+        if key.isEmpty || isIPv4(name) || isIPv6(name) { return nil }
+        if key == "sony tv" || key == "xiaomi tv" || key == "android tv" || key == "android device" || key == "tv" {
+            return nil
+        }
+        return key
+    }
+
+    private static func combine(_ rows: [DiscoveredTV]) -> DiscoveredTV {
+        guard var primary = rows.max(by: { score($0) < score($1) }) else {
+            return DiscoveredTV(name: "", brand: .generic, host: "", port: 0, controlPort: 0, source: "")
+        }
+        if let address = rows.flatMap({ ipv4s($0) }).first {
+            primary.host = address
+        }
+        for extra in rows {
+            if extra.host != primary.host, !extra.host.isEmpty, !primary.otherHosts.contains(extra.host) {
+                primary.otherHosts.append(extra.host)
+            }
+            for address in extra.otherHosts where address != primary.host && !primary.otherHosts.contains(address) {
+                primary.otherHosts.append(address)
+            }
+            if primary.model.isEmpty { primary.model = extra.model }
+            if primary.macAddress.isEmpty { primary.macAddress = extra.macAddress }
+            if primary.pairingPort == nil { primary.pairingPort = extra.pairingPort }
+            if primary.legacyAdbPort == nil { primary.legacyAdbPort = extra.legacyAdbPort }
+            if prefersServiceName(extra.name, over: primary.name) { primary.name = extra.name }
+            if isAdbSource(extra.source) {
+                if primary.brand == .generic {
+                    primary.port = extra.port
+                    primary.controlPort = extra.controlPort
+                    primary.source = extra.source
+                } else if extra.port != 0 {
+                    primary.port = extra.port
+                }
+            }
+        }
+        primary.cardTitle = ""
+        return primary
+    }
+
+    private static func score(_ tv: DiscoveredTV) -> Int {
+        var value = 0
+        switch tv.brand {
+        case .sony: value += 30
+        case .xiaomi: value += 20
+        case .generic: value += 10
+        }
+        if isTVClass(tv) { value += 5 }
+        if isIPv4(tv.host) { value += 1 }
+        return value
+    }
+
+    private static func prefersServiceName(_ candidate: String, over current: String) -> Bool {
+        if isAnonymous(candidate) { return false }
+        return isAnonymous(current) || current == "Sony TV" || current == "Xiaomi TV"
+    }
+
+    /// An unmatched debugging row is not offered beside a television. It is not folded in without a match.
+    private static func hideLooseDebugging(_ rows: [DiscoveredTV]) -> [DiscoveredTV] {
+        let televisions = rows.filter { isTVClass($0) }
+        guard !televisions.isEmpty else { return rows }
+        return rows.filter { isTVClass($0) || !isBareAdb($0) }
+    }
+
+    private static func isPhoneOrTablet(_ tv: DiscoveredTV) -> Bool {
+        if tv.source == "sony-scan" || tv.source == "xiaomi-scan" || tv.source == "ssdp-scalar" || tv.source == "ssdp-xiaomi" {
+            return false
+        }
+        if DiscoveryService.normalize(tv.source) == DiscoveryService.androidTvRemoteType { return false }
+        let tokens = (tv.name + " " + tv.model).lowercased().split { !$0.isLetter && !$0.isNumber }.map(String.init)
+        let markers: Set<String> = ["phone", "phones", "tablet", "tablets", "iphone", "ipad"]
+        return tokens.contains { markers.contains($0) }
+    }
+
+    static func isTVClass(_ tv: DiscoveredTV) -> Bool {
+        if tv.brand == .sony || tv.brand == .xiaomi { return true }
+        if tv.source == "sony-scan" || tv.source == "xiaomi-scan" || tv.source.hasPrefix("ssdp-") { return true }
+        let type = DiscoveryService.normalize(tv.source)
+        return type == DiscoveryService.androidTvRemoteType || type == DiscoveryService.castType
+    }
+
+    private static func isBareAdb(_ tv: DiscoveredTV) -> Bool {
+        if isTVClass(tv) { return false }
+        return isAdbSource(tv.source) || tv.source == "bonjour" || tv.brand == .generic
+    }
+
+    private static func isAdbSource(_ source: String) -> Bool {
+        switch DiscoveryService.normalize(source) {
+        case DiscoveryService.connectType, DiscoveryService.pairingType, DiscoveryService.legacyAdbType:
+            return true
+        default:
+            return false
+        }
+    }
+
+    private static func isLinkLocal(_ host: String) -> Bool {
+        host.lowercased().hasPrefix("fe80:")
+    }
+
+    private static func rank(_ tv: DiscoveredTV) -> Int {
+        if tv.source == "sony-scan" || tv.source == "ssdp-scalar" || (tv.brand == .sony && tv.source != DiscoveryService.castType) {
+            return 0
+        }
+        let type = DiscoveryService.normalize(tv.source)
+        if type == DiscoveryService.androidTvRemoteType || type == DiscoveryService.castType || tv.source == "ssdp-dial" {
+            return 1
+        }
+        if tv.brand == .xiaomi || tv.source == "xiaomi-scan" || tv.source == "ssdp-xiaomi" { return 2 }
+        if isBareAdb(tv) { return 4 }
+        return 3
+    }
+
+    private static func assignTitles(_ rows: [DiscoveredTV]) -> [DiscoveredTV] {
+        var seen: [String: Int] = [:]
+        return rows.map { tv in
+            var copy = tv
+            let base = baseTitle(tv)
+            let count = seen[base, default: 0] + 1
+            seen[base] = count
+            copy.cardTitle = count == 1 ? base : "\(base) \(count)"
+            return copy
+        }
     }
 }

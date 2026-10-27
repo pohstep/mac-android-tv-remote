@@ -173,11 +173,11 @@ struct SetupWizardView: View {
                 .buttonStyle(FolioPrimaryStyle(wizard: true))
             Button("Also set up typing") { model.sendWizard(.typing(true)) }
         case .debugging:
-            Button("Pair with a code") { model.sendWizard(.chooseWireless) }
-                .buttonStyle(FolioPrimaryStyle(wizard: true))
-            Button("Connect without a code") { model.sendWizard(.chooseLegacy) }
-                .buttonStyle(FolioPrimaryStyle(wizard: true))
-            if model.wizard.switchWatch?.phase == .timedOut {
+            if model.wizard.showsDebugChoices {
+                Button("Pair with a code") { model.sendWizard(.chooseWireless) }
+                    .buttonStyle(FolioPrimaryStyle(wizard: true))
+                Button("Connect without a code") { model.sendWizard(.chooseLegacy) }
+                    .buttonStyle(FolioPrimaryStyle(wizard: true))
                 Button("Try again") { model.sendWizard(.watchRetry) }
                     .buttonStyle(FolioPrimaryStyle(wizard: true))
             }

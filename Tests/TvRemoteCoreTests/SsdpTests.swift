@@ -1,4 +1,9 @@
 import XCTest
+#if canImport(Darwin)
+import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 @testable import TvRemoteCore
 
 final class SsdpTests: XCTestCase {
@@ -66,7 +71,7 @@ final class SsdpTests: XCTestCase {
         XCTAssertEqual(tv?.port, 6095)
         XCTAssertEqual(tv?.controlPort, 6095)
         XCTAssertEqual(tv?.source, "ssdp-xiaomi")
-        XCTAssertEqual(tv?.listTitle, "Xiaomi TV · 192.0.2.40")
+        XCTAssertEqual(tv?.listTitle, "Xiaomi TV")
     }
 
     func testAndroidDialIsGenericAndARouterIsIgnored() {
@@ -112,5 +117,16 @@ final class SsdpTests: XCTestCase {
             SsdpClassify.role(server: "Router", searchTarget: "upnp:rootdevice", usn: ""),
             .ignore
         )
+    }
+
+    func testSelectRetriesOnEINTRAndStopsOnTimeoutOrOtherErrors() {
+        XCTAssertTrue(SocketSelect.fits(0))
+        XCTAssertTrue(SocketSelect.fits(Int32(FD_SETSIZE) - 1))
+        XCTAssertFalse(SocketSelect.fits(-1))
+        XCTAssertFalse(SocketSelect.fits(Int32(FD_SETSIZE)))
+        XCTAssertEqual(SocketSelect.interpret(ready: -1, errnoValue: EINTR), .retry)
+        XCTAssertEqual(SocketSelect.interpret(ready: 0, errnoValue: EINTR), .stop)
+        XCTAssertEqual(SocketSelect.interpret(ready: -1, errnoValue: EBADF), .stop)
+        XCTAssertEqual(SocketSelect.interpret(ready: 1, errnoValue: 0), .ready)
     }
 }

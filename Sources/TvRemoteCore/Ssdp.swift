@@ -203,6 +203,10 @@ enum SsdpSocket {
     private static func openSocket(interface: String, target: String) -> Int32? {
         let fd = SocketCall.udp()
         guard fd >= 0 else { return nil }
+        guard SocketSelect.fits(fd) else {
+            close(fd)
+            return nil
+        }
         var reuse: Int32 = 1
         _ = setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &reuse, socklen_t(MemoryLayout.size(ofValue: reuse)))
         var local = sockaddr_in()
@@ -258,7 +262,7 @@ enum SsdpSocket {
     private static func receive(_ sockets: [Int32], timeout: TimeInterval) -> [SsdpDatagram] {
         let deadline = Date().addingTimeInterval(timeout)
         var found: [SsdpDatagram] = []
-        while true {
+        readLoop: while true {
             let remaining = deadline.timeIntervalSinceNow
             if remaining <= 0 { break }
             var readSet = fd_set()
@@ -272,7 +276,14 @@ enum SsdpSocket {
             wait.tv_sec = time_t(remaining)
             wait.tv_usec = suseconds_t((remaining - Double(Int(remaining))) * 1_000_000)
             let ready = select(maxFD + 1, &readSet, nil, nil, &wait)
-            if ready <= 0 { break }
+            switch SocketSelect.interpret(ready: ready, errnoValue: errno) {
+            case .retry:
+                continue
+            case .stop:
+                break readLoop
+            case .ready:
+                break
+            }
             for fd in sockets where fdIsSet(fd, &readSet) {
                 var buffer = [UInt8](repeating: 0, count: 2048)
                 var sender = sockaddr_in()
@@ -364,6 +375,7 @@ private func fdZero(_ set: inout fd_set) {
 }
 
 private func fdSet(_ fd: Int32, _ set: inout fd_set) {
+    guard SocketSelect.fits(fd) else { return }
     #if os(Linux)
     fdWrite(fd, &set) { bits, index, mask in
         bits[index] |= mask
@@ -377,6 +389,7 @@ private func fdSet(_ fd: Int32, _ set: inout fd_set) {
 }
 
 private func fdIsSet(_ fd: Int32, _ set: inout fd_set) -> Bool {
+    guard SocketSelect.fits(fd) else { return false }
     #if os(Linux)
     var hit = false
     fdWrite(fd, &set) { bits, index, mask in
@@ -430,6 +443,10 @@ public struct LivePortProbe: HostPortProbing {
         guard (1...65535).contains(port), let address = SsdpSocket.ipv4(host) else { return false }
         let fd = SocketCall.tcp()
         guard fd >= 0 else { return false }
+        guard SocketSelect.fits(fd) else {
+            close(fd)
+            return false
+        }
         defer { close(fd) }
         let flags = fcntl(fd, F_GETFL, 0)
         guard flags >= 0 else { return false }
@@ -445,18 +462,47 @@ public struct LivePortProbe: HostPortProbing {
         }
         if started == 0 { return true }
         if errno != EINPROGRESS { return false }
-        var writeSet = fd_set()
-        fdZero(&writeSet)
-        fdSet(fd, &writeSet)
-        var wait = timeval()
-        let seconds = Int(timeout)
-        wait.tv_sec = time_t(seconds)
-        wait.tv_usec = suseconds_t(Int((timeout - Double(seconds)) * 1_000_000))
-        let ready = select(fd + 1, nil, &writeSet, nil, &wait)
-        if ready <= 0 { return false }
-        var error: Int32 = 0
-        var length = socklen_t(MemoryLayout<Int32>.size)
-        getsockopt(fd, SOL_SOCKET, SO_ERROR, &error, &length)
-        return error == 0
+        let deadline = Date().addingTimeInterval(timeout)
+        while true {
+            let remaining = deadline.timeIntervalSinceNow
+            if remaining <= 0 { return false }
+            var writeSet = fd_set()
+            fdZero(&writeSet)
+            fdSet(fd, &writeSet)
+            var wait = timeval()
+            wait.tv_sec = time_t(remaining)
+            wait.tv_usec = suseconds_t((remaining - Double(Int(remaining))) * 1_000_000)
+            let ready = select(fd + 1, nil, &writeSet, nil, &wait)
+            switch SocketSelect.interpret(ready: ready, errnoValue: errno) {
+            case .retry:
+                continue
+            case .stop:
+                return false
+            case .ready:
+                var error: Int32 = 0
+                var length = socklen_t(MemoryLayout<Int32>.size)
+                getsockopt(fd, SOL_SOCKET, SO_ERROR, &error, &length)
+                return error == 0
+            }
+        }
     }
+}
+
+enum SocketSelect {
+    static func fits(_ fd: Int32) -> Bool {
+        fd >= 0 && fd < Int32(FD_SETSIZE)
+    }
+
+    /// `select` returns -1 and EINTR when a signal arrives. The caller waits out the remaining time.
+    static func interpret(ready: Int32, errnoValue: Int32) -> SelectStep {
+        if ready < 0 && errnoValue == EINTR { return .retry }
+        if ready <= 0 { return .stop }
+        return .ready
+    }
+}
+
+enum SelectStep: Equatable {
+    case ready
+    case retry
+    case stop
 }
