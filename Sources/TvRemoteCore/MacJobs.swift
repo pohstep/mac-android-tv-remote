@@ -127,6 +127,8 @@ public enum InstallLog {
 
 public enum ScreenshotCapture {
     public static let remotePath = "/sdcard/Download/zapbar-screen.png"
+    /// A sleeping TV gives no picture, and asking it takes about half a minute. Say so first.
+    public static let asleep = "The TV is asleep. Turn it on first."
 
     /// A valid PNG, including an all-black frame, is kept. A broken exec-out result uses the fallback bytes.
     public static func resolve(execOut: Data, fallbackRaw: String = "", fallback: () -> (Data, String)) -> ScreenshotResult {

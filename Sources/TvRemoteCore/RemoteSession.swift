@@ -598,6 +598,10 @@ public final class RemoteSession {
             return ScreenshotResult(png: nil, sentence: blocked.sentence, raw: blocked.raw, isError: true)
         }
         if wasCancelled() { return cancelledScreenshot() }
+        // adb says Asleep or Dozing: stop here instead of waiting for a capture that never comes.
+        if let dump = try? client.shell(["dumpsys", "power"], serial: serial), Wakefulness.reading(dump) == .off {
+            return ScreenshotResult(png: nil, sentence: ScreenshotCapture.asleep, raw: "", isError: true)
+        }
         let execData: Data
         let execRaw: String
         do {

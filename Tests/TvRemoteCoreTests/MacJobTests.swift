@@ -191,6 +191,37 @@ final class MacJobTests: XCTestCase {
         XCTAssertFalse(fake.calls.contains { $0.arguments.contains("install") })
     }
 
+    func testScreenshotOfASleepingTVSaysSoAndDoesNotCapture() {
+        let fake = FakeRunner()
+        let session = connectedSession(fake, temporaryDirectory: NSTemporaryDirectory())
+        var wakefulness = "  mWakefulness=Asleep\n"
+        fake.handler = { arguments in
+            if arguments == ["-P", "5037", "devices"] {
+                return .success(CommandResult(status: 0, stdout: "List of devices attached\n192.0.2.20:5555\tdevice\n", stderr: ""))
+            }
+            if arguments.contains("dumpsys") {
+                return .success(CommandResult(status: 0, stdout: wakefulness, stderr: ""))
+            }
+            return .success(CommandResult(status: 0, stdout: "", stderr: ""))
+        }
+        let asleep = session.captureScreenshot()
+        XCTAssertNil(asleep.png)
+        XCTAssertTrue(asleep.isError)
+        XCTAssertEqual(asleep.sentence, "The TV is asleep. Turn it on first.")
+        XCTAssertFalse(fake.calls.contains { $0.arguments.contains("exec-out") || $0.arguments.contains("pull") })
+
+        fake.calls = []
+        wakefulness = "  mWakefulness=Dozing\n"
+        XCTAssertEqual(session.captureScreenshot().sentence, ScreenshotCapture.asleep)
+        XCTAssertFalse(fake.calls.contains { $0.arguments.contains("exec-out") })
+
+        // Awake goes on to capture as before.
+        fake.calls = []
+        wakefulness = "  mWakefulness=Awake\n"
+        _ = session.captureScreenshot()
+        XCTAssertTrue(fake.calls.contains { $0.arguments.contains("exec-out") })
+    }
+
     private func connectedSession(_ fake: FakeRunner, temporaryDirectory: String) -> RemoteSession {
         var settings = Settings.factoryDefaults()
         settings.host = "192.0.2.20"
