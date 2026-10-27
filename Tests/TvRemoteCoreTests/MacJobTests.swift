@@ -47,62 +47,6 @@ final class MacJobTests: XCTestCase {
         XCTAssertEqual(fake.calls.count, before)
     }
 
-    func testSendLinkAcceptsOnlyWebURLs() {
-        XCTAssertEqual(LinkSend.httpURL(from: " https://example.com/a?b=1&c=2 "), "https://example.com/a?b=1&c=2")
-        XCTAssertEqual(LinkSend.httpURL(from: "HTTP://example.com/x"), "http://example.com/x")
-        XCTAssertNil(LinkSend.httpURL(from: "file:///tmp/a.mp4"))
-        XCTAssertNil(LinkSend.httpURL(from: "javascript:alert(1)"))
-        XCTAssertNil(LinkSend.httpURL(from: "just words"))
-        XCTAssertNil(LinkSend.httpURL(from: "http://"))
-
-        let fake = FakeRunner()
-        let session = connectedSession(fake, temporaryDirectory: NSTemporaryDirectory())
-        let refused = session.sendLink("file:///tmp/a.mp4")
-        XCTAssertEqual(refused.sentence, "Only web links can be sent. Use http or https.")
-        XCTAssertTrue(fake.calls.isEmpty)
-
-        fake.handler = { arguments in
-            if arguments == ["-P", "5037", "devices"] {
-                return .success(CommandResult(status: 0, stdout: "List of devices attached\n192.0.2.20:5555\tdevice\n", stderr: ""))
-            }
-            return .success(CommandResult(status: 0, stdout: "Starting: Intent", stderr: ""))
-        }
-        let sent = session.sendLink("https://example.com/a?b=1&c=2")
-        XCTAssertEqual(sent.sentence, "Opened on the TV.")
-        XCTAssertFalse(sent.isError)
-        XCTAssertEqual(
-            fake.calls.last?.arguments,
-            ["-P", "5037", "-s", "192.0.2.20:5555", "shell", "am start -a android.intent.action.VIEW -d 'https://example.com/a?b=1&c=2'"]
-        )
-
-        fake.handler = { arguments in
-            if arguments == ["-P", "5037", "devices"] {
-                return .success(CommandResult(status: 0, stdout: "List of devices attached\n192.0.2.20:5555\tdevice\n", stderr: ""))
-            }
-            return .success(CommandResult(status: 1, stdout: "", stderr: "Error: Activity not started"))
-        }
-        let failed = session.sendLink("https://example.com")
-        XCTAssertEqual(failed.sentence, "The TV didn't open that link. It needs a browser.")
-        XCTAssertTrue(failed.raw.contains("Activity not started"))
-
-        fake.handler = { arguments in
-            if arguments == ["-P", "5037", "devices"] {
-                return .success(CommandResult(status: 0, stdout: "List of devices attached\n192.0.2.20:5555\tdevice\n", stderr: ""))
-            }
-            return .success(CommandResult(status: 0, stdout: "Error: Activity not started, unable to resolve Intent", stderr: ""))
-        }
-        let unresolved = session.sendLink("https://example.com/watch")
-        XCTAssertEqual(unresolved.sentence, Copy.nothingCanOpen)
-        XCTAssertTrue(unresolved.isError)
-        XCTAssertEqual(Copy.nothingCanOpen, "No app on the TV can open this.")
-        XCTAssertFalse(Copy.nothingCanOpen.localizedCaseInsensitiveContains("android"))
-        XCTAssertFalse(Copy.nothingCanOpen.localizedCaseInsensitiveContains("sony"))
-        XCTAssertEqual(
-            LinkSend.sentence(status: 1, output: "Error: No activity found to handle Intent"),
-            Copy.nothingCanOpen
-        )
-    }
-
     func testScreenshotBlankBrokenAndSaveThenPull() throws {
         XCTAssertEqual(ScreenshotBytes.kind(redPNG), .picture)
         XCTAssertEqual(ScreenshotBytes.kind(blackPNG), .blank)
@@ -261,7 +205,6 @@ final class MacJobTests: XCTestCase {
         let report = session.installApk(at: apk.path)
         XCTAssertEqual(report.sentence, "This needs a network debugging connection.")
         XCTAssertFalse(fake.calls.contains { $0.arguments.contains("install") })
-        XCTAssertEqual(session.sendLink("https://example.com").sentence, "This needs a network debugging connection.")
     }
 
     private func connectedSession(_ fake: FakeRunner, temporaryDirectory: String) -> RemoteSession {

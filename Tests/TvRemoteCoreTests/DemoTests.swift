@@ -18,12 +18,8 @@ final class DemoTests: XCTestCase {
         XCTAssertEqual(demo.press(.dpadCenter).title, "Sent.")
         XCTAssertFalse(demo.press(.home).isError)
         XCTAssertEqual(demo.type("hello").title, "Sent.")
+        XCTAssertEqual(demo.type("https://example.com/show").title, "Sent.")
         XCTAssertEqual(demo.refresh(), .connected(serial: "Demo TV"))
-
-        let link = demo.sendLink("https://example.com/show")
-        XCTAssertEqual(link.sentence, "Opened on the TV.")
-        XCTAssertFalse(link.isError)
-        XCTAssertEqual(link.raw, "")
 
         let file = demo.sendFile(at: "/tmp/clip.mp4")
         XCTAssertEqual(file.sentence, "The file is in Downloads. The TV needs a player to open it.")

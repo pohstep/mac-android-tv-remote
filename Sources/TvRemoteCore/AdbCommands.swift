@@ -111,11 +111,6 @@ public enum AdbCommands {
         ["-s", serial, "install", "-r", apkPath]
     }
 
-    public static func viewURL(serial: String, url: String) -> [String] {
-        let command = "am start -a android.intent.action.VIEW -d \(ShellWords.quote(url))"
-        return ["-s", serial, "shell", command]
-    }
-
     public static func screencap(serial: String) -> [String] {
         ["-s", serial, "exec-out", "screencap", "-p"]
     }

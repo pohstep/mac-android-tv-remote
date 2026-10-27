@@ -66,28 +66,6 @@ public enum InstallExplain {
     }
 }
 
-public enum LinkSend {
-    /// http and https only. Anything else, including a missing host, is refused.
-    public static func httpURL(from raw: String) -> String? {
-        let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard var parts = URLComponents(string: text), let scheme = parts.scheme?.lowercased() else { return nil }
-        guard scheme == "http" || scheme == "https" else { return nil }
-        guard let host = parts.host, !host.isEmpty else { return nil }
-        parts.scheme = scheme
-        return parts.string
-    }
-
-    public static func sentence(status: Int32, output: String) -> String {
-        if AdbOutput.cannotOpenView(output) {
-            return Copy.nothingCanOpen
-        }
-        if AdbOutput.outputIndicatesFailure(output, status: status) {
-            return "The TV didn't open that link. It needs a browser."
-        }
-        return "Opened on the TV."
-    }
-}
-
 public enum FileSend {
     public static let playerSentence = "Sent. The TV needs a player to open it."
     public static let playerLeftBehind = "The file is in Downloads. The TV needs a player to open it."

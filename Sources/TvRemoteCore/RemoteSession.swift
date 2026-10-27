@@ -578,32 +578,6 @@ public final class RemoteSession {
         }
     }
 
-    public func sendLink(_ raw: String) -> JobReport {
-        guard let url = LinkSend.httpURL(from: raw) else {
-            return JobReport(sentence: "Only web links can be sent. Use http or https.", raw: "", isError: true)
-        }
-        guard let serial = debuggingSerial() else {
-            return debuggingRequired()
-        }
-        armTransfer(remote: nil, resetCancel: true)
-        defer { endTransfer() }
-        let client = client()
-        if let blocked = prepareTransfer(client: client, serial: serial) { return blocked }
-        if wasCancelled() { return cancelledJob() }
-        do {
-            let result = try client.openLink(url, serial: serial)
-            if wasCancelled() { return cancelledJob() }
-            let text = result.combined.trimmingCharacters(in: .whitespacesAndNewlines)
-            let sentence = LinkSend.sentence(status: result.status, output: text)
-            let failed = sentence != "Opened on the TV."
-            return JobReport(sentence: sentence, raw: failed ? text : "", isError: failed)
-        } catch {
-            if wasCancelled() { return cancelledJob() }
-            if isTimeout(error) { return failureJob(error) }
-            return JobReport(sentence: "The TV didn't open that link. It needs a browser.", raw: safeDetail(error), isError: true)
-        }
-    }
-
     public func captureScreenshot() -> ScreenshotResult {
         guard let serial = debuggingSerial() else {
             return ScreenshotResult(png: nil, sentence: "This needs a network debugging connection.", raw: "", isError: true)

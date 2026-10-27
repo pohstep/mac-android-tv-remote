@@ -11,10 +11,8 @@ struct RemotePanel: View {
     @State private var inputOpen = false
     @State private var powerArmed = false
     @State private var typeDraft = ""
-    @State private var linkDraft = ""
     @State private var dropTargeted = false
     @FocusState private var typeFocused: Bool
-    @FocusState private var linkFocused: Bool
 
     @Environment(\.colorSchemeContrast) private var contrast
 
@@ -47,15 +45,9 @@ struct RemotePanel: View {
             if model.typeFocusID > 0 {
                 typeFocused = true
             }
-            if model.linkFocusID > 0 {
-                linkFocused = true
-            }
         }
         .onChange(of: model.typeFocusID) { _ in
             typeFocused = true
-        }
-        .onChange(of: model.linkFocusID) { _ in
-            linkFocused = true
         }
         .onDrop(of: [.fileURL], isTargeted: $dropTargeted) { providers in
             loadDroppedFiles(providers)
@@ -385,17 +377,6 @@ struct RemotePanel: View {
     private var macTools: some View {
         VStack(alignment: .leading, spacing: 6) {
             input
-            TextField("Paste a link", text: $linkDraft)
-                .folioFieldChrome(focused: linkFocused)
-                .focused($linkFocused)
-                .onSubmit {
-                    let text = linkDraft
-                    linkDraft = ""
-                    model.sendLink(text)
-                }
-            Text("Return sends. \(model.linkHotkey.display) focuses this field. Web links only.")
-                .font(.system(size: 11))
-                .foregroundColor(tertiaryInk)
             HStack(spacing: 8) {
                 Button("Screenshot") { model.takeScreenshot() }
                     .disabled(model.jobBusy)

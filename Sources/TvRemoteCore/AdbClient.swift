@@ -104,10 +104,6 @@ public struct AdbClient {
         try run(AdbCommands.install(serial: serial, apkPath: path), timeout: 180)
     }
 
-    public func openLink(_ url: String, serial: String) throws -> CommandResult {
-        try run(AdbCommands.viewURL(serial: serial, url: url), timeout: 20)
-    }
-
     public func captureScreen(serial: String) throws -> CommandResult {
         try run(AdbCommands.screencap(serial: serial), timeout: 30)
     }

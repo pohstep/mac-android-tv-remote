@@ -15,7 +15,7 @@ Zapbar was called Mac Android TV Remote up to v1.0.1. Same project, new name.
 ## What it can't do yet
 
 - Tested first on a Sony Bravia (Google TV / Android TV). Other brands are unverified.
-- Typing, links, screenshots, files and app-file install need network debugging on the TV (Developer options). The TV asks once to allow this Mac. Zapbar bundles its own `adb` helper in the release app.
+- Typing, screenshots, files and app-file install need network debugging on the TV (Developer options). The TV asks once to allow this Mac. Zapbar bundles its own `adb` helper in the release app.
 - Typing is English only. No Chinese input.
 - Mac only, macOS 13 or later.
 
@@ -31,10 +31,9 @@ Zapbar was called Mac Android TV Remote up to v1.0.1. Same project, new name.
 - **Power on from standby** where the TV allows it: Sony IP control, then Wake-on-LAN, then a wake key, then a status check. Power off asks for a second click.
 - **Several TVs.** The last one reconnects on launch. Wake is in the menu bar. Release and sandbox builds leave a v1.0 settings file and the old keychain item unread, so the first launch does not ask for Keychain access. `scripts/build-dev.sh` sets `ZAPBAR_MIGRATE_V1` and can bring that TV and key across.
 - **Setup** walks through brand, finding the TV (or typing an address), debugging, pairing or Allow, and saving.
-- **Type on the TV.** A field in the panel sends on Return; paste text or a link into it too. `⌃⌥T` opens the panel and focuses it. Plain letters go over the debugging connection. If a route can't type, the panel says so.
+- **Type on the TV.** A field in the panel sends on Return, including a pasted URL as plain text. `⌃⌥T` opens the panel and focuses it. Plain letters go over the debugging connection. If a route can't type, the panel says so.
 - **Try demo TV** opens a connected panel with no TV on the network. It is on the find step when nothing is found, and in Settings. Leave demo returns to a saved TV. Demo mode is not saved.
 - **Drop an APK** (an app file) on the menu bar icon or the panel. Zapbar installs it and shows one plain sentence for the result. The original message stays under that sentence. Filenames can contain spaces.
-- **Send a web link** from the paste field or with `⌃⌥L`. Only `http` and `https` links are sent. The TV needs a browser.
 - **Screenshot** copies the TV picture to the clipboard or saves it. A black picture is kept, and the panel says the TV may block screenshots of protected video.
 - **Send a file** to the TV's Downloads folder and ask the TV to open it. The TV needs a player.
 - **Keyboard as remote** in the non-sandbox build: `⌃⌥K` toggles it, `⌃⌥⌘K` turns it off. The sandboxed build hides this. It needs Accessibility, which the sandbox does not grant.

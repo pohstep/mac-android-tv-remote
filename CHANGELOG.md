@@ -2,7 +2,7 @@
 
 ## 1.1 — 2026-10-26
 
-Release build: core setup, drop an app file, send a link, screenshot, send a file, and the approved icon.
+Release build: core setup, drop an app file, screenshot, send a file, and the approved icon.
 
 - Product name is Zapbar. Bundle id is `com.pohstep.tvremote`.
 - Setup is a short step-by-step flow: brand, address, debugging, pair or allow, save. Several TVs are remembered. The last one reconnects on launch, and wake is in the menu bar. Release and sandbox builds leave a v1.0 settings file and the old keychain item unread. `scripts/build-dev.sh` sets `ZAPBAR_MIGRATE_V1` for that migration.

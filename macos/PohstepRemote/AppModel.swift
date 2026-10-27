@@ -20,7 +20,6 @@ final class AppModel: ObservableObject {
     @Published var discovered: [DiscoveredTV] = []
     @Published var discovering = false
     @Published var typeFocusID = 0
-    @Published var linkFocusID = 0
     @Published var jobLine = ""
     @Published var jobRaw = ""
     @Published var jobIsError = false
@@ -45,7 +44,6 @@ final class AppModel: ObservableObject {
     let store: SettingsStore
     let hotkey = Hotkey.default
     let typeHotkey = Hotkey.typeDefault
-    let linkHotkey = Hotkey.linkDefault
 
     private var failures = 0
     private var refreshInFlight = false
@@ -493,19 +491,6 @@ final class AppModel: ObservableObject {
             return
         }
         run { $0.type(text) }
-    }
-
-    func openLinkField() {
-        onOpenPanel?()
-        linkFocusID += 1
-    }
-
-    func sendLink(_ raw: String) {
-        runJob("Sending the link…", cancellable: false) { [weak self] _ in
-            guard let self else { return JobReport(sentence: "Cancelled.", raw: "", isError: true) }
-            if self.demoOn { return self.demo.sendLink(raw) }
-            return self.session.sendLink(raw)
-        }
     }
 
     func stageDroppedFile(_ url: URL) -> String? {
