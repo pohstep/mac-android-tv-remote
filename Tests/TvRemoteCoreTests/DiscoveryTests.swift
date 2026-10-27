@@ -366,6 +366,110 @@ final class DiscoveryTests: XCTestCase {
         XCTAssertEqual(NeighbourParse.mac(forIPv6: "fe80::dbfa:3006:82fb:fbdc%en0", ndp: ndp), "88:c9:e8:5f:28:76")
         XCTAssertEqual(NeighbourParse.ipv4s(forMAC: "88:C9:E8:5F:28:76", arp: arp), ["192.168.50.57"])
     }
+
+    func testUnpaddedMacsStillMergeTheLinkLocalRow() {
+        let ndp = "fe80::abcd%en0\t0:1a:2b:3c:4d:5e\ten0\n"
+        let arp = "? (192.0.2.8) at 0:1a:2b:3c:4d:5e on en0 ifscope [ethernet]\n"
+        XCTAssertEqual(NeighbourParse.normalizeMAC("0:1a:2b:3c:4d:5e"), "00:1a:2b:3c:4d:5e")
+        XCTAssertEqual(NeighbourParse.mac(forIPv6: "fe80::abcd%en0", ndp: ndp), "00:1a:2b:3c:4d:5e")
+        XCTAssertEqual(NeighbourParse.ipv4s(forMAC: "00:1a:2b:3c:4d:5e", arp: arp), ["192.0.2.8"])
+        XCTAssertEqual(NeighbourParse.ipv4s(forMAC: "00:1a:2b:3c:4d:5e", arp: "note 00:1a:2b:3c:4d:5eextra 192.0.2.9\n"), [])
+
+        let sony = DiscoveredTV(
+            name: "Sony TV",
+            brand: .sony,
+            host: "192.0.2.8",
+            port: 5555,
+            controlPort: 80,
+            macAddress: "00:1a:2b:3c:4d:5e",
+            source: "sony-scan"
+        )
+        let adb = DiscoveredTV(
+            name: "adb-unpadded",
+            brand: .generic,
+            host: "fe80::abcd%en0",
+            port: 41234,
+            controlPort: 41234,
+            source: DiscoveryService.connectType
+        )
+        let cards = DiscoveryCards.present([sony, adb], neighbours: UnpaddedNeighbours(ndp: ndp, arp: arp))
+        XCTAssertEqual(cards.count, 1)
+        XCTAssertEqual(cards[0].host, "192.0.2.8")
+        XCTAssertEqual(cards[0].macAddress, "00:1a:2b:3c:4d:5e")
+        XCTAssertEqual(cards[0].listTitle, "Sony TV")
+    }
+
+    func testTwoSetsWithTheSameNameStayTwoCards() {
+        let living = DiscoveredTV(
+            name: "BRAVIA 4K GB",
+            brand: .sony,
+            host: "192.0.2.8",
+            port: 6466,
+            controlPort: 80,
+            macAddress: "aa:bb:cc:dd:ee:01",
+            source: DiscoveryService.androidTvRemoteType,
+            model: "BRAVIA 4K GB"
+        )
+        let den = DiscoveredTV(
+            name: "BRAVIA 4K GB",
+            brand: .sony,
+            host: "192.0.2.40",
+            port: 6466,
+            controlPort: 80,
+            macAddress: "aa:bb:cc:dd:ee:02",
+            source: DiscoveryService.castType,
+            model: "BRAVIA 4K GB"
+        )
+        let cards = DiscoveryCards.present([den, living])
+        XCTAssertEqual(cards.map(\.host), ["192.0.2.8", "192.0.2.40"])
+        XCTAssertEqual(cards.map(\.listTitle), ["Sony TV", "Sony TV 2"])
+    }
+
+    func testNeighbourCommandsRunOnceAndATimeoutKeepsTheNamedCard() {
+        let padding = String(repeating: "x\n", count: 20_000)
+        let ndp = padding + "fe80::abcd%en0 0:1a:2b:3c:4d:5e en0\n"
+        let arp = padding + "? (192.0.2.8) at 0:1a:2b:3c:4d:5e on en0\n"
+        let runner = ScriptedRunner(outputs: ["/usr/sbin/ndp": ndp, "/usr/sbin/arp": arp])
+        let lookup = SystemNeighbourLookup(runner: runner)
+        let sony = DiscoveredTV(
+            name: "Sony TV",
+            brand: .sony,
+            host: "192.0.2.8",
+            port: 5555,
+            controlPort: 80,
+            macAddress: "00:1a:2b:3c:4d:5e",
+            source: "sony-scan"
+        )
+        let adb = DiscoveredTV(
+            name: "adb-large",
+            brand: .generic,
+            host: "fe80::abcd%en0",
+            port: 41234,
+            controlPort: 41234,
+            source: DiscoveryService.connectType
+        )
+        let extra = DiscoveredTV(
+            name: "adb-other",
+            brand: .generic,
+            host: "fe80::9999%en0",
+            port: 5555,
+            controlPort: 5555,
+            macAddress: "10:20:30:40:50:60",
+            source: DiscoveryService.connectType
+        )
+        let cards = DiscoveryCards.present([sony, adb, extra], neighbours: lookup)
+        XCTAssertEqual(cards.count, 1)
+        XCTAssertEqual(cards[0].host, "192.0.2.8")
+        XCTAssertEqual(runner.calls.filter { $0 == "/usr/sbin/ndp" }.count, 1)
+        XCTAssertEqual(runner.calls.filter { $0 == "/usr/sbin/arp" }.count, 1)
+
+        let timingOut = ScriptedRunner(outputs: [:], timesOut: true)
+        let missed = SystemNeighbourLookup(runner: timingOut)
+        let kept = DiscoveryCards.present([sony, adb, extra], neighbours: missed)
+        XCTAssertEqual(kept.map(\.listTitle), ["Sony TV"])
+        XCTAssertEqual(timingOut.calls.filter { $0 == "/usr/sbin/ndp" }.count, 1)
+        XCTAssertEqual(timingOut.calls.filter { $0 == "/usr/sbin/arp" }.count, 1)
+    }
 }
 
 private func assertCardIsPlain(_ title: String, file: StaticString = #filePath, line: UInt = #line) {
@@ -373,6 +477,41 @@ private func assertCardIsPlain(_ title: String, file: StaticString = #filePath, 
     XCTAssertFalse(title.lowercased().contains("adb-"), title, file: file, line: line)
     XCTAssertFalse(title.contains(":"), title, file: file, line: line)
     XCTAssertFalse(title.contains("%"), title, file: file, line: line)
+}
+
+private struct UnpaddedNeighbours: NeighbourLooking {
+    var ndp: String
+    var arp: String
+
+    func mac(forIPv6 host: String) -> String? {
+        NeighbourParse.mac(forIPv6: host, ndp: ndp)
+    }
+
+    func ipv4s(forMAC mac: String) -> [String] {
+        NeighbourParse.ipv4s(forMAC: mac, arp: arp)
+    }
+}
+
+private final class ScriptedRunner: CommandRunning {
+    var outputs: [String: String]
+    var timesOut: Bool
+    var calls: [String] = []
+
+    init(outputs: [String: String], timesOut: Bool = false) {
+        self.outputs = outputs
+        self.timesOut = timesOut
+    }
+
+    func run(_ executable: String, arguments: [String], timeout: TimeInterval) throws -> CommandResult {
+        calls.append(executable)
+        if timesOut { throw RemoteError.timedOut(executable) }
+        let text = outputs[executable] ?? ""
+        return CommandResult(status: 0, stdout: text, stderr: "")
+    }
+
+    func run(_ executable: String, arguments: [String], timeout: TimeInterval, environment: [String: String]) throws -> CommandResult {
+        try run(executable, arguments: arguments, timeout: timeout)
+    }
 }
 
 private struct FixtureNeighbours: NeighbourLooking {

@@ -698,36 +698,53 @@ public struct EmptyNeighbourLookup: NeighbourLooking {
     public func ipv4s(forMAC mac: String) -> [String] { [] }
 }
 
-/// Reads `ndp -an` and `arp -an`. Those print the cache. They do not send a probe.
-/// A sandbox that blocks them yields an empty cache, and the card list uses the fallback.
-public struct SystemNeighbourLookup: NeighbourLooking {
-    public init() {}
+/// Reads `ndp -an` and `arp -an` once per search. Those print the cache. They do not send a probe.
+/// A timeout, a sandbox block, or any other failure leaves that text empty, and the named card is kept.
+public final class SystemNeighbourLookup: NeighbourLooking {
+    private let runner: any CommandRunning
+    private let lock = NSLock()
+    private var ndpText: String?
+    private var arpText: String?
+
+    public init(runner: any CommandRunning = ShellRunner()) {
+        self.runner = runner
+    }
 
     public func mac(forIPv6 host: String) -> String? {
-        NeighbourParse.mac(forIPv6: host, ndp: commandOutput("/usr/sbin/ndp", ["-an"]))
+        NeighbourParse.mac(forIPv6: host, ndp: cached(path: "/usr/sbin/ndp", arguments: ["-an"], kind: .ndp))
     }
 
     public func ipv4s(forMAC mac: String) -> [String] {
-        NeighbourParse.ipv4s(forMAC: mac, arp: commandOutput("/usr/sbin/arp", ["-an"]))
+        NeighbourParse.ipv4s(forMAC: mac, arp: cached(path: "/usr/sbin/arp", arguments: ["-an"], kind: .arp))
     }
 
-    private func commandOutput(_ path: String, _ args: [String]) -> String {
-        guard FileManager.default.isExecutableFile(atPath: path) else { return "" }
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: path)
-        process.arguments = args
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = Pipe()
-        do {
-            try process.run()
-        } catch {
+    private enum CacheKind {
+        case ndp
+        case arp
+    }
+
+    private func cached(path: String, arguments: [String], kind: CacheKind) -> String {
+        lock.lock()
+        defer { lock.unlock() }
+        switch kind {
+        case .ndp:
+            if let ndpText { return ndpText }
+        case .arp:
+            if let arpText { return arpText }
+        }
+        let loaded = load(path, arguments)
+        switch kind {
+        case .ndp: ndpText = loaded
+        case .arp: arpText = loaded
+        }
+        return loaded
+    }
+
+    private func load(_ path: String, _ arguments: [String]) -> String {
+        guard let result = try? runner.run(path, arguments: arguments, timeout: 2), result.status == 0 else {
             return ""
         }
-        process.waitUntilExit()
-        guard process.terminationStatus == 0 else { return "" }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        return String(data: data, encoding: .utf8) ?? ""
+        return result.stdout
     }
 }
 
@@ -740,8 +757,9 @@ public enum NeighbourParse {
             guard let first = fields.first else { continue }
             let address = stripZone(first)
             guard address == needle else { continue }
-            if let mac = fields.dropFirst().first(where: { looksLikeMAC($0) }) {
-                return normalizeMAC(mac)
+            let macs = fields.dropFirst().map { normalizeMAC($0) }.filter { !$0.isEmpty }
+            if let mac = macs.first {
+                return mac
             }
         }
         return nil
@@ -753,22 +771,26 @@ public enum NeighbourParse {
         var found: [String] = []
         for raw in text.split(whereSeparator: \.isNewline) {
             let line = String(raw)
-            guard line.lowercased().contains(wanted) else { continue }
+            let tokens = line.split(whereSeparator: { $0 == " " || $0 == "\t" }).map(String.init)
+            let macs = tokens.map { normalizeMAC($0) }.filter { !$0.isEmpty }
+            guard macs.contains(wanted) else { continue }
             guard let address = firstIPv4(in: line), !found.contains(address) else { continue }
             found.append(address)
         }
         return found
     }
 
+    /// macOS prints an octet under 16 without a leading zero, for example `0:1a:2b:3c:4d:5e`.
     public static func normalizeMAC(_ text: String) -> String {
         let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().replacingOccurrences(of: "-", with: ":")
         let parts = cleaned.split(separator: ":").map(String.init)
-        guard parts.count == 6, parts.allSatisfy({ $0.count == 2 && $0.allSatisfy(\.isHexDigit) }) else { return "" }
-        return parts.joined(separator: ":")
-    }
-
-    private static func looksLikeMAC(_ text: String) -> Bool {
-        !normalizeMAC(text).isEmpty
+        guard parts.count == 6 else { return "" }
+        var padded: [String] = []
+        for part in parts {
+            guard part.count == 1 || part.count == 2, part.allSatisfy(\.isHexDigit) else { return "" }
+            padded.append(part.count == 1 ? "0" + part : part)
+        }
+        return padded.joined(separator: ":")
     }
 
     private static func stripZone(_ host: String) -> String {
@@ -884,8 +906,11 @@ public enum DiscoveryCards {
         let leftMAC = NeighbourParse.normalizeMAC(left.macAddress)
         let rightMAC = NeighbourParse.normalizeMAC(right.macAddress)
         if !leftMAC.isEmpty, leftMAC == rightMAC { return true }
-        let shared = Set(ipv4s(left)).intersection(ipv4s(right))
-        if !shared.isEmpty { return true }
+        let leftIPs = Set(ipv4s(left))
+        let rightIPs = Set(ipv4s(right))
+        if !leftIPs.intersection(rightIPs).isEmpty { return true }
+        if !leftMAC.isEmpty, !rightMAC.isEmpty, leftMAC != rightMAC { return false }
+        if !leftIPs.isEmpty, !rightIPs.isEmpty { return false }
         if let name = serviceName(left), name == serviceName(right) { return true }
         return false
     }

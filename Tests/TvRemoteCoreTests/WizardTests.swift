@@ -316,6 +316,26 @@ final class WizardTests: XCTestCase {
         XCTAssertEqual(wizard.message, "Saved Den.")
     }
 
+    func testVerifiedClearsWhenASecondSetIsPicked() {
+        var wizard = SetupWizard()
+        _ = wizard.handle(.choose(.sony))
+        _ = wizard.handle(.pick(DiscoveredTV(name: "Living Room", brand: .sony, host: "192.0.2.8", port: 5555, controlPort: 80, source: "sony-scan")))
+        XCTAssertEqual(wizard.handle(.testSucceeded), .none)
+        XCTAssertTrue(wizard.verified)
+        XCTAssertEqual(wizard.handle(.back), .none)
+        XCTAssertEqual(wizard.handle(.back), .none)
+        XCTAssertEqual(wizard.phase, .find)
+        XCTAssertFalse(wizard.verified)
+        _ = wizard.handle(.pick(DiscoveredTV(name: "Den", brand: .sony, host: "192.0.2.40", port: 5555, controlPort: 80, source: "sony-scan")))
+        _ = wizard.handle(.continueAhead)
+        _ = wizard.handle(.typing(false))
+        guard case .save = wizard.handle(.remember(name: "Den")) else {
+            return XCTFail("expected save")
+        }
+        XCTAssertEqual(wizard.message, "Saved Den.")
+        XCTAssertFalse(wizard.verified)
+    }
+
     func testLaunchGoesConnectingThenConnectedOrFailed() {
         XCTAssertEqual(LaunchFlow.phase(savedTVs: 0, status: .idle, name: ""), .setup)
         XCTAssertEqual(LaunchFlow.phase(savedTVs: 0, status: .connecting(serial: "192.0.2.8:5555"), name: ""), .setup)

@@ -278,6 +278,7 @@ public struct SetupWizard: Equatable {
         message = nil
         switch (phase, event) {
         case (.pickBrand, .choose(let picked)):
+            verified = false
             brand = picked
             switch picked {
             case .sony: controlPort = 80; port = 5555
@@ -287,12 +288,14 @@ public struct SetupWizard: Equatable {
             go(.find)
             return .none
         case (.find, .pick(let tv)):
+            verified = false
             apply(tv)
             return routeAfterFound()
         case (.find, .wantManual):
             go(.manual)
             return .none
         case (.manual, .submitManual(let rawHost, let rawPort)):
+            verified = false
             let normalized = HostInput.normalize(rawHost)
             guard HostInput.isValidHost(normalized.host) else {
                 message = "Enter the TV's address."
@@ -405,6 +408,7 @@ public struct SetupWizard: Equatable {
             message = verified ? WizardCopy.connected(to: name) : WizardCopy.saved(to: name)
             return .save(draft())
         case (_, .back):
+            verified = false
             switchWatch = nil
             guard let previous = stack.popLast() else { return .none }
             phase = previous
