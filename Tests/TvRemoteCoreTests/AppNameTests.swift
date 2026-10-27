@@ -48,7 +48,7 @@ final class AppNameTests: XCTestCase {
         XCTAssertEqual(AppNames.displayName(package: "com.foo.musicplayer", label: nil), "Music Player")
         XCTAssertEqual(AppNames.displayName(package: "com.foo.musicplayer", label: "musicplayer"), "Music Player")
         XCTAssertEqual(AppNames.displayName(package: "com.foo.music_player", label: nil), "Music Player")
-        XCTAssertEqual(AppNames.displayName(package: "com.example.player", label: "Evening Paper"), "Evening Paper")
+        XCTAssertEqual(AppNames.displayName(package: "com.example.player", label: "Nightly"), "Nightly")
         let awkward = ["com.foo.musicplayer", "com.a.b", "com.q.x", "org.example.a", "com.foo.x_y", "com.acme.tv.android"]
         for package in awkward {
             let name = AppNames.displayName(package: package, label: "A")

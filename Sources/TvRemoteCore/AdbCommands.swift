@@ -69,10 +69,6 @@ public enum AdbCommands {
         ["devices"]
     }
 
-    public static func launcherIndex(serial: String) -> [String] {
-        ["-s", serial, "shell", "cat", AppIndex.launcherPath]
-    }
-
     public static func leanbackActivities(serial: String) -> [String] {
         [
             "-s", serial, "shell", "cmd", "package", "query-activities",

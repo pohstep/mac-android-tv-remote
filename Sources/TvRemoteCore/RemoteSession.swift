@@ -453,7 +453,7 @@ public final class RemoteSession {
         return ActionReport(title: "Couldn't type", detail: TypingReadiness.notReady, isError: true)
     }
 
-    /// Launcher export first, then leanback activities. Nil when adb is not connected or both reads fail.
+    /// Leanback activities. Nil when adb is not connected or the query fails.
     public func readApps() -> [TvApp]? {
         if let target = sonyCredentials() {
             let sonyApps = SonyClient(http: http).applications(host: target.host, port: target.port, psk: target.psk)
@@ -461,10 +461,6 @@ public final class RemoteSession {
         }
         guard let serial = connectedSerial() else { return nil }
         let adb = client()
-        if let text = try? adb.shell(["cat", AppIndex.launcherPath], serial: serial),
-           let apps = AppIndex.parseLauncher(text), !apps.isEmpty {
-            return apps.map(namedApp)
-        }
         guard let query = try? adb.shell([
             "cmd", "package", "query-activities",
             "-a", "android.intent.action.MAIN",

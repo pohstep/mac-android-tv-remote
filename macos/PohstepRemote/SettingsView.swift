@@ -98,7 +98,7 @@ struct SettingsView: View {
                 }
 
                 group("Apps") {
-                    Text("On each connect the remote reads the TV's apps. It uses the Evening Paper export when that file is there, and otherwise the leanback apps and their labels. Favourites stay first. The last list is kept on this Mac and shown with “TV offline, saved list” when the TV doesn't answer. You can still edit a package here; the next connect replaces this copy.")
+                    Text("On each connect the remote reads the TV's apps from the leanback list and their labels. The last list is kept on this Mac and shown with “TV offline, saved list” when the TV doesn't answer. You can still edit a package here; the next connect replaces this copy.")
                         .font(.system(size: 11))
                         .foregroundColor(Palette.muted)
                         .fixedSize(horizontal: false, vertical: true)
