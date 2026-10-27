@@ -510,7 +510,8 @@ final class AppModel: ObservableObject {
                     self.banner = PowerButtonModel.unsupportedLabel
                     self.bannerIsError = true
                 } else if report.isError {
-                    self.banner = PowerActions.didNotRespond
+                    let sentence = report.title.trimmingCharacters(in: .whitespacesAndNewlines)
+                    self.banner = sentence.isEmpty ? PowerActions.didNotRespond : sentence
                     self.bannerIsError = true
                 } else {
                     self.banner = ""

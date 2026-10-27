@@ -183,7 +183,8 @@ public struct SonyIPBackend: TvBackend {
             let sony = SonyClient(http: context.http)
             if sony.setPower(on: on, host: context.host, port: context.controlPort, psk: context.psk) {
                 context.onSonySuccess()
-                return ActionReport(title: on ? "Sent wake" : "Sent sleep", detail: "Sony IP", isError: false)
+                NSLog("%@", "Sony IP power")
+                return ActionReport(title: on ? "Sent wake" : "Sent sleep", detail: "", isError: false)
             }
             context.onSonyFailure()
         }

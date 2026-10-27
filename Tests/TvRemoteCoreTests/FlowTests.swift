@@ -149,7 +149,8 @@ final class FlowTests: XCTestCase {
         let none = ScriptedPower()
         let missing = PowerActions.turnOn(transport: none, sleep: clock.sleep, now: clock.now)
         XCTAssertTrue(missing.tried.isEmpty)
-        XCTAssertTrue(missing.report.detail.contains("Wake-on-LAN"))
+        XCTAssertEqual(missing.report.title, PowerActions.couldNotTurnOn)
+        XCTAssertEqual(missing.report.detail, "")
         XCTAssertTrue(missing.buttonEnabled)
     }
 
@@ -184,6 +185,38 @@ final class FlowTests: XCTestCase {
         XCTAssertFalse(off.report.isError)
         XCTAssertEqual(off.report.title, "Turned off.")
         XCTAssertEqual(off.tried, [.adbSleep])
+    }
+
+    func testPowerFailureUserStringsStayPlain() {
+        let banned = ["wake-on-lan", "adb", "udp", "packet", "sony ip", "mac address", "debugging connection"]
+        XCTAssertFalse(PowerActions.userFacingFailures.isEmpty)
+        for line in PowerActions.userFacingFailures {
+            let lower = line.lowercased()
+            for word in banned {
+                XCTAssertFalse(lower.contains(word), "\(line) contains \(word)")
+            }
+        }
+        let clock = FlowClock()
+        let quiet = ScriptedPower()
+        let turnedOn = PowerActions.turnOn(transport: quiet, sleep: clock.sleep, now: clock.now)
+        let turnedOff = PowerActions.turnOff(transport: quiet, sleep: clock.sleep, now: clock.now)
+        let stuck = ScriptedPower()
+        stuck.adbCanPressPower = true
+        stuck.sonyCanPressPower = true
+        stuck.canWakeOnLan = true
+        stuck.readings = Array(repeating: .off, count: 40)
+        let failed = PowerActions.turnOn(transport: stuck, sleep: clock.sleep, now: clock.now)
+        let reports = [turnedOn.report, turnedOff.report, failed.report]
+        for report in reports {
+            XCTAssertTrue(report.isError)
+            let text = "\(report.title)\n\(report.detail)".lowercased()
+            for word in banned {
+                XCTAssertFalse(text.contains(word), text)
+            }
+        }
+        XCTAssertEqual(turnedOff.report.title, PowerActions.couldNotTurnOff)
+        XCTAssertEqual(RemoteError.invalidMac("nope").description, PowerActions.couldNotTurnOn)
+        XCTAssertFalse(RemoteError.invalidMac("nope").description.lowercased().contains("mac address"))
     }
 
     func testOnePowerButtonAndPlainWords() {

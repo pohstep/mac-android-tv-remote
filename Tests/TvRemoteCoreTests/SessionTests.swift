@@ -285,7 +285,7 @@ final class SessionTests: XCTestCase {
         armFastPower(session)
         let wakeReport = session.pressPower()
         XCTAssertEqual(wakeReport.title, "Turned on.")
-        XCTAssertEqual(wakeReport.detail, "adb wake")
+        XCTAssertEqual(wakeReport.detail, "")
         XCTAssertTrue(fake.calls.contains { $0.arguments.contains("KEYCODE_WAKEUP") })
         XCTAssertTrue(wake.sent.isEmpty)
 
@@ -305,8 +305,8 @@ final class SessionTests: XCTestCase {
         let session = RemoteSession(settings: settings, runner: FakeRunner(), fileExists: { _ in true })
         XCTAssertFalse(session.canWakeOnLan)
         let report = session.pressPower()
-        XCTAssertEqual(report.title, "The TV isn't reachable")
-        XCTAssertTrue(report.detail.contains("Wake-on-LAN"))
+        XCTAssertEqual(report.title, PowerActions.couldNotTurnOn)
+        XCTAssertEqual(report.detail, "")
         XCTAssertTrue(report.isError)
     }
 
@@ -317,7 +317,8 @@ final class SessionTests: XCTestCase {
         let session = RemoteSession(settings: settings, runner: FakeRunner(), fileExists: { _ in false })
         let report = session.pressSleep()
         XCTAssertTrue(report.isError)
-        XCTAssertTrue(report.detail.contains("Sleep needs a live adb connection"))
+        XCTAssertEqual(report.title, PowerActions.couldNotTurnOff)
+        XCTAssertEqual(report.detail, "")
     }
 
     func testLaunchDoesNotCallAdbForABadPackage() {

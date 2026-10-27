@@ -173,6 +173,10 @@ public enum PowerChrome {
 
 public enum PowerActions {
     public static let didNotRespond = "TV didn't respond — try again"
+    public static let couldNotTurnOn = "Couldn't reach the TV to turn it on. Check it's plugged in and on the same Wi-Fi, then try again."
+    public static let couldNotTurnOff = "The TV can't be turned off right now. Check that the TV is connected, then try again."
+    /// Failure sentences a person can see. Method names stay in the log.
+    public static let userFacingFailures = [didNotRespond, couldNotTurnOn, couldNotTurnOff]
     public static let verifyWindow: TimeInterval = 6
 
     public static func turnOn(
@@ -209,11 +213,11 @@ public enum PowerActions {
         now: () -> Date
     ) -> PowerAttempt {
         guard !steps.isEmpty else {
-            let detail = want == .on
-                ? "Wake needs a debugging connection, Sony IP, or a MAC address for Wake-on-LAN."
-                : "Sleep needs a live adb connection. Wake-on-LAN can only turn the TV on."
+            log(want == .on
+                ? "no debugging connection, no Sony IP, and no MAC address for Wake-on-LAN"
+                : "no live adb connection; Wake-on-LAN can only turn the TV on")
             return PowerAttempt(
-                report: ActionReport(title: "The TV isn't reachable", detail: detail, isError: true),
+                report: ActionReport(title: want == .on ? couldNotTurnOn : couldNotTurnOff, detail: "", isError: true),
                 power: transport.readPower(),
                 tried: [],
                 buttonEnabled: true
@@ -229,8 +233,9 @@ public enum PowerActions {
                 return done
             }
         }
+        log(tried.map(logLabel).joined(separator: ", "))
         return PowerAttempt(
-            report: ActionReport(title: didNotRespond, detail: tried.map(label).joined(separator: ", "), isError: true),
+            report: ActionReport(title: didNotRespond, detail: "", isError: true),
             power: power,
             tried: tried,
             buttonEnabled: true
@@ -254,8 +259,9 @@ public enum PowerActions {
         default:
             return nil
         }
+        log(logLabel(step))
         return PowerAttempt(
-            report: ActionReport(title: title, detail: label(step), isError: false),
+            report: ActionReport(title: title, detail: "", isError: false),
             power: power,
             tried: tried,
             buttonEnabled: true
@@ -297,7 +303,8 @@ public enum PowerActions {
         return last
     }
 
-    private static func label(_ step: PowerStep) -> String {
+    /// Method names for the log. These lines are not shown on the button or the banner.
+    private static func logLabel(_ step: PowerStep) -> String {
         switch step {
         case .adbWake:
             return "adb wake"
@@ -310,5 +317,9 @@ public enum PowerActions {
         case .sonyOff:
             return "Sony IP"
         }
+    }
+
+    private static func log(_ message: String) {
+        NSLog("%@", message)
     }
 }
