@@ -56,7 +56,7 @@ public enum SetupCopy {
             var lines = [
                 SetupLine(key: "setup.debug.wireless.1", text: "On the TV, open Settings, then System, then Developer options."),
                 SetupLine(key: "setup.debug.wireless.2", text: "Turn on Wireless debugging."),
-                SetupLine(key: "setup.debug.wireless.3", text: "Choose pair with a code. You will need the port and the code shown on the TV."),
+                SetupLine(key: "setup.debug.wireless.3", text: "Choose pair with a code. You will need the number and the code shown on the TV."),
                 SetupLine(key: "setup.debug.legacy.1", text: "Older sets connect without a pairing code."),
                 SetupLine(key: "setup.debug.legacy.2", text: "When this Mac connects, accept Allow on the TV.")
             ]
@@ -75,7 +75,7 @@ public enum SetupCopy {
             ]
         case .pair:
             return [
-                SetupLine(key: "setup.pair.1", text: "Enter the port and the 6-digit code shown on the TV.")
+                SetupLine(key: "setup.pair.1", text: "Enter the number and the 6-digit code shown on the TV.")
             ]
         case .allow:
             return [
@@ -195,7 +195,7 @@ public struct SetupWizard: Equatable {
                   (1...65535).contains(pairPort),
                   code.count == 6,
                   code.allSatisfy(\.isNumber) else {
-                message = "Enter the port and the 6-digit code shown on the TV."
+                message = "Enter the number and the 6-digit code shown on the TV."
                 return .none
             }
             return .pairAndConnect(host: host, pairPort: pairPort, code: code, connectPort: port)

@@ -8,14 +8,14 @@ Zapbar was called Mac Android TV Remote up to v1.0.1. Same project, new name.
 
 ## Install
 
-1. Download `Zapbar-1.1.zip` (or the `.dmg`) from the [latest release](https://github.com/pohstep/mac-android-tv-remote/releases/latest).
+1. Download `Zapbar-1.1.1.zip` (or `Zapbar-1.1.1.dmg`) from the [latest release](https://github.com/pohstep/mac-android-tv-remote/releases/latest).
 2. Move **Zapbar** to Applications and open it. It is not signed with an Apple developer account, so macOS asks first. See [First launch](#first-launch-unsigned-app).
 3. Follow the setup window, or use **Try demo TV** to look around without a TV.
 
 ## What it can't do yet
 
 - Tested first on a Sony Bravia (Google TV / Android TV). Other brands are unverified.
-- Typing, screenshots, and installing an app need network debugging on the TV (Developer options). The TV asks once to allow this Mac. Zapbar bundles its own `adb` helper in the release app.
+- Typing, screenshots, and installing an app need this Mac allowed on the TV. The TV asks once. The release app includes its own connection helper.
 - Typing is English only. No Chinese input.
 - Mac only, macOS 13 or later.
 
@@ -29,7 +29,7 @@ Zapbar was called Mac Android TV Remote up to v1.0.1. Same project, new name.
 - **App tiles** with names, and the TV's own icon where the TV provides one, with **More apps…** for the rest of the list.
 - **Inputs** with the names the TV reports.
 - **Power** is one button. The label follows the TV: **Turn off** when it is on, **Turn on** when it is off or still unknown. While Zapbar is checking, the button says **Checking…**. Turn on and Turn off try the other ways on their own. The button does not name those ways.
-- **Several TVs.** The last one reconnects on launch. Wake is in the menu bar. Release and sandbox builds leave a v1.0 settings file and the old keychain item unread, so the first launch does not ask for Keychain access. `scripts/build-dev.sh` sets `ZAPBAR_MIGRATE_V1` and can bring that TV and key across.
+- **Several TVs.** The last one reconnects on launch. Power is in the menu bar. Release and sandbox builds leave a v1.0 settings file and the old keychain item unread, so the first launch does not ask for Keychain access. `scripts/build-dev.sh` sets `ZAPBAR_MIGRATE_V1` and can bring that TV and key across.
 - **Setup** walks through brand, finding the TV (or typing an address), debugging, pairing or Allow, and saving.
 - **Type on the TV.** A field in the panel sends on Return, including a pasted URL as plain text. Cut, Copy, Paste, and Select All are on the Edit menu, and Command-V still works while keyboard-as-remote is on. `⌃⌥T` opens the panel and focuses the field. If no text field is focused on the TV, the text stays and **Retry** sends it again. A drop adds to the field. An empty send asks you to type something.
 - **Try demo TV** opens a connected panel with no TV on the network. It is on the find step when nothing is found, and in Settings. Leave demo returns to a saved TV. Demo mode is not saved.
@@ -40,37 +40,35 @@ Zapbar was called Mac Android TV Remote up to v1.0.1. Same project, new name.
 
 Clean-up with undo is built behind an Advanced section and is excluded from the release build until Jim says go. `scripts/build-local.sh` leaves `ZAPBAR_ADVANCED` off, so the release app has no clean-up code. `scripts/build-dev.sh` turns it on. `swift test` still covers it.
 
-Xiaomi control (port 6095: keys, apps, HDMI) is **experimental**. It was written against `scripts/mock-xiaomi.py` and has not been checked on a real set. It cannot type and cannot power the set on.
+Xiaomi control (remote buttons, apps, and HDMI) is **experimental**. It was checked with a stand-in on this Mac, not a real set. It cannot type and cannot turn the set on.
 
 ## Requirements
 
 - macOS 13 Ventura or later (Intel or Apple silicon).
-- A TV on the local network. Sony sets need **IP control** and a **pre-shared key**. Other sets need network debugging. Xiaomi uses port 6095.
-- For a sandboxed build, a local copy of platform-tools (`adb`) on the build machine. See [docs/adb-notice.md](docs/adb-notice.md). The app never downloads `adb`.
+- A TV on the same network. A Sony needs **IP control** and a control key. Other sets need this Mac allowed on the TV.
+- A sandboxed build needs a local copy of the connection helper on the build machine. See [docs/adb-notice.md](docs/adb-notice.md). The app never downloads it.
 
 ## Setup
 
 ### On a Sony TV
 
-1. **Settings → Network → IP control**
-   - **Authentication**: *Normal and Pre-Shared Key*
-   - **Pre-Shared Key**: choose a key
+1. **Settings → Network → IP control**. Turn on control from the network, set a control key, and enter the same key in Zapbar.
 2. **Remote start**: **On**, if you want the set to wake from standby.
-3. Optional, for typing: turn on network debugging and accept the prompt the first time this Mac connects. Skip this if you only want the remote buttons.
+3. Optional, for typing: allow this Mac on the TV and accept the prompt the first time it connects. Skip this if you only want the remote buttons.
 
 ### On another TV
 
 1. Open the setup window and pick **Other TV**.
-2. For current wireless debugging, enter the pairing port and the 6-digit code. Zapbar runs `adb pair`, then `adb connect`.
-3. For an older set, use port 5555 and accept **Allow** on the TV.
+2. When the TV shows a number and a 6-digit code, enter both. Zapbar then connects.
+3. On an older set, accept **Allow** on the TV.
 
-You can always type an IP address instead of waiting for discovery.
+You can always type the TV address instead of waiting for discovery.
 
 ### On the Mac
 
 1. Open Zapbar. It lives in the menu bar and has no Dock icon.
 2. The first launch with no saved TV opens setup. You can also use the menu bar item **Add a TV…** or **Settings…** (⌘,).
-3. The Sony pre-shared key is stored in the login keychain, one item per TV. The first time, macOS asks to let the app use it: enter your Mac password and click **Always Allow**.
+3. The Sony control key is stored in the login keychain, one item per TV. The first time, macOS asks to let the app use it: enter your Mac password and click **Always Allow**.
 4. Keyboard-as-remote (non-sandbox builds only) needs **System Settings → Privacy & Security → Accessibility**.
 
 ## First launch (unsigned app)
@@ -132,7 +130,7 @@ CI: a GitHub Actions workflow is included as `docs/ci/build.yml.example`. To ena
 
 ## Privacy
 
-Everything stays on your local network. The app talks only to your TVs. There is no analytics, telemetry, or cloud. Pre-shared keys live in the macOS keychain, and typed characters are never logged.
+Everything stays on your local network. The app talks only to your TVs. There is no analytics, telemetry, or cloud. Control keys live in the macOS keychain, and typed characters are never logged.
 
 ## License
 

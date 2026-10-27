@@ -470,6 +470,68 @@ final class SessionTests: XCTestCase {
         XCTAssertFalse(fake.calls.contains { $0.arguments.contains("android.intent.action.VIEW") })
     }
 
+    func testRefreshLearnsAMissingMacOnceAndLeavesAKnownMacAlone() throws {
+        let tally = LookupTally()
+        let missing = try learnedSession(macAddress: "", tally: tally)
+        let status = missing.session.refresh()
+        guard case .connected = status else {
+            return XCTFail("expected a connection, got \(status)")
+        }
+        let learned = missing.session.settingsSnapshot()
+        XCTAssertEqual(learned.macAddress, "AA:BB:CC:DD:EE:FF")
+        XCTAssertEqual(learned.devices.first { $0.id == "living" }?.macAddress, "AA:BB:CC:DD:EE:FF")
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let store = SettingsStore(url: directory.appendingPathComponent("settings.json"))
+        try store.save(learned)
+        let loaded = store.load().settings
+        XCTAssertEqual(loaded.macAddress, "AA:BB:CC:DD:EE:FF")
+        XCTAssertEqual(loaded.devices.first { $0.id == "living" }?.macAddress, "AA:BB:CC:DD:EE:FF")
+        let lookedUp = tally.value
+        XCTAssertEqual(missing.runner.calls.filter { $0.arguments.contains { $0.contains("wlan0") } }.count, 1)
+        XCTAssertFalse(missing.runner.calls.contains { $0.arguments.contains { $0.contains("eth0") } })
+        _ = missing.session.refresh()
+        XCTAssertEqual(tally.value, lookedUp)
+        XCTAssertEqual(missing.session.settingsSnapshot().macAddress, "AA:BB:CC:DD:EE:FF")
+
+        let known = try learnedSession(macAddress: "11:22:33:44:55:66", tally: LookupTally())
+        _ = known.session.refresh()
+        XCTAssertEqual(known.session.settingsSnapshot().macAddress, "11:22:33:44:55:66")
+        XCTAssertEqual(known.session.settingsSnapshot().devices.first { $0.id == "living" }?.macAddress, "11:22:33:44:55:66")
+        XCTAssertFalse(known.runner.calls.contains { $0.executable == "/usr/sbin/arp" || $0.arguments == ["-an"] })
+        XCTAssertFalse(known.runner.calls.contains { $0.arguments.contains { $0.contains("wlan0") || $0.contains("eth0") } })
+    }
+
+    private func learnedSession(macAddress: String, tally: LookupTally) throws -> (session: RemoteSession, runner: FakeRunner) {
+        let tv = StoredTV(id: "living", name: "Living Room", brand: .sony, host: "192.0.2.20", port: 5555, macAddress: macAddress)
+        var settings = Settings.factoryDefaults().applying(tv)
+        settings.adbPath = "/usr/local/bin/adb"
+        let runner = FakeRunner()
+        runner.handler = { arguments in
+            if arguments.contains("connect") {
+                return .success(CommandResult(status: 0, stdout: "connected to 192.0.2.20:5555", stderr: ""))
+            }
+            if arguments.contains("devices") {
+                return .success(CommandResult(status: 0, stdout: "List of devices attached\n192.0.2.20:5555\tdevice\n", stderr: ""))
+            }
+            if arguments == ["-an"] || arguments.contains(where: { $0.contains("wlan0") || $0.contains("eth0") }) {
+                tally.value += 1
+                if arguments.contains(where: { $0.contains("wlan0") }) {
+                    return .success(CommandResult(status: 0, stdout: "aa:bb:cc:dd:ee:ff\n", stderr: ""))
+                }
+                return .success(CommandResult(status: 0, stdout: "", stderr: ""))
+            }
+            return .success(CommandResult(status: 0, stdout: "", stderr: ""))
+        }
+        let session = RemoteSession(
+            settings: settings,
+            runner: runner,
+            fileExists: { $0 == "/usr/local/bin/adb" },
+            pathEnvironment: "",
+            homeDirectory: "/Users/tester"
+        )
+        return (session, runner)
+    }
+
     private func connected(_ fake: FakeRunner) -> RemoteSession {
         var settings = Settings.factoryDefaults()
         settings.host = "192.0.2.20"
@@ -488,6 +550,10 @@ final class SessionTests: XCTestCase {
         fake.script = []
         return session
     }
+}
+
+private final class LookupTally {
+    var value = 0
 }
 
 private final class PowerClock {

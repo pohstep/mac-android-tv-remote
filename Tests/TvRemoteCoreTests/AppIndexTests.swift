@@ -26,12 +26,10 @@ final class AppIndexTests: XCTestCase {
 
     func testReadAppsLabelsComeFromTheLeanbackQuery() {
         let runner = FakeRunner()
-        runner.script = [
-            .success(CommandResult(status: 0, stdout: "connected to 127.0.0.1:5555", stderr: "")),
-            .success(CommandResult(status: 0, stdout: "List of devices attached\n127.0.0.1:5555\tdevice\n", stderr: "")),
+        runner.script = connectedThen(
             .success(CommandResult(status: 0, stdout: "com.netflix.ninja/com.netflix.ninja.MainActivity\n", stderr: "")),
             .success(CommandResult(status: 0, stdout: "application-label: Netflix\n", stderr: ""))
-        ]
+        )
         var settings = Settings.factoryDefaults()
         settings.host = "127.0.0.1"
         settings.adbPath = "/usr/local/bin/adb"
@@ -52,12 +50,10 @@ final class AppIndexTests: XCTestCase {
 
     func testReadAppsUsesTheLeanbackQuery() {
         let runner = FakeRunner()
-        runner.script = [
-            .success(CommandResult(status: 0, stdout: "connected to 127.0.0.1:5555", stderr: "")),
-            .success(CommandResult(status: 0, stdout: "List of devices attached\n127.0.0.1:5555\tdevice\n", stderr: "")),
+        runner.script = connectedThen(
             .success(CommandResult(status: 0, stdout: "com.netflix.ninja/com.netflix.ninja.MainActivity\n", stderr: "")),
             .success(CommandResult(status: 0, stdout: "application-label: Netflix\n", stderr: ""))
-        ]
+        )
         var settings = Settings.factoryDefaults()
         settings.host = "127.0.0.1"
         settings.adbPath = "/usr/local/bin/adb"
@@ -106,5 +102,16 @@ final class AppIndexTests: XCTestCase {
             AppListCaption.text(loading: false, appsEmpty: false, savedCatalog: true, connected: true, connecting: false),
             "Apps"
         )
+    }
+
+    private func connectedThen(_ replies: Result<CommandResult, Error>...) -> [Result<CommandResult, Error>] {
+        let quiet = CommandResult(status: 0, stdout: "", stderr: "")
+        return [
+            .success(CommandResult(status: 0, stdout: "connected to 127.0.0.1:5555", stderr: "")),
+            .success(CommandResult(status: 0, stdout: "List of devices attached\n127.0.0.1:5555\tdevice\n", stderr: "")),
+            .success(quiet),
+            .success(quiet),
+            .success(quiet)
+        ] + replies
     }
 }

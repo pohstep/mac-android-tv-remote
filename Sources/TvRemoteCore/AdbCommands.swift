@@ -142,7 +142,7 @@ public enum AdbOutput {
         if lower.contains("already connected") { return .alreadyConnected }
         if lower.contains("connected to") { return .connected }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.isEmpty { return .failed("adb connect returned nothing") }
+        if trimmed.isEmpty { return .failed("The TV didn't answer. Check the connection and try again.") }
         return .failed(trimmed)
     }
 

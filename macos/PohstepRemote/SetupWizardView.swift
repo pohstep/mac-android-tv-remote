@@ -158,7 +158,7 @@ struct SetupWizardView: View {
         case .manual:
             TextField("Address", text: $manualHost)
                 .folioFieldChrome(focused: false)
-            TextField("Port (optional)", text: $manualPort)
+            TextField("Number (optional)", text: $manualPort)
                 .folioFieldChrome(focused: false)
             Button("Continue") {
                 let port = Int(manualPort.trimmingCharacters(in: .whitespacesAndNewlines))
@@ -175,7 +175,7 @@ struct SetupWizardView: View {
             Button("Connect without a code") { model.sendWizard(.chooseLegacy) }
                 .buttonStyle(FolioPrimaryStyle(wizard: true))
         case .pair:
-            TextField("Port shown on the TV", text: $pairPort)
+            TextField("Number shown on the TV", text: $pairPort)
                 .folioFieldChrome(focused: false)
             TextField("Pairing code", text: $pairCode)
                 .folioFieldChrome(focused: false)

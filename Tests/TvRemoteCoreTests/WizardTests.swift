@@ -34,7 +34,7 @@ final class WizardTests: XCTestCase {
         XCTAssertEqual(wizard.handle(.chooseWireless), .none)
         XCTAssertEqual(wizard.phase, .pair)
         XCTAssertEqual(wizard.handle(.submitPair(port: "12", code: "abc")), .none)
-        XCTAssertEqual(wizard.message, "Enter the port and the 6-digit code shown on the TV.")
+        XCTAssertEqual(wizard.message, "Enter the number and the 6-digit code shown on the TV.")
         let effect = wizard.handle(.submitPair(port: "37111", code: "123456"))
         XCTAssertEqual(effect, .pairAndConnect(host: "192.0.2.8", pairPort: 37111, code: "123456", connectPort: 5555))
         XCTAssertEqual(wizard.handle(.pairSucceeded), .none)

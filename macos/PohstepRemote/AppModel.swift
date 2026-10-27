@@ -285,10 +285,14 @@ final class AppModel: ObservableObject {
                     shown.muted = self.picture.muted
                 }
                 self.picture = shown
+                let snapshot = self.session.settingsSnapshot()
                 if !self.settingsFieldsAreActive {
-                    let snapshot = self.session.settingsSnapshot()
                     self.settings.host = snapshot.host
                     self.settings.port = snapshot.port
+                }
+                if snapshot.macAddress != self.settings.macAddress {
+                    self.settings.macAddress = snapshot.macAddress
+                    self.pushSettings()
                 }
                 if status.isConnected {
                     if shouldReadApps {

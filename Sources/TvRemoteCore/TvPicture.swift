@@ -67,7 +67,7 @@ public struct TvPicture: Equatable {
         case .off:
             return "Off"
         case .reachableOnly:
-            return "adb connected · \(appName)"
+            return "Connected · \(appName)"
         case .unknown:
             return "No answer yet"
         }

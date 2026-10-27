@@ -32,6 +32,7 @@ public final class RemoteSession {
     private var picture = TvPicture()
     private var sonyBlockedUntil = Date.distantPast
     private var adbLink = false
+    private var didTryMacOnConnect = false
     private var cancelFlag = false
     private var transferRemote: String?
     var powerSleep: (TimeInterval) -> Void = { Thread.sleep(forTimeInterval: $0) }
@@ -94,6 +95,9 @@ public final class RemoteSession {
 
     public func replaceSettings(_ newValue: Settings) {
         lock.lock()
+        if newValue.host != settings.host || newValue.activeDeviceID != settings.activeDeviceID {
+            didTryMacOnConnect = false
+        }
         settings = newValue
         keyboardMode = newValue.keyboardMode
         lock.unlock()
@@ -654,7 +658,7 @@ public final class RemoteSession {
         return attempt.report
     }
 
-    /// Fills a missing MAC from the neighbour table or the TV, and turns the packet on so Turn on can use it.
+    /// Fills a missing MAC from the neighbour table or the TV so Turn on can reach it after sleep.
     private func learnMacIfMissing() {
         let snapshot = lock.critical { settings }
         if MACAddress.bytes(snapshot.macAddress) != nil { return }
@@ -958,11 +962,24 @@ public final class RemoteSession {
         lock.critical { adbLink }
     }
 
+    /// Once per TV, after the helper is up, fill a missing MAC. A known MAC is left alone.
+    private func learnMacAfterConnect() {
+        let skip = lock.critical { () -> Bool in
+            if didTryMacOnConnect { return true }
+            didTryMacOnConnect = true
+            return MACAddress.bytes(settings.macAddress) != nil
+        }
+        if skip { return }
+        learnMacIfMissing()
+    }
+
     private func finishConnect(_ state: DeviceState, serial: String, outcome: ConnectOutcome, listing: String) -> LinkStatus {
         switch state {
         case .device:
             lock.critical { adbLink = true }
-            return assign(.connected(serial: serial))
+            let status = assign(.connected(serial: serial))
+            learnMacAfterConnect()
+            return status
         case .unauthorized:
             return assign(.unauthorized(serial: serial))
         case .offline:
