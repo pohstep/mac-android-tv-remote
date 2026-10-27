@@ -395,6 +395,55 @@ final class SessionTests: XCTestCase {
         }
         return fake
     }
+
+    func testTypeStopsWhenNoFieldIsReady() {
+        let fake = FakeRunner()
+        let session = connected(fake)
+        fake.handler = { arguments in
+            if arguments.contains("dumpsys") && arguments.contains("input_method") {
+                return .success(CommandResult(status: 0, stdout: "mServedView=null\nmInputShown=false", stderr: ""))
+            }
+            return .success(CommandResult(status: 0, stdout: "", stderr: ""))
+        }
+        let report = session.type("hello")
+        XCTAssertEqual(report.detail, TypingReadiness.notReady)
+        XCTAssertTrue(report.isError)
+        XCTAssertFalse(fake.calls.contains { $0.arguments.contains("text") && $0.arguments.contains("input") })
+    }
+
+    func testUrlIsTypedAsPlainText() {
+        let fake = FakeRunner()
+        let session = connected(fake)
+        fake.handler = { arguments in
+            if arguments.contains("dumpsys") && arguments.contains("input_method") {
+                return .success(CommandResult(status: 0, stdout: "mInputShown=true", stderr: ""))
+            }
+            return .success(CommandResult(status: 0, stdout: "", stderr: ""))
+        }
+        let report = session.type("https://example.com/watch")
+        XCTAssertFalse(report.isError)
+        XCTAssertTrue(fake.calls.contains { $0.arguments.contains("input") && $0.arguments.contains("text") })
+        XCTAssertFalse(fake.calls.contains { $0.arguments.contains("android.intent.action.VIEW") })
+    }
+
+    private func connected(_ fake: FakeRunner) -> RemoteSession {
+        var settings = Settings.factoryDefaults()
+        settings.host = "192.0.2.20"
+        settings.port = 5555
+        fake.script = [
+            .success(CommandResult(status: 0, stdout: "connected to 192.0.2.20:5555", stderr: "")),
+            .success(CommandResult(status: 0, stdout: "List of devices attached\n192.0.2.20:5555\tdevice\n", stderr: ""))
+        ]
+        let session = RemoteSession(
+            settings: settings,
+            runner: fake,
+            fileExists: { $0 == "/usr/local/bin/adb" },
+            homeDirectory: "/Users/tester"
+        )
+        _ = session.refresh()
+        fake.script = []
+        return session
+    }
 }
 
 private final class DeviceScript {

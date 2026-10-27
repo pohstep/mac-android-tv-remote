@@ -101,6 +101,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        installEditMenu()
         AppearanceLock.applyGlobally()
         monitor = KeyboardMonitor(model: model)
         monitor?.start()
@@ -268,11 +269,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    private func installEditMenu() {
+        if NSApp.mainMenu == nil {
+            NSApp.mainMenu = NSMenu()
+        }
+        guard let main = NSApp.mainMenu else { return }
+        if main.items.contains(where: { $0.submenu?.title == "Edit" }) { return }
+        let menu = NSMenu(title: "Edit")
+        for item in StandardEditMenu.items {
+            let entry = NSMenuItem(
+                title: item.title,
+                action: NSSelectorFromString(item.action),
+                keyEquivalent: item.keyEquivalent
+            )
+            entry.keyEquivalentModifierMask = .command
+            entry.target = nil
+            menu.addItem(entry)
+        }
+        let top = NSMenuItem()
+        top.submenu = menu
+        main.addItem(top)
+    }
+
     private func openPanel() {
         sizePanelToFit()
         positionPanel()
+        NSApp.activate(ignoringOtherApps: true)
         panel.orderFrontRegardless()
         panel.makeKey()
+        model.focusTypeField()
         suppressCloseUntil = Date().addingTimeInterval(0.25)
         model.setPanelVisible(true)
     }

@@ -315,6 +315,29 @@ struct RemotePanel: View {
     }
 
     private var typeRow: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            typeField
+                .onDrop(of: [.plainText, .utf8PlainText, .text, .url], isTargeted: nil) { providers in
+                    loadDroppedText(providers)
+                }
+            if !model.typeNotice.isEmpty {
+                Text(model.typeNotice)
+                    .font(.system(size: 11))
+                    .foregroundColor(Palette.text)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if model.typeCanRetry {
+                Button("Retry") { model.sendTypedText(typeDraft) }
+                    .disabled(model.typeBusy)
+                    .font(.system(size: 12))
+            }
+        }
+        .onChange(of: model.typeClearToken) { _ in
+            typeDraft = ""
+        }
+    }
+
+    private var typeField: some View {
         let focused = typeFocused
         let strong = contrast == .increased
         let border: CGFloat = focused ? 1.5 : (strong ? 1.5 : 1)
@@ -332,11 +355,7 @@ struct RemotePanel: View {
             .font(.system(size: 13))
             .foregroundColor(Palette.text)
             .focused($typeFocused)
-            .onSubmit {
-                let text = typeDraft
-                typeDraft = ""
-                model.sendTypedText(text)
-            }
+            .onSubmit { model.sendTypedText(typeDraft) }
             if focused {
                 Text("Return to send")
                     .font(.system(size: 11))
@@ -483,6 +502,48 @@ struct RemotePanel: View {
             }
         }
         return !providers.isEmpty
+    }
+
+    private func loadDroppedText(_ providers: [NSItemProvider]) -> Bool {
+        for provider in providers {
+            if provider.hasItemConformingToTypeIdentifier(UTType.url.identifier) {
+                provider.loadItem(forTypeIdentifier: UTType.url.identifier, options: nil) { item, _ in
+                    let raw: String
+                    if let url = item as? URL {
+                        raw = url.absoluteString
+                    } else if let data = item as? Data, let url = URL(dataRepresentation: data, relativeTo: nil) {
+                        raw = url.absoluteString
+                    } else {
+                        return
+                    }
+                    applyDroppedText(raw)
+                }
+                return true
+            }
+            let identifier = UTType.plainText.identifier
+            guard provider.hasItemConformingToTypeIdentifier(identifier)
+                    || provider.hasItemConformingToTypeIdentifier(UTType.text.identifier)
+                    || provider.hasItemConformingToTypeIdentifier(UTType.utf8PlainText.identifier) else { continue }
+            provider.loadItem(forTypeIdentifier: identifier, options: nil) { item, _ in
+                let raw: String
+                if let text = item as? String {
+                    raw = text
+                } else if let data = item as? Data {
+                    raw = String(data: data, encoding: .utf8) ?? ""
+                } else {
+                    return
+                }
+                applyDroppedText(raw)
+            }
+            return true
+        }
+        return false
+    }
+
+    private func applyDroppedText(_ raw: String) {
+        let text = DroppedText.plain(raw)
+        guard !text.isEmpty else { return }
+        DispatchQueue.main.async { typeDraft = text }
     }
 
     @ViewBuilder

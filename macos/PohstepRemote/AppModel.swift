@@ -21,6 +21,10 @@ final class AppModel: ObservableObject {
     @Published var discovered: [DiscoveredTV] = []
     @Published var discovering = false
     @Published var typeFocusID = 0
+    @Published var typeNotice = ""
+    @Published var typeCanRetry = false
+    @Published var typeBusy = false
+    @Published var typeClearToken = 0
     @Published var jobLine = ""
     @Published var jobRaw = ""
     @Published var jobIsError = false
@@ -487,13 +491,44 @@ final class AppModel: ObservableObject {
         typeFocusID += 1
     }
 
+    func focusTypeField() {
+        typeFocusID += 1
+    }
+
     func sendTypedText(_ text: String) {
-        guard !text.isEmpty else { return }
-        if demoOn {
-            demoAct { $0.type(text) }
-            return
+        let sending = text
+        guard !sending.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        guard !typeBusy else { return }
+        typeBusy = true
+        typeNotice = ""
+        typeCanRetry = false
+        let work: () -> ActionReport = { [weak self] in
+            guard let self else {
+                return ActionReport(title: "Couldn't type", detail: "", isError: true)
+            }
+            if self.demoOn { return self.demo.type(sending) }
+            return self.session.type(sending)
         }
-        run { $0.type(text) }
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let report = work()
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.typeBusy = false
+                if report.isError {
+                    self.typeNotice = report.detail.isEmpty ? report.title : report.detail
+                    self.typeCanRetry = self.typeNotice == TypingReadiness.notReady
+                    self.banner = self.typeNotice
+                    self.bannerIsError = true
+                } else {
+                    self.typeNotice = ""
+                    self.typeCanRetry = false
+                    self.typeClearToken += 1
+                    if self.bannerIsError { self.banner = "" }
+                    self.bannerIsError = false
+                }
+                self.onChromeChanged?()
+            }
+        }
     }
 
     func stageDroppedFile(_ url: URL) -> String? {

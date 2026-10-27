@@ -409,6 +409,12 @@ public final class RemoteSession {
         )
         switch route {
         case .adb:
+            if currentAdbLink(), let serial = connectedSerial() {
+                let dump = (try? client().shell(["dumpsys", "input_method"], serial: serial)) ?? ""
+                if TypingReadiness.reading(dump) == .notReady {
+                    return ActionReport(title: "Couldn't type", detail: TypingReadiness.notReady, isError: true)
+                }
+            }
             let report = GenericTVBackend().sendText(text, context: makeContext(allowSony: false))
             if report.isError {
                 NSLog("Zapbar: adb typing failed for %d chars", count)

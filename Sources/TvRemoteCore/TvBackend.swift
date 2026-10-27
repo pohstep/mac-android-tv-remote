@@ -156,7 +156,7 @@ public struct SonyIPBackend: TvBackend {
             return ActionReport(title: "Typed \(text.count) characters", detail: "Sony IP", isError: false)
         }
         context.onSonyFailure()
-        return ActionReport(title: "Couldn't type", detail: "Open a text field on the TV, then try again.", isError: true)
+        return ActionReport(title: "Couldn't type", detail: TypingReadiness.notReady, isError: true)
     }
 
     public func launch(package: String, name: String, context: TvActionContext) -> ActionReport {
