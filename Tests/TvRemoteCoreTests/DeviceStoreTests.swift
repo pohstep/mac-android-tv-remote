@@ -12,7 +12,6 @@ final class DeviceStoreTests: XCTestCase {
         XCTAssertEqual(decoded.host, "192.0.2.8")
         XCTAssertEqual(decoded.port, 5555)
         XCTAssertEqual(decoded.adbPath, "/usr/local/bin/adb")
-        XCTAssertTrue(decoded.wolEnabled)
         XCTAssertEqual(decoded.macAddress, "aa:bb:cc:dd:ee:ff")
         XCTAssertEqual(decoded.broadcastAddress, "192.0.2.255")
         XCTAssertTrue(decoded.keyboardMode)
@@ -34,6 +33,7 @@ final class DeviceStoreTests: XCTestCase {
         let text = String(data: saved, encoding: .utf8) ?? ""
         XCTAssertFalse(text.contains("psk"))
         XCTAssertFalse(text.contains("secret-key"))
+        XCTAssertFalse(text.contains("wolEnabled"))
     }
 
     func testEmptyHostDoesNotInventADevice() throws {

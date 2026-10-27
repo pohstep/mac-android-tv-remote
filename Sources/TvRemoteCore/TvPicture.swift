@@ -67,7 +67,7 @@ public struct TvPicture: Equatable {
         case .off:
             return "Off"
         case .reachableOnly:
-            return "adb connected · \(appName)"
+            return "Connected · \(appName)"
         case .unknown:
             return "No answer yet"
         }
@@ -80,5 +80,5 @@ public struct TvPicture: Equatable {
 
 public enum RefreshCadence {
     /// Status is polled only while the remote panel is open.
-    public static let whileOpen: TimeInterval = 10
+    public static let whileOpen: TimeInterval = 4
 }

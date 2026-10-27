@@ -7,7 +7,7 @@ struct SettingsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                Text("The address is an IP or a hostname. Wake-on-LAN only travels a local network, or a subnet that forwards broadcasts.")
+                Text("Use a number like 192.168.1.20, or a name.")
                     .font(.system(size: 12))
                     .foregroundColor(Palette.muted)
                     .fixedSize(horizontal: false, vertical: true)
@@ -43,11 +43,11 @@ struct SettingsView: View {
                 }
 
                 group("TV") {
-                    field("Address", text: hostBinding, prompt: "TV IP (e.g. 192.168.1.20)")
+                    field("Address", text: hostBinding, prompt: "192.168.1.20 or a name")
                         .onSubmit { model.commitAddress(); model.refreshNow() }
                     field("adb port", text: portBinding, prompt: "5555")
                     #if !SANDBOX_BUILD
-                    field("adb path", text: adbBinding, prompt: "Blank finds Homebrew's adb")
+                    field("adb path", text: adbBinding, prompt: "Leave blank to use the built-in helper")
                     #endif
                     Button("Check connection") {
                         model.commitAddress()
@@ -56,14 +56,14 @@ struct SettingsView: View {
                     .buttonStyle(FolioPrimaryStyle())
                 }
 
-                group("Sony IP control") {
-                    Text("Optional, for a Sony TV. Turn on IP control and set a pre-shared key, then enter the same key here. It is stored in the Keychain, not in settings.json. The app does not print it. When Sony answers, the remote uses it for power, volume, input names, and buttons.")
+                group("Control key") {
+                    Text("Optional. On the TV, turn on control from the network and set a key, then enter the same key here. Zapbar keeps it in the Keychain and does not print it. When the TV accepts the key, Zapbar uses it for power, volume, input names, and buttons.")
                         .font(.system(size: 11))
                         .foregroundColor(Palette.muted)
                         .fixedSize(horizontal: false, vertical: true)
-                    SecureField("Pre-shared key", text: $pskDraft)
+                    SecureField("Control key", text: $pskDraft)
                         .folioFieldChrome(focused: false)
-                        .accessibilityLabel("Pre-shared key")
+                        .accessibilityLabel("Control key")
                     field("Sony port", text: sonyPortBinding, prompt: "80")
                     HStack {
                         Button("Save key") {
@@ -76,23 +76,29 @@ struct SettingsView: View {
                             model.clearPreSharedKey()
                         }
                     }
-                    Text(model.pskSaved ? "A pre-shared key is saved in the Keychain." : "No pre-shared key. The remote uses adb only.")
+                    Text(model.pskSaved ? "A control key is saved." : "No control key yet. The remote still uses the TV connection.")
                         .font(.system(size: 11))
                         .foregroundColor(Palette.muted)
                 }
 
-                group("Wake on LAN") {
-                    Toggle("Send a magic packet when the TV doesn't answer adb", isOn: wolBinding)
-                    field("MAC address", text: macBinding, prompt: "AA:BB:CC:DD:EE:FF")
-                    field("Broadcast", text: broadcastBinding, prompt: "255.255.255.255")
-                    Text("Power sends KEYCODE_WAKEUP when the TV is connected. From standby it sends this packet instead. Hold isn't required. Sleep is the separate button on the remote.")
-                        .font(.system(size: 11))
-                        .foregroundColor(Palette.muted)
-                        .fixedSize(horizontal: false, vertical: true)
+                group("Launch at login") {
+                    Toggle("Launch at login", isOn: Binding(
+                        get: { model.loginItem.isOn },
+                        set: { model.setLoginItem($0) }
+                    ))
+                    if !model.loginItem.message.isEmpty {
+                        Text(model.loginItem.message)
+                            .font(.system(size: 11))
+                            .foregroundColor(Palette.muted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    if model.loginItem.showsOpenSettings {
+                        Button("Open Login Items") { model.openLoginItems() }
+                    }
                 }
 
                 group("Apps") {
-                    Text("On each connect the remote reads the TV's apps. It uses the Evening Paper export when that file is there, and otherwise the leanback apps and their labels. Favourites stay first. The last list is kept on this Mac and shown with “TV offline, saved list” when the TV doesn't answer. You can still edit a package here; the next connect replaces this copy.")
+                    Text("On each connect the remote reads the TV's apps and their names. The last list is kept on this Mac and shown with “TV offline, saved list” when the TV doesn't answer. You can still edit a name here; the next connect replaces this copy.")
                         .font(.system(size: 11))
                         .foregroundColor(Palette.muted)
                         .fixedSize(horizontal: false, vertical: true)
@@ -149,18 +155,6 @@ struct SettingsView: View {
         Binding(get: { model.settings.adbPath }, set: { value in model.update { $0.adbPath = value } })
     }
     #endif
-
-    private var wolBinding: Binding<Bool> {
-        Binding(get: { model.settings.wolEnabled }, set: { value in model.update { $0.wolEnabled = value } })
-    }
-
-    private var macBinding: Binding<String> {
-        Binding(get: { model.settings.macAddress }, set: { value in model.update { $0.macAddress = value } })
-    }
-
-    private var broadcastBinding: Binding<String> {
-        Binding(get: { model.settings.broadcastAddress }, set: { value in model.update { $0.broadcastAddress = value } })
-    }
 
     private func group<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 8) {

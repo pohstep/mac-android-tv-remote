@@ -1,5 +1,11 @@
 import Foundation
 
+public enum JobKind: Equatable {
+    case install
+    case screenshot
+    case other
+}
+
 public struct JobReport: Equatable {
     public var sentence: String
     public var raw: String
@@ -60,87 +66,179 @@ public enum InstallExplain {
         }
     }
 
+    public static let unknownStep = "Check the TV and the network, then choose the .apk again."
+    public static let reconnectStep = "Reconnect the TV, then choose the .apk again."
+
+    /// What to do next. Install failures always have a step. Screenshot failures use their own.
+    public static func recovery(for sentence: String, kind: JobKind = .install) -> String? {
+        if sentence == TransferGate.busySentence {
+            return TransferGate.busyStep
+        }
+        if kind == .screenshot {
+            return screenshotRecovery(sentence)
+        }
+        return installRecovery(sentence)
+    }
+
+    private static func installRecovery(_ sentence: String) -> String? {
+        switch sentence {
+        case "Installed.", "Cancelled.", "Taking a screenshot…", "Screenshot ready.",
+             "Copied.", "Saved", "Couldn't save",
+             "Couldn't save. Choose another folder and press Save… again.",
+             ScreenshotCapture.asleep, ApkPick.onlyApk:
+            return nil
+        case "The TV already has a newer version of this app.":
+            return "Choose a newer .apk."
+        case "This file doesn't match the app already on the TV.":
+            return "Remove that app on the TV, then choose the .apk again."
+        case "The TV doesn't have enough free space.":
+            return "Free some space on the TV, then choose the .apk again."
+        case "This app needs a newer system than the TV has.", "This app isn't built for this TV.":
+            return "Choose an app built for this TV."
+        case "The TV blocked the install. Check the TV's install settings.":
+            return "Then choose the .apk again."
+        case "The TV blocked the install.":
+            return "Allow the install on the TV, then choose the .apk again."
+        case "That file isn't an installable app.", "The TV is missing a library this app needs.":
+            return "Choose a different .apk."
+        case "The TV cancelled the install.", "The TV refused the install.", "The install didn't finish.":
+            return "Check the TV, then choose the .apk again."
+        case "That file can't be read.":
+            return "Choose the .apk again."
+        case Copy.notConnected:
+            return reconnectStep
+        case Copy.helperMissing, Copy.helperDidNotStart:
+            return nil
+        default:
+            if sentence.hasPrefix("This Mac isn't allowed yet") || sentence.hasPrefix("This Mac isn't authorized") {
+                return "Accept the prompt on the TV, then choose the .apk again."
+            }
+            if sentence.hasSuffix("is offline. The TV may be asleep or still booting.") {
+                return "Wake the TV, then choose the .apk again."
+            }
+            return unknownStep
+        }
+    }
+
+    private static func screenshotRecovery(_ sentence: String) -> String? {
+        switch sentence {
+        case "Screenshot ready.", "Taking a screenshot…", "Copied.", "Saved", "Cancelled.",
+             ScreenshotCapture.asleep, ScreenshotBytes.blankSentence:
+            return nil
+        case "The screenshot didn't come back.":
+            return "Press Screenshot again. If the TV is showing protected video, try another screen."
+        case "Couldn't save", "Couldn't save. Choose another folder and press Save… again.":
+            return nil
+        case ScreenshotCapture.needsLink:
+            return "Check the connection, then press Screenshot."
+        default:
+            return "Check the connection, then press Screenshot."
+        }
+    }
+
     public static func failureCode(_ text: String) -> String? {
         guard let range = text.range(of: #"INSTALL_[A-Z0-9_]+"#, options: .regularExpression) else { return nil }
         return String(text[range])
     }
 }
 
-public enum LinkSend {
-    /// http and https only. Anything else, including a missing host, is refused.
-    public static func httpURL(from raw: String) -> String? {
-        let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard var parts = URLComponents(string: text), let scheme = parts.scheme?.lowercased() else { return nil }
-        guard scheme == "http" || scheme == "https" else { return nil }
-        guard let host = parts.host, !host.isEmpty else { return nil }
-        parts.scheme = scheme
-        return parts.string
-    }
-
-    public static func sentence(status: Int32, output: String) -> String {
-        if AdbOutput.cannotOpenView(output) {
-            return Copy.nothingCanOpen
-        }
-        if AdbOutput.outputIndicatesFailure(output, status: status) {
-            return "The TV didn't open that link. It needs a browser."
-        }
-        return "Opened on the TV."
+public enum PanelDismiss {
+    /// A click outside, or focus leaving, closes the panel.
+    /// A file drag in progress, or the short window after a drop, does not.
+    public static func shouldClose(
+        dragInProgress: Bool,
+        justDropped: Bool,
+        focusLost: Bool,
+        clickOutside: Bool
+    ) -> Bool {
+        if dragInProgress || justDropped { return false }
+        return focusLost || clickOutside
     }
 }
 
-public enum FileSend {
-    public static let playerSentence = "Sent. The TV needs a player to open it."
-    public static let playerLeftBehind = "The file is in Downloads. The TV needs a player to open it."
-    /// Push finished and the open command failed. The file is still in Downloads.
-    public static let stayedOnTV = "The file is on the TV in Downloads, but it did not open."
-
-    public static func downloadPath(for localPath: String) -> String {
-        var name = URL(fileURLWithPath: localPath).lastPathComponent
-        if name.isEmpty || name == "." || name == "/" { name = "file" }
-        name = name.replacingOccurrences(of: "/", with: "")
-        return "/sdcard/Download/\(name)"
+public enum FileDrop {
+    public enum Route: Equatable {
+        case refused(String)
+        case install(paths: [String], skipped: Int)
     }
 
-    public static func fileURL(remotePath: String) -> String {
-        let encoded = remotePath.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? remotePath
-        return "file://\(encoded)"
+    /// `.txt` is refused. An `.apk` is installed. A mix keeps the skipped-file line.
+    public static func route(_ paths: [String], alreadySkipped: Int = 0) -> Route {
+        let apks = paths.filter(ApkPick.isApk)
+        let skipped = alreadySkipped + (paths.count - apks.count)
+        if apks.isEmpty {
+            return .refused(ApkPick.onlyApk)
+        }
+        return .install(paths: apks, skipped: skipped)
     }
 
-    public static func mimeType(for path: String) -> String {
-        switch URL(fileURLWithPath: path).pathExtension.lowercased() {
-        case "mp4", "m4v": return "video/mp4"
-        case "mkv": return "video/x-matroska"
-        case "webm": return "video/webm"
-        case "mov": return "video/quicktime"
-        case "avi": return "video/x-msvideo"
-        case "mp3": return "audio/mpeg"
-        case "m4a", "aac": return "audio/mp4"
-        case "jpg", "jpeg": return "image/jpeg"
-        case "png": return "image/png"
-        case "gif": return "image/gif"
-        case "webp": return "image/webp"
-        case "pdf": return "application/pdf"
-        default: return "application/octet-stream"
+    public static func handle(_ paths: [String], install: (String) -> JobReport) -> JobReport {
+        switch route(paths) {
+        case .refused(let sentence):
+            return JobReport(sentence: sentence, raw: "", isError: true)
+        case .install(let paths, let skipped):
+            return ApkPick.notingSkipped(SerialTransfers.run(paths, body: install), skipped: skipped)
         }
     }
+}
 
-    public static func pushSentence(status: Int32, output: String) -> String {
-        let lower = output.lowercased()
-        if status == 0 && !lower.contains("error") && !lower.contains("failed") {
-            return playerSentence
+public enum ApkPick {
+    public static let onlyApk = "Only .apk files can be installed. Choose an .apk…"
+
+    public static func isApk(_ path: String) -> Bool {
+        path.lowercased().hasSuffix(".apk")
+    }
+
+    public static func skipped(_ count: Int) -> String {
+        if count == 1 {
+            return "Skipped 1 file that isn't an .apk."
         }
-        if lower.contains("no space") || lower.contains("insufficient") {
-            return "The TV doesn't have enough free space."
+        return "Skipped \(count) files that aren't .apk."
+    }
+
+    /// Adds the skipped-file sentence onto a finished install result.
+    public static func notingSkipped(_ report: JobReport, skipped count: Int) -> JobReport {
+        guard count > 0 else { return report }
+        let note = skipped(count)
+        let sentence = report.sentence.isEmpty ? note : "\(report.sentence) \(note)"
+        return JobReport(sentence: sentence, raw: report.raw, isError: report.isError)
+    }
+}
+
+public enum InstallLog {
+    /// The text shown in Show log and copied from it. The cause, the next step, then the raw install output.
+    public static func text(sentence: String, raw: String) -> String {
+        var lines = [sentence]
+        if let step = InstallExplain.recovery(for: sentence), !step.isEmpty {
+            lines.append(step)
         }
-        if lower.contains("permission denied") || lower.contains("read-only") {
-            return "The TV refused that folder."
+        let detail = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !detail.isEmpty {
+            lines.append(detail)
         }
-        return "The file didn't reach the TV."
+        return lines.joined(separator: "\n")
+    }
+
+    public static func append(_ log: String, _ entry: String) -> String {
+        let trimmed = entry.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return log }
+        if log.isEmpty { return trimmed }
+        return log + "\n\n" + trimmed
     }
 }
 
 public enum ScreenshotCapture {
     public static let remotePath = "/sdcard/Download/zapbar-screen.png"
+    /// A sleeping TV gives no picture, and asking it takes about half a minute. Say so first.
+    public static let asleep = "The TV is asleep. Turn it on first."
+    public static let needsLink = "The TV isn't connected."
+    /// Log only. An empty image keeps this line, then the pull command's own text.
+    public static let emptyImageLog = "the screenshot image was empty"
+
+    public static func pulledLog(bytes: Data, commandRaw: String) -> String {
+        guard bytes.isEmpty else { return commandRaw }
+        return emptyImageLog + (commandRaw.isEmpty ? "" : "\n" + commandRaw)
+    }
 
     /// A valid PNG, including an all-black frame, is kept. A broken exec-out result uses the fallback bytes.
     public static func resolve(execOut: Data, fallbackRaw: String = "", fallback: () -> (Data, String)) -> ScreenshotResult {
@@ -157,7 +255,12 @@ public enum ScreenshotCapture {
             case .blank:
                 return ScreenshotResult(png: pulled.0, sentence: ScreenshotBytes.blankSentence, raw: pulled.1, isError: false)
             case .broken:
-                return ScreenshotResult(png: nil, sentence: "The screenshot didn't come back.", raw: pulled.1, isError: true)
+                return ScreenshotResult(
+                    png: nil,
+                    sentence: "The screenshot didn't come back.",
+                    raw: pulledLog(bytes: pulled.0, commandRaw: pulled.1),
+                    isError: true
+                )
             }
         }
     }
@@ -165,6 +268,19 @@ public enum ScreenshotCapture {
 
 public enum ScreenshotSave {
     public static let defaultName = "Zapbar screenshot.png"
+
+    /// Desktop when that folder URL exists, otherwise Pictures. The panel may start there even if this process cannot read the folder.
+    public static func startDirectory(desktop: URL?, pictures: URL?) -> URL? {
+        desktop ?? pictures
+    }
+
+    public static func fileName(at date: Date, timeZone: TimeZone = .current) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = timeZone
+        formatter.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
+        return "Zapbar Screenshot \(formatter.string(from: date)).png"
+    }
 
     /// Next free file name. Never returns a name that is already in `existing`.
     public static func availableName(existing: Set<String>, preferred: String = defaultName) -> String {

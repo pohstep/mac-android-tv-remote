@@ -63,7 +63,7 @@ fi
 if [ "${ZAPBAR_MIGRATE_V1:-0}" = 1 ]; then
   SWIFT_FLAGS+=(-DZAPBAR_MIGRATE_V1)
 fi
-swiftc "${SWIFT_FLAGS[@]}" Sources/TvRemoteCore/*.swift macos/PohstepRemote/*.swift -lz -o dist/PohstepRemote
+swiftc "${SWIFT_FLAGS[@]}" Sources/TvRemoteCore/*.swift macos/PohstepRemote/*.swift -lz -framework ServiceManagement -o dist/PohstepRemote
 
 rm -rf "$APP"; mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp dist/PohstepRemote "$APP/Contents/MacOS/$EXE"

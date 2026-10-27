@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 final class AppModel: ObservableObject {
     @Published var settings: Settings
@@ -20,10 +21,23 @@ final class AppModel: ObservableObject {
     @Published var discovered: [DiscoveredTV] = []
     @Published var discovering = false
     @Published var typeFocusID = 0
-    @Published var linkFocusID = 0
+    @Published var typeNotice = ""
+    @Published var typeCanRetry = false
+    @Published var typeNeedsSetup = false
+    @Published var typeBusy = false
+    @Published var typeClearToken = 0
+    private var typeHintItem: DispatchWorkItem?
+    @Published var powerBusy = false
+    @Published var powerLine = ""
+    @Published var powerLog = ""
+    private var powerGeneration = 0
+    @Published var loginItem = LoginItemMapping.present(.notRegistered)
     @Published var jobLine = ""
     @Published var jobRaw = ""
     @Published var jobIsError = false
+    @Published var installLog = ""
+    @Published var showInstallLog = false
+    @Published var jobKind: JobKind = .other
     @Published var jobBusy = false
     @Published var jobCancellable = false
     @Published var screenshotPNG: Data?
@@ -45,7 +59,6 @@ final class AppModel: ObservableObject {
     let store: SettingsStore
     let hotkey = Hotkey.default
     let typeHotkey = Hotkey.typeDefault
-    let linkHotkey = Hotkey.linkDefault
 
     private var failures = 0
     private var refreshInFlight = false
@@ -65,6 +78,12 @@ final class AppModel: ObservableObject {
     var onKeyboardModeChanged: ((Bool) -> Void)?
     var onChromeChanged: (() -> Void)?
     var onOpenPanel: (() -> Void)?
+    /// A file drag is over the panel. The window stays up until the drag ends.
+    var onFileDrag: (() -> Void)?
+    /// The file drag left the panel, or the drag ended without a drop.
+    var onFileDragEnded: (() -> Void)?
+    /// A drop finished. Open the panel if it was closed so the result is visible.
+    var onDropAccepted: (() -> Void)?
     private var hudItem: DispatchWorkItem?
     private var pendingKey = ""
     private var lastSeenWrite = Date.distantPast
@@ -141,7 +160,7 @@ final class AppModel: ObservableObject {
     func savePreSharedKey(_ value: String) {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
-            banner = "Enter the pre-shared key from the TV, or leave it blank to use adb only."
+            banner = "Enter the control key from the TV, or leave the field blank."
             bannerIsError = true
             return
         }
@@ -149,7 +168,7 @@ final class AppModel: ObservableObject {
             try saveKey(trimmed, deviceID: settings.activeDeviceID)
             pskSaved = true
             session.setPreSharedKey(trimmed)
-            banner = "Pre-shared key saved in the Keychain."
+            banner = "Control key saved."
             bannerIsError = false
             refreshNow()
         } catch {
@@ -172,12 +191,13 @@ final class AppModel: ObservableObject {
         #endif
         pskSaved = false
         session.setPreSharedKey("")
-        banner = "Pre-shared key removed from the Keychain."
+        banner = "Control key removed."
         bannerIsError = false
         refreshNow()
     }
 
     func start() {
+        refreshLoginItem()
         refreshNow()
     }
 
@@ -248,6 +268,7 @@ final class AppModel: ObservableObject {
         if shouldReadApps {
             appsLoading = true
         }
+        let generation = powerGeneration
         DispatchQueue.global(qos: .utility).async { [weak self] in
             guard let self else { return }
             let status = self.session.refresh()
@@ -258,6 +279,11 @@ final class AppModel: ObservableObject {
                     self.refreshInFlight = false
                     return
                 }
+                if generation != self.powerGeneration {
+                    self.refreshInFlight = false
+                    self.schedule()
+                    return
+                }
                 self.status = status
                 var shown = picture
                 // Sony reports mute with the volume. Otherwise keep the button's last mute.
@@ -265,9 +291,14 @@ final class AppModel: ObservableObject {
                     shown.muted = self.picture.muted
                 }
                 self.picture = shown
+                let snapshot = self.session.settingsSnapshot()
                 if !self.settingsFieldsAreActive {
-                    self.settings.host = self.session.settings.host
-                    self.settings.port = self.session.settings.port
+                    self.settings.host = snapshot.host
+                    self.settings.port = snapshot.port
+                }
+                if snapshot.macAddress != self.settings.macAddress {
+                    self.settings.macAddress = snapshot.macAddress
+                    self.pushSettings()
                 }
                 if status.isConnected {
                     if shouldReadApps {
@@ -415,12 +446,40 @@ final class AppModel: ObservableObject {
         run { $0.launch(app) }
     }
 
+    var powerButton: PowerButtonModel {
+        let waiting: Bool
+        if picture.power == .on || picture.power == .off {
+            waiting = false
+        } else if case .connecting = status {
+            waiting = true
+        } else {
+            waiting = refreshInFlight
+        }
+        return PowerButtonModel.make(
+            power: picture.power,
+            busy: powerBusy,
+            supported: settings.brand != .xiaomi,
+            checking: waiting && !demoOn
+        )
+    }
+
+    func pressPowerButton() {
+        let button = powerButton
+        guard button.enabled else { return }
+        switch button.action {
+        case .turnOn:
+            wake()
+        case .turnOff:
+            sleep()
+        }
+    }
+
     func wake() {
         if demoOn {
             demoAct { $0.pressPower() }
             return
         }
-        run { $0.pressPower() }
+        beginPower(turningOn: true) { $0.pressPower() }
     }
 
     func sleep() {
@@ -428,7 +487,60 @@ final class AppModel: ObservableObject {
             demoAct { $0.pressSleep() }
             return
         }
-        run { $0.pressSleep() }
+        beginPower(turningOn: false) { $0.pressSleep() }
+    }
+
+    private func beginPower(turningOn: Bool, _ work: @escaping (RemoteSession) -> ActionReport) {
+        guard !powerBusy else { return }
+        guard settings.brand != .xiaomi else {
+            banner = PowerButtonModel.unsupportedLabel
+            bannerIsError = true
+            return
+        }
+        powerBusy = true
+        powerGeneration += 1
+        powerLine = turningOn ? PowerButtonModel.turningOn : PowerButtonModel.turningOff
+        banner = ""
+        bannerIsError = false
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self else { return }
+            let report = work(self.session)
+            let learned = self.session.settingsSnapshot()
+            DispatchQueue.main.async {
+                self.powerGeneration += 1
+                self.powerBusy = false
+                self.powerLine = ""
+                if learned.macAddress != self.settings.macAddress {
+                    self.settings.macAddress = learned.macAddress
+                    self.pushSettings()
+                }
+                self.picture = self.session.currentPicture()
+                self.notePower(report)
+                if report.title == PowerButtonModel.unsupportedLabel {
+                    self.banner = PowerButtonModel.unsupportedLabel
+                    self.bannerIsError = true
+                } else if report.isError {
+                    let sentence = report.title.trimmingCharacters(in: .whitespacesAndNewlines)
+                    self.banner = sentence.isEmpty ? PowerActions.didNotRespond : sentence
+                    self.bannerIsError = true
+                } else {
+                    self.banner = ""
+                    self.bannerIsError = false
+                }
+                self.refreshNow()
+                self.onChromeChanged?()
+            }
+        }
+    }
+
+    private func notePower(_ report: ActionReport) {
+        let technical = [report.title, report.detail]
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
+        guard !technical.isEmpty else { return }
+        powerLog = powerLog.isEmpty ? technical : powerLog + "\n\n" + technical
+        NSLog("Zapbar power: %@", technical)
     }
 
     func selectHdmi(_ port: Int) {
@@ -449,6 +561,26 @@ final class AppModel: ObservableObject {
 
     func openTvSettings() {
         launch(TvApp(id: "settings", name: "Settings", packageName: "com.android.tv.settings"))
+    }
+
+    func refreshLoginItem() {
+        loginItem = LoginItemMapping.present(LoginItemBridge.current())
+    }
+
+    func setLoginItem(_ on: Bool) {
+        do {
+            try LoginItemBridge.setEnabled(on)
+            refreshLoginItem()
+        } catch {
+            refreshLoginItem()
+            loginItem = LoginItemMapping.withChangeFailure(loginItem)
+            banner = loginItem.message
+            bannerIsError = true
+        }
+    }
+
+    func openLoginItems() {
+        LoginItemBridge.openSystemSettings()
     }
 
     func showSettings() {
@@ -474,6 +606,7 @@ final class AppModel: ObservableObject {
         settingsWindow?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         setSettingsKey(true)
+        refreshLoginItem()
     }
 
     func settingsWindowClosed() {
@@ -486,87 +619,148 @@ final class AppModel: ObservableObject {
         typeFocusID += 1
     }
 
+    func focusTypeField() {
+        typeFocusID += 1
+    }
+
     func sendTypedText(_ text: String) {
-        guard !text.isEmpty else { return }
-        if demoOn {
-            demoAct { $0.type(text) }
+        let sending = text
+        guard !sending.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            showTypeHint(TypingReadiness.empty)
             return
         }
-        run { $0.type(text) }
-    }
-
-    func openLinkField() {
-        onOpenPanel?()
-        linkFocusID += 1
-    }
-
-    func sendLink(_ raw: String) {
-        runJob("Sending the link…", cancellable: false) { [weak self] _ in
-            guard let self else { return JobReport(sentence: "Cancelled.", raw: "", isError: true) }
-            if self.demoOn { return self.demo.sendLink(raw) }
-            return self.session.sendLink(raw)
+        guard !typeBusy else { return }
+        typeHintItem?.cancel()
+        typeBusy = true
+        typeNotice = ""
+        typeCanRetry = false
+        typeNeedsSetup = false
+        let connected = demoOn || session.statusSnapshot().isConnected
+        let work: () -> ActionReport = { [weak self] in
+            guard let self else {
+                return ActionReport(title: "Couldn't type", detail: "", isError: true)
+            }
+            if self.demoOn { return self.demo.type(sending) }
+            return self.session.type(sending)
         }
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let report = work()
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.typeBusy = false
+                if report.isError {
+                    self.typeNotice = report.detail.isEmpty ? report.title : report.detail
+                    self.typeCanRetry = TypingReadiness.showRetry(failed: true)
+                    self.typeNeedsSetup = TypingReadiness.showSetup(failed: true, connected: connected)
+                    self.banner = self.typeNotice
+                    self.bannerIsError = true
+                } else {
+                    self.typeNotice = ""
+                    self.typeCanRetry = false
+                    self.typeNeedsSetup = false
+                    self.typeClearToken += 1
+                    if self.bannerIsError { self.banner = "" }
+                    self.bannerIsError = false
+                }
+                self.onChromeChanged?()
+            }
+        }
+    }
+
+    private func showTypeHint(_ text: String) {
+        typeHintItem?.cancel()
+        typeNotice = text
+        typeCanRetry = false
+        typeNeedsSetup = false
+        let item = DispatchWorkItem { [weak self] in
+            guard let self, self.typeNotice == text else { return }
+            self.typeNotice = ""
+            self.onChromeChanged?()
+        }
+        typeHintItem = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: item)
+        onChromeChanged?()
     }
 
     func stageDroppedFile(_ url: URL) -> String? {
         stageReadableCopy(of: url)
     }
 
-    func receiveStaged(_ paths: [String]) {
-        if demoOn {
-            discard(takePendingStages())
-            let apks = paths.filter { $0.lowercased().hasSuffix(".apk") }
-            guard !apks.isEmpty else {
-                noteJob(JobReport(sentence: "Drop an app file ending in .apk.", raw: "", isError: true))
-                return
-            }
-            runJob("Installing…", cancellable: false) { [weak self] _ in
-                self?.demo.installApk(at: apks[0]) ?? JobReport(sentence: "Cancelled.", raw: "", isError: true)
-            }
-            return
-        }
-        let directories = takePendingStages()
-        let apks = paths.filter { $0.lowercased().hasSuffix(".apk") }
-        guard !apks.isEmpty else {
-            discard(directories)
-            noteJob(JobReport(sentence: "Drop an app file ending in .apk.", raw: "", isError: true))
-            return
-        }
-        runInstalls(apks, directories: directories)
+    func noteFileDrag() {
+        onFileDrag?()
     }
 
-    func receiveApks(_ urls: [URL]) {
+    func noteFileDragEnded() {
+        onFileDragEnded?()
+    }
+
+    func receiveStaged(_ paths: [String], skipped: Int = 0) {
+        onDropAccepted?()
+        let route = FileDrop.route(paths, alreadySkipped: skipped)
         if demoOn {
-            let apks = urls.filter { $0.path.lowercased().hasSuffix(".apk") }
-            guard !apks.isEmpty else {
-                noteJob(JobReport(sentence: "Drop an app file ending in .apk.", raw: "", isError: true))
+            discard(takePendingStages())
+            switch route {
+            case .refused(let sentence):
+                noteJob(JobReport(sentence: sentence, raw: "", isError: true))
+            case .install(let apks, let skipped):
+                jobKind = .install
+                installLog = ""
+                showInstallLog = false
+                runJob("Installing…", cancellable: false) { [weak self] _ in
+                    let report = self?.demo.installApk(at: apks[0]) ?? JobReport(sentence: "Cancelled.", raw: "", isError: true)
+                    return ApkPick.notingSkipped(report, skipped: skipped)
+                }
+            }
+            return
+        }
+        switch route {
+        case .refused(let sentence):
+            discard(takePendingStages())
+            noteJob(JobReport(sentence: sentence, raw: "", isError: true))
+        case .install(let apks, let skipped):
+            runInstalls(apks, directories: takePendingStages(), skipped: skipped)
+        }
+    }
+
+    func receiveApks(_ urls: [URL], skipped extraSkipped: Int = 0) {
+        onDropAccepted?()
+        let route = FileDrop.route(urls.map(\.path), alreadySkipped: extraSkipped)
+        if demoOn {
+            switch route {
+            case .refused(let sentence):
+                noteJob(JobReport(sentence: sentence, raw: "", isError: true))
+            case .install(let apks, let skipped):
+                jobKind = .install
+                installLog = ""
+                showInstallLog = false
+                runJob("Installing…", cancellable: false) { [weak self] _ in
+                    let report = self?.demo.installApk(at: apks[0]) ?? JobReport(sentence: "Cancelled.", raw: "", isError: true)
+                    return ApkPick.notingSkipped(report, skipped: skipped)
+                }
+            }
+            return
+        }
+        switch route {
+        case .refused(let sentence):
+            noteJob(JobReport(sentence: sentence, raw: "", isError: true))
+        case .install(let apks, let skipped):
+            let wanted = Set(apks)
+            var paths: [String] = []
+            for url in urls where wanted.contains(url.path) {
+                let scoped = url.startAccessingSecurityScopedResource()
+                if let staged = stageReadableCopy(of: url) {
+                    paths.append(staged)
+                }
+                if scoped { url.stopAccessingSecurityScopedResource() }
+            }
+            let directories = takePendingStages()
+            guard !paths.isEmpty else {
+                discard(directories)
+                noteJob(JobReport(sentence: "That file can't be read.", raw: "", isError: true))
                 return
             }
-            runJob("Installing…", cancellable: false) { [weak self] _ in
-                self?.demo.installApk(at: apks[0].path) ?? JobReport(sentence: "Cancelled.", raw: "", isError: true)
-            }
-            return
+            runInstalls(paths, directories: directories, skipped: skipped)
         }
-        let apks = urls.filter { $0.path.lowercased().hasSuffix(".apk") }
-        guard !apks.isEmpty else {
-            noteJob(JobReport(sentence: "Drop an app file ending in .apk.", raw: "", isError: true))
-            return
-        }
-        var paths: [String] = []
-        for url in apks {
-            let scoped = url.startAccessingSecurityScopedResource()
-            if let staged = stageReadableCopy(of: url) {
-                paths.append(staged)
-            }
-            if scoped { url.stopAccessingSecurityScopedResource() }
-        }
-        let directories = takePendingStages()
-        guard !paths.isEmpty else {
-            discard(directories)
-            noteJob(JobReport(sentence: "That file can't be read.", raw: "", isError: true))
-            return
-        }
-        runInstalls(paths, directories: directories)
     }
 
     func installApk(at path: String) {
@@ -580,7 +774,10 @@ final class AppModel: ObservableObject {
     }
 
     func takeScreenshot() {
-        runJob("Taking a screenshot…", cancellable: false) { [weak self] _ in
+        jobKind = .screenshot
+        installLog = ""
+        showInstallLog = false
+        runJob("Taking a screenshot…", cancellable: true) { [weak self] _ in
             guard let self else { return JobReport(sentence: "Cancelled.", raw: "", isError: true) }
             let shot = self.demoOn ? self.demo.captureScreenshot() : self.session.captureScreenshot()
             DispatchQueue.main.async { self.screenshotPNG = shot.png }
@@ -647,66 +844,93 @@ final class AppModel: ObservableObject {
         panel.canCreateDirectories = true
         panel.prompt = "Save"
         panel.message = "Save the screenshot."
-        let folder = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
-        if let folder {
+        panel.allowedContentTypes = [.png]
+        let desktop = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first
+        let pictures = FileManager.default.urls(for: .picturesDirectory, in: .userDomainMask).first
+        if let folder = ScreenshotSave.startDirectory(desktop: desktop, pictures: pictures) {
             panel.directoryURL = folder
-            let names = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
-            panel.nameFieldStringValue = ScreenshotSave.availableName(existing: Set(names))
-        } else {
-            panel.nameFieldStringValue = ScreenshotSave.defaultName
         }
+        panel.nameFieldStringValue = ScreenshotSave.fileName(at: Date())
         guard panel.runModal() == .OK, let chosen = panel.url else { return }
         let scoped = chosen.startAccessingSecurityScopedResource()
         defer { if scoped { chosen.stopAccessingSecurityScopedResource() } }
-        let parent = chosen.deletingLastPathComponent()
-        let names = Set((try? FileManager.default.contentsOfDirectory(atPath: parent.path)) ?? [])
-        let dest = parent.appendingPathComponent(
-            ScreenshotSave.availableName(existing: names, preferred: chosen.lastPathComponent)
-        )
         do {
-            try png.write(to: dest)
-            jobLine = "Saved."
-            jobRaw = dest.path
+            try png.write(to: chosen)
+            jobLine = "Saved"
+            jobRaw = ""
             jobIsError = false
         } catch {
-            jobLine = "The screenshot couldn't be saved."
+            let sentence = "Couldn't save. Choose another folder and press Save… again."
+            jobKind = .screenshot
+            jobLine = sentence
             jobRaw = error.localizedDescription
             jobIsError = true
+            installLog = InstallLog.text(sentence: sentence, raw: error.localizedDescription)
         }
     }
 
-    func chooseFileToSend() {
+    func refuseNonApk() {
+        noteJob(JobReport(sentence: ApkPick.onlyApk, raw: "", isError: true))
+        rememberInstall(JobReport(sentence: ApkPick.onlyApk, raw: "", isError: true))
+    }
+
+    func chooseApk() {
         let panel = NSOpenPanel()
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
-        panel.prompt = "Send"
-        panel.message = "The TV needs a player to open the file."
+        panel.prompt = "Install"
+        panel.message = "Choose an app file ending in .apk."
+        if let apk = UTType(filenameExtension: "apk") {
+            panel.allowedContentTypes = [apk]
+        }
         guard panel.runModal() == .OK, let url = panel.url else { return }
+        guard ApkPick.isApk(url.path) else {
+            refuseNonApk()
+            return
+        }
         let scoped = url.startAccessingSecurityScopedResource()
         let staged = stageReadableCopy(of: url)
         if scoped { url.stopAccessingSecurityScopedResource() }
         let directories = takePendingStages()
         guard let staged else {
             discard(directories)
-            noteJob(JobReport(sentence: "That file can't be read.", raw: url.lastPathComponent, isError: true))
+            let report = JobReport(sentence: "That file can't be read.", raw: url.lastPathComponent, isError: true)
+            noteJob(report)
+            rememberInstall(report)
             return
         }
-        let name = URL(fileURLWithPath: staged).lastPathComponent
-        runJob("Sending \(name)…", directories: directories, cancellable: !demoOn) { [weak self] _ in
-            guard let self else { return JobReport(sentence: "Cancelled.", raw: "", isError: true) }
-            if self.demoOn { return self.demo.sendFile(at: staged) }
-            return self.session.sendFile(at: staged)
-        }
+        runInstalls([staged], directories: directories)
     }
 
-    private func runInstalls(_ paths: [String], directories: [String]) {
+    func copyInstallLog() {
+        guard !installLog.isEmpty else { return }
+        let board = NSPasteboard.general
+        board.clearContents()
+        board.setString(installLog, forType: .string)
+    }
+
+    private func rememberInstall(_ report: JobReport) {
+        jobKind = .install
+        installLog = InstallLog.text(sentence: report.sentence, raw: report.raw)
+        showInstallLog = false
+    }
+
+    private func appendInstall(_ report: JobReport) {
+        jobKind = .install
+        installLog = InstallLog.append(installLog, InstallLog.text(sentence: report.sentence, raw: report.raw))
+    }
+
+    private func runInstalls(_ paths: [String], directories: [String], skipped: Int = 0) {
         guard let first = paths.first else { return }
         let name = URL(fileURLWithPath: first).lastPathComponent
+        jobKind = .install
+        installLog = ""
+        showInstallLog = false
         runJob("Installing \(name)…", directories: directories, cancellable: true) { [weak self] token in
             guard let self else { return JobReport(sentence: "Cancelled.", raw: "", isError: true) }
             var index = 0
-            return SerialTransfers.run(paths) { path in
+            let report = SerialTransfers.run(paths) { path in
                 let file = URL(fileURLWithPath: path).lastPathComponent
                 let clear = index == 0
                 index += 1
@@ -715,9 +939,20 @@ final class AppModel: ObservableObject {
                         self.jobLine = "Installing \(file)…"
                     }
                 }
-                if self.demoOn { return self.demo.installApk(at: path, clearingCancel: clear) }
-                return self.session.installApk(at: path, clearingCancel: clear)
+                let one: JobReport
+                if self.demoOn {
+                    one = self.demo.installApk(at: path, clearingCancel: clear)
+                } else {
+                    one = self.session.installApk(at: path, clearingCancel: clear)
+                }
+                DispatchQueue.main.async { self.appendInstall(one) }
+                return one
             }
+            if skipped > 0 {
+                let note = JobReport(sentence: ApkPick.skipped(skipped), raw: "", isError: false)
+                DispatchQueue.main.async { self.appendInstall(note) }
+            }
+            return ApkPick.notingSkipped(report, skipped: skipped)
         }
     }
 
@@ -759,6 +994,7 @@ final class AppModel: ObservableObject {
         jobLine = report.sentence
         jobRaw = report.raw
         jobIsError = report.isError
+        rememberInstall(report)
     }
 
     private func stageReadableCopy(of url: URL) -> String? {

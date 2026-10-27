@@ -69,10 +69,6 @@ public enum AdbCommands {
         ["devices"]
     }
 
-    public static func launcherIndex(serial: String) -> [String] {
-        ["-s", serial, "shell", "cat", AppIndex.launcherPath]
-    }
-
     public static func leanbackActivities(serial: String) -> [String] {
         [
             "-s", serial, "shell", "cmd", "package", "query-activities",
@@ -111,11 +107,6 @@ public enum AdbCommands {
         ["-s", serial, "install", "-r", apkPath]
     }
 
-    public static func viewURL(serial: String, url: String) -> [String] {
-        let command = "am start -a android.intent.action.VIEW -d \(ShellWords.quote(url))"
-        return ["-s", serial, "shell", command]
-    }
-
     public static func screencap(serial: String) -> [String] {
         ["-s", serial, "exec-out", "screencap", "-p"]
     }
@@ -132,14 +123,6 @@ public enum AdbCommands {
         ["-s", serial, "shell", "rm -f \(ShellWords.quote(remotePath))"]
     }
 
-    public static func push(serial: String, localPath: String, remotePath: String) -> [String] {
-        ["-s", serial, "push", localPath, remotePath]
-    }
-
-    public static func viewFile(serial: String, fileURL: String, mime: String) -> [String] {
-        let command = "am start -a android.intent.action.VIEW -d \(ShellWords.quote(fileURL)) -t \(ShellWords.quote(mime))"
-        return ["-s", serial, "shell", command]
-    }
 }
 
 public enum ShellWords {
@@ -159,7 +142,7 @@ public enum AdbOutput {
         if lower.contains("already connected") { return .alreadyConnected }
         if lower.contains("connected to") { return .connected }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.isEmpty { return .failed("adb connect returned nothing") }
+        if trimmed.isEmpty { return .failed("The TV didn't answer. Check the connection and try again.") }
         return .failed(trimmed)
     }
 

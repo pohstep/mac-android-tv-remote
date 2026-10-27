@@ -2,39 +2,6 @@ import XCTest
 @testable import TvRemoteCore
 
 final class AppIndexTests: XCTestCase {
-    func testLauncherExportPinsFavouritesAndKeepsOrder() {
-        let json = """
-        {
-          "favourites": ["org.smarttube.stable", "com.netflix.ninja"],
-          "apps": [
-            {"name": "YouTube", "packageName": "com.google.android.youtube.tv"},
-            {"name": "Netflix", "packageName": "com.netflix.ninja", "favourite": false},
-            {"name": "SmartTube", "packageName": "org.smarttube.stable"},
-            {"name": "VLC", "packageName": "org.videolan.vlc", "favorite": true}
-          ]
-        }
-        """
-        let apps = AppIndex.parseLauncher(json)
-        XCTAssertEqual(apps?.map(\.name), ["SmartTube", "Netflix", "VLC", "YouTube"])
-        XCTAssertEqual(apps?.map(\.favourite), [true, true, true, false])
-    }
-
-    func testFlaggedFavouritesStayInFileOrder() {
-        let json = """
-        [
-          {"name": "YouTube", "package": "com.google.android.youtube.tv"},
-          {"label": "Netflix", "packageName": "com.netflix.ninja", "favourite": true},
-          {"title": "VLC", "package_name": "org.videolan.vlc", "pinned": true}
-        ]
-        """
-        let apps = AppIndex.parseLauncher(json)
-        XCTAssertEqual(apps?.map(\.packageName), [
-            "com.netflix.ninja",
-            "org.videolan.vlc",
-            "com.google.android.youtube.tv"
-        ])
-    }
-
     func testLeanbackQueryUsesLabelsAndPackageLines() {
         let verbose = """
         ActivityInfo:
@@ -57,15 +24,12 @@ final class AppIndexTests: XCTestCase {
         XCTAssertEqual(AppIndex.label(in: "application-label: Spotify"), "Spotify")
     }
 
-    func testMissingLauncherFileFallsBackToLeanbackLabels() {
+    func testReadAppsLabelsComeFromTheLeanbackQuery() {
         let runner = FakeRunner()
-        runner.script = [
-            .success(CommandResult(status: 0, stdout: "connected to 127.0.0.1:5555", stderr: "")),
-            .success(CommandResult(status: 0, stdout: "List of devices attached\n127.0.0.1:5555\tdevice\n", stderr: "")),
-            .success(CommandResult(status: 1, stdout: "", stderr: "No such file or directory")),
+        runner.script = connectedThen(
             .success(CommandResult(status: 0, stdout: "com.netflix.ninja/com.netflix.ninja.MainActivity\n", stderr: "")),
             .success(CommandResult(status: 0, stdout: "application-label: Netflix\n", stderr: ""))
-        ]
+        )
         var settings = Settings.factoryDefaults()
         settings.host = "127.0.0.1"
         settings.adbPath = "/usr/local/bin/adb"
@@ -84,14 +48,12 @@ final class AppIndexTests: XCTestCase {
         XCTAssertFalse(runner.calls.contains { $0.arguments.joined(separator: " ").contains("192.0.2.57") })
     }
 
-    func testLauncherExportSkipsTheLeanbackQuery() {
-        let json = #"{"apps":[{"name":"SmartTube","packageName":"org.smarttube.stable","favourite":true}]}"#
+    func testReadAppsUsesTheLeanbackQuery() {
         let runner = FakeRunner()
-        runner.script = [
-            .success(CommandResult(status: 0, stdout: "connected to 127.0.0.1:5555", stderr: "")),
-            .success(CommandResult(status: 0, stdout: "List of devices attached\n127.0.0.1:5555\tdevice\n", stderr: "")),
-            .success(CommandResult(status: 0, stdout: json, stderr: ""))
-        ]
+        runner.script = connectedThen(
+            .success(CommandResult(status: 0, stdout: "com.netflix.ninja/com.netflix.ninja.MainActivity\n", stderr: "")),
+            .success(CommandResult(status: 0, stdout: "application-label: Netflix\n", stderr: ""))
+        )
         var settings = Settings.factoryDefaults()
         settings.host = "127.0.0.1"
         settings.adbPath = "/usr/local/bin/adb"
@@ -103,10 +65,9 @@ final class AppIndexTests: XCTestCase {
         )
         _ = session.refresh()
         let apps = session.readApps()
-        XCTAssertEqual(apps?.map(\.name), ["SmartTube"])
-        XCTAssertEqual(apps?.first?.favourite, true)
-        XCTAssertTrue(runner.calls.contains { $0.arguments == ["-P", "5037"] + AdbCommands.launcherIndex(serial: "127.0.0.1:5555") })
-        XCTAssertFalse(runner.calls.contains { $0.arguments.contains("query-activities") })
+        XCTAssertEqual(apps?.map(\.name), ["Netflix"])
+        XCTAssertTrue(runner.calls.contains { $0.arguments == ["-P", "5037"] + AdbCommands.leanbackActivities(serial: "127.0.0.1:5555") })
+        XCTAssertFalse(runner.calls.contains { $0.arguments.contains("index.json") })
     }
 
     func testReadAppsDoesNothingUntilAdbIsConnected() {
@@ -141,5 +102,16 @@ final class AppIndexTests: XCTestCase {
             AppListCaption.text(loading: false, appsEmpty: false, savedCatalog: true, connected: true, connecting: false),
             "Apps"
         )
+    }
+
+    private func connectedThen(_ replies: Result<CommandResult, Error>...) -> [Result<CommandResult, Error>] {
+        let quiet = CommandResult(status: 0, stdout: "", stderr: "")
+        return [
+            .success(CommandResult(status: 0, stdout: "connected to 127.0.0.1:5555", stderr: "")),
+            .success(CommandResult(status: 0, stdout: "List of devices attached\n127.0.0.1:5555\tdevice\n", stderr: "")),
+            .success(quiet),
+            .success(quiet),
+            .success(quiet)
+        ] + replies
     }
 }

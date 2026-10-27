@@ -14,9 +14,9 @@ public enum RemoteError: Error, Equatable, CustomStringConvertible {
         case .timedOut:
             return Copy.stoppedAnswering
         case .commandFailed(let detail):
-            return detail.isEmpty ? "The adb command failed." : detail
-        case .invalidMac(let value):
-            return "\(value) isn't a MAC address. Use six pairs, like AA:BB:CC:DD:EE:FF."
+            return detail.isEmpty ? "The TV didn't answer. Check the connection and try again." : detail
+        case .invalidMac:
+            return PowerActions.couldNotTurnOn
         case .invalidBroadcast(let value):
             return "\(value) isn't an IPv4 broadcast address."
         }

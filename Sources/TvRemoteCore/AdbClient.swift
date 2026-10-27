@@ -104,10 +104,6 @@ public struct AdbClient {
         try run(AdbCommands.install(serial: serial, apkPath: path), timeout: 180)
     }
 
-    public func openLink(_ url: String, serial: String) throws -> CommandResult {
-        try run(AdbCommands.viewURL(serial: serial, url: url), timeout: 20)
-    }
-
     public func captureScreen(serial: String) throws -> CommandResult {
         try run(AdbCommands.screencap(serial: serial), timeout: 30)
     }
@@ -122,14 +118,6 @@ public struct AdbClient {
 
     public func removeRemote(_ remotePath: String, serial: String) throws -> CommandResult {
         try run(AdbCommands.removeRemote(serial: serial, remotePath: remotePath), timeout: 15)
-    }
-
-    public func pushFile(localPath: String, remotePath: String, serial: String) throws -> CommandResult {
-        try run(AdbCommands.push(serial: serial, localPath: localPath, remotePath: remotePath), timeout: 180)
-    }
-
-    public func openFile(fileURL: String, mime: String, serial: String) throws -> CommandResult {
-        try run(AdbCommands.viewFile(serial: serial, fileURL: fileURL, mime: mime), timeout: 20)
     }
 
     /// Stops the adb server this client started. Waits at most `AdbLaunch.quitWait`.

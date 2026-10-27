@@ -43,63 +43,135 @@ final class MacJobTests: XCTestCase {
 
         let before = fake.calls.count
         let rejected = session.installApk(at: folder.appendingPathComponent("notes.txt").path)
-        XCTAssertEqual(rejected.sentence, "Drop an app file ending in .apk.")
+        XCTAssertEqual(rejected.sentence, ApkPick.onlyApk)
+        XCTAssertEqual(
+            InstallLog.text(sentence: rejected.sentence, raw: ""),
+            ApkPick.onlyApk
+        )
+        XCTAssertEqual(
+            InstallLog.text(sentence: "The install didn't finish.", raw: "adb: device offline"),
+            "The install didn't finish.\nCheck the TV, then choose the .apk again.\nadb: device offline"
+        )
+        XCTAssertEqual(InstallExplain.recovery(for: "Installed."), nil)
         XCTAssertEqual(fake.calls.count, before)
     }
 
-    func testSendLinkAcceptsOnlyWebURLs() {
-        XCTAssertEqual(LinkSend.httpURL(from: " https://example.com/a?b=1&c=2 "), "https://example.com/a?b=1&c=2")
-        XCTAssertEqual(LinkSend.httpURL(from: "HTTP://example.com/x"), "http://example.com/x")
-        XCTAssertNil(LinkSend.httpURL(from: "file:///tmp/a.mp4"))
-        XCTAssertNil(LinkSend.httpURL(from: "javascript:alert(1)"))
-        XCTAssertNil(LinkSend.httpURL(from: "just words"))
-        XCTAssertNil(LinkSend.httpURL(from: "http://"))
+    func testInstallStatusMappingAndLog() {
+        let rows: [(String, String, String)] = [
+            ("INSTALL_FAILED_VERSION_DOWNGRADE", "The TV already has a newer version of this app.", "Choose a newer .apk."),
+            ("INSTALL_FAILED_UPDATE_INCOMPATIBLE", "This file doesn't match the app already on the TV.", "Remove that app on the TV, then choose the .apk again."),
+            ("INSTALL_FAILED_INSUFFICIENT_STORAGE", "The TV doesn't have enough free space.", "Free some space on the TV, then choose the .apk again."),
+            ("INSTALL_FAILED_OLDER_SDK", "This app needs a newer system than the TV has.", "Choose an app built for this TV."),
+            ("INSTALL_FAILED_NO_MATCHING_ABIS", "This app isn't built for this TV.", "Choose an app built for this TV."),
+            ("INSTALL_FAILED_INVALID_APK", "That file isn't an installable app.", "Choose a different .apk."),
+            ("INSTALL_FAILED_ABORTED", "The TV cancelled the install.", "Check the TV, then choose the .apk again."),
+            ("INSTALL_FAILED_MISSING_SHARED_LIBRARY", "The TV is missing a library this app needs.", "Choose a different .apk.")
+        ]
+        for row in rows {
+            let output = "Failure [\(row.0)]"
+            let sentence = InstallExplain.sentence(status: 1, output: output)
+            XCTAssertEqual(sentence, row.1, row.0)
+            let log = InstallLog.text(sentence: sentence, raw: output)
+            XCTAssertEqual(log, "\(row.1)\n\(row.2)\n\(output)")
+        }
+        XCTAssertEqual(InstallExplain.sentence(status: 1, output: "boom"), "The install didn't finish.")
+        XCTAssertEqual(InstallExplain.recovery(for: ApkPick.onlyApk), nil)
+        XCTAssertFalse(ApkPick.isApk("/tmp/clip.mp4"))
+        XCTAssertTrue(ApkPick.isApk("/tmp/Show.APK"))
+    }
+
+    func testInstallRecoveryHasItsOwnNextStep() {
+        XCTAssertEqual(
+            InstallExplain.recovery(for: Copy.notConnected),
+            InstallExplain.reconnectStep
+        )
+        XCTAssertEqual(
+            InstallExplain.recovery(for: Copy.notConnected, kind: .screenshot),
+            "Check the connection, then press Screenshot."
+        )
+        XCTAssertEqual(
+            InstallExplain.recovery(for: ScreenshotCapture.needsLink, kind: .screenshot),
+            "Check the connection, then press Screenshot."
+        )
+        XCTAssertEqual(InstallExplain.recovery(for: Copy.stoppedAnswering), InstallExplain.unknownStep)
+        XCTAssertNil(InstallExplain.recovery(for: Copy.helperMissing))
+        XCTAssertEqual(
+            InstallExplain.recovery(for: "This Mac isn't allowed yet. Accept the prompt on the TV (192.0.2.8:5555)."),
+            "Accept the prompt on the TV, then choose the .apk again."
+        )
+        XCTAssertEqual(InstallExplain.recovery(for: TransferGate.busySentence), TransferGate.busyStep)
+        XCTAssertEqual(InstallExplain.recovery(for: "The install didn't finish."), "Check the TV, then choose the .apk again.")
+        XCTAssertEqual(ApkPick.skipped(1), "Skipped 1 file that isn't an .apk.")
+        XCTAssertEqual(ApkPick.skipped(3), "Skipped 3 files that aren't .apk.")
+        let noted = ApkPick.notingSkipped(
+            JobReport(sentence: "Installed.", raw: "Success", isError: false),
+            skipped: 2
+        )
+        XCTAssertEqual(noted.sentence, "Installed. Skipped 2 files that aren't .apk.")
+        XCTAssertEqual(
+            InstallLog.append("Installed.\nSuccess", ApkPick.skipped(1)),
+            "Installed.\nSuccess\n\nSkipped 1 file that isn't an .apk."
+        )
+        XCTAssertEqual(InstallLog.append("", "Installed."), "Installed.")
+    }
+
+    func testPanelStaysOpenWhileAFileIsDragged() {
+        XCTAssertFalse(PanelDismiss.shouldClose(dragInProgress: true, justDropped: false, focusLost: true, clickOutside: true))
+        XCTAssertFalse(PanelDismiss.shouldClose(dragInProgress: true, justDropped: false, focusLost: false, clickOutside: false))
+        XCTAssertFalse(PanelDismiss.shouldClose(dragInProgress: false, justDropped: true, focusLost: true, clickOutside: true))
+        XCTAssertTrue(PanelDismiss.shouldClose(dragInProgress: false, justDropped: false, focusLost: false, clickOutside: true))
+        XCTAssertTrue(PanelDismiss.shouldClose(dragInProgress: false, justDropped: false, focusLost: true, clickOutside: false))
+        XCTAssertFalse(PanelDismiss.shouldClose(dragInProgress: false, justDropped: false, focusLost: false, clickOutside: false))
+    }
+
+    func testFileDropRefusesTextInstallsAnApkAndNotesAMixedDrop() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("zapbar-drop-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let apk = folder.appendingPathComponent("Show.apk")
+        try Data([0x50]).write(to: apk)
+        let text = folder.appendingPathComponent("notes.txt")
+        try Data("hello".utf8).write(to: text)
+
+        let refused = FileDrop.handle([text.path]) { _ in
+            XCTFail("a text file must not be installed")
+            return JobReport(sentence: "Installed.", raw: "", isError: false)
+        }
+        XCTAssertEqual(refused.sentence, "Only .apk files can be installed. Choose an .apk…")
+        XCTAssertTrue(refused.isError)
 
         let fake = FakeRunner()
         let session = connectedSession(fake, temporaryDirectory: NSTemporaryDirectory())
-        let refused = session.sendLink("file:///tmp/a.mp4")
-        XCTAssertEqual(refused.sentence, "Only web links can be sent. Use http or https.")
-        XCTAssertTrue(fake.calls.isEmpty)
-
         fake.handler = { arguments in
             if arguments == ["-P", "5037", "devices"] {
                 return .success(CommandResult(status: 0, stdout: "List of devices attached\n192.0.2.20:5555\tdevice\n", stderr: ""))
             }
-            return .success(CommandResult(status: 0, stdout: "Starting: Intent", stderr: ""))
+            if arguments.contains("install") {
+                return .success(CommandResult(status: 0, stdout: "Success\n", stderr: ""))
+            }
+            return .success(CommandResult(status: 0, stdout: "", stderr: ""))
         }
-        let sent = session.sendLink("https://example.com/a?b=1&c=2")
-        XCTAssertEqual(sent.sentence, "Opened on the TV.")
-        XCTAssertFalse(sent.isError)
+        let installed = FileDrop.handle([apk.path]) { session.installApk(at: $0) }
+        XCTAssertEqual(installed.sentence, "Installed.")
+        XCTAssertFalse(installed.isError)
+        XCTAssertTrue(fake.calls.contains { $0.arguments.contains("install") && $0.arguments.contains(apk.path) })
+
+        let mixed = FileDrop.handle([apk.path, text.path]) { session.installApk(at: $0) }
+        XCTAssertEqual(mixed.sentence, "Installed. Skipped 1 file that isn't an .apk.")
+        XCTAssertFalse(mixed.isError)
+    }
+
+    func testScreenshotFailureSaysWhatToDoNext() {
         XCTAssertEqual(
-            fake.calls.last?.arguments,
-            ["-P", "5037", "-s", "192.0.2.20:5555", "shell", "am start -a android.intent.action.VIEW -d 'https://example.com/a?b=1&c=2'"]
+            InstallExplain.recovery(for: "The screenshot didn't come back.", kind: .screenshot),
+            "Press Screenshot again. If the TV is showing protected video, try another screen."
         )
-
-        fake.handler = { arguments in
-            if arguments == ["-P", "5037", "devices"] {
-                return .success(CommandResult(status: 0, stdout: "List of devices attached\n192.0.2.20:5555\tdevice\n", stderr: ""))
-            }
-            return .success(CommandResult(status: 1, stdout: "", stderr: "Error: Activity not started"))
-        }
-        let failed = session.sendLink("https://example.com")
-        XCTAssertEqual(failed.sentence, "The TV didn't open that link. It needs a browser.")
-        XCTAssertTrue(failed.raw.contains("Activity not started"))
-
-        fake.handler = { arguments in
-            if arguments == ["-P", "5037", "devices"] {
-                return .success(CommandResult(status: 0, stdout: "List of devices attached\n192.0.2.20:5555\tdevice\n", stderr: ""))
-            }
-            return .success(CommandResult(status: 0, stdout: "Error: Activity not started, unable to resolve Intent", stderr: ""))
-        }
-        let unresolved = session.sendLink("https://example.com/watch")
-        XCTAssertEqual(unresolved.sentence, Copy.nothingCanOpen)
-        XCTAssertTrue(unresolved.isError)
-        XCTAssertEqual(Copy.nothingCanOpen, "No app on the TV can open this.")
-        XCTAssertFalse(Copy.nothingCanOpen.localizedCaseInsensitiveContains("android"))
-        XCTAssertFalse(Copy.nothingCanOpen.localizedCaseInsensitiveContains("sony"))
+        XCTAssertNil(InstallExplain.recovery(for: "Couldn't save. Choose another folder and press Save… again.", kind: .screenshot))
         XCTAssertEqual(
-            LinkSend.sentence(status: 1, output: "Error: No activity found to handle Intent"),
-            Copy.nothingCanOpen
+            InstallLog.text(
+                sentence: "Couldn't save. Choose another folder and press Save… again.",
+                raw: "Permission denied"
+            ),
+            "Couldn't save. Choose another folder and press Save… again.\nPermission denied"
         )
     }
 
@@ -136,6 +208,18 @@ final class MacJobTests: XCTestCase {
         XCTAssertFalse(stillBlank.isError)
         XCTAssertEqual(stillBlank.raw, "adb: broken pipe")
 
+        let emptyPull = ScreenshotCapture.resolve(execOut: Data("broken".utf8)) {
+            (Data(), "1 file pulled, 0 skipped")
+        }
+        XCTAssertNil(emptyPull.png)
+        XCTAssertEqual(emptyPull.sentence, "The screenshot didn't come back.")
+        XCTAssertEqual(emptyPull.raw, "the screenshot image was empty\n1 file pulled, 0 skipped")
+        XCTAssertEqual(ScreenshotCapture.pulledLog(bytes: Data(), commandRaw: ""), "the screenshot image was empty")
+        XCTAssertEqual(
+            InstallExplain.recovery(for: emptyPull.sentence, kind: .screenshot),
+            "Press Screenshot again. If the TV is showing protected video, try another screen."
+        )
+
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("zapbar-shot-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let fake = FakeRunner()
@@ -169,83 +253,34 @@ final class MacJobTests: XCTestCase {
         XCTAssertEqual(fake.calls.first { $0.arguments.contains("exec-out") }?.environment["TMPDIR"], folder.path)
     }
 
-    func testSendFilePushesToDownloadsAndAsksForAPlayer() throws {
-        XCTAssertEqual(FileSend.downloadPath(for: "/Users/me/My Video.mp4"), "/sdcard/Download/My Video.mp4")
-        XCTAssertEqual(FileSend.fileURL(remotePath: "/sdcard/Download/My Video.mp4"), "file:///sdcard/Download/My%20Video.mp4")
-        XCTAssertEqual(FileSend.mimeType(for: "clip.mp4"), "video/mp4")
-        XCTAssertEqual(FileSend.mimeType(for: "song.mp3"), "audio/mpeg")
-
-        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("zapbar file \(UUID().uuidString)", isDirectory: true)
+    func testInstallKeepsTheRawLogOnSuccess() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("zapbar-ok-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        let video = folder.appendingPathComponent("My Video.mp4")
+        let apk = folder.appendingPathComponent("Show.apk")
+        try Data([0x50]).write(to: apk)
+        let video = folder.appendingPathComponent("Clip.mp4")
         try Data([0]).write(to: video)
-
         let fake = FakeRunner()
         let session = connectedSession(fake, temporaryDirectory: NSTemporaryDirectory())
         fake.handler = { arguments in
             if arguments == ["-P", "5037", "devices"] {
                 return .success(CommandResult(status: 0, stdout: "List of devices attached\n192.0.2.20:5555\tdevice\n", stderr: ""))
             }
-            if arguments.contains("push") {
-                return .success(CommandResult(status: 0, stdout: "1 file pushed", stderr: ""))
-            }
-            return .success(CommandResult(status: 0, stdout: "Starting: Intent", stderr: ""))
-        }
-        let sent = session.sendFile(at: video.path)
-        XCTAssertEqual(sent.sentence, "Sent. The TV needs a player to open it.")
-        XCTAssertFalse(sent.isError)
-        XCTAssertEqual(
-            fake.calls.first { $0.arguments.contains("push") }?.arguments,
-            ["-P", "5037", "-s", "192.0.2.20:5555", "push", video.path, "/sdcard/Download/My Video.mp4"]
-        )
-        XCTAssertEqual(
-            fake.calls.last?.arguments,
-            ["-P", "5037", "-s", "192.0.2.20:5555", "shell", "am start -a android.intent.action.VIEW -d 'file:///sdcard/Download/My%20Video.mp4' -t 'video/mp4'"]
-        )
-
-        fake.calls = []
-        fake.handler = { arguments in
-            if arguments == ["-P", "5037", "devices"] {
-                return .success(CommandResult(status: 0, stdout: "List of devices attached\n192.0.2.20:5555\tdevice\n", stderr: ""))
-            }
-            if arguments.contains("push") {
-                return .success(CommandResult(status: 1, stdout: "", stderr: "adb: error: failed to copy: No space left on device"))
+            if arguments.contains("install") {
+                return .success(CommandResult(status: 0, stdout: "Success\n", stderr: ""))
             }
             return .success(CommandResult(status: 0, stdout: "", stderr: ""))
         }
-        let full = session.sendFile(at: video.path)
-        XCTAssertEqual(full.sentence, "The TV doesn't have enough free space.")
-        XCTAssertTrue(full.raw.contains("No space left on device"))
-        XCTAssertFalse(fake.calls.contains { $0.arguments.contains("shell") })
+        let refused = session.installApk(at: video.path)
+        XCTAssertEqual(refused.sentence, ApkPick.onlyApk)
+        XCTAssertTrue(refused.isError)
+        XCTAssertFalse(fake.calls.contains { $0.arguments.contains("install") })
 
-        fake.calls = []
-        fake.handler = { arguments in
-            if arguments == ["-P", "5037", "devices"] {
-                return .success(CommandResult(status: 0, stdout: "List of devices attached\n192.0.2.20:5555\tdevice\n", stderr: ""))
-            }
-            if arguments.contains("push") {
-                return .success(CommandResult(status: 0, stdout: "1 file pushed", stderr: ""))
-            }
-            return .success(CommandResult(status: 1, stdout: "Error: Activity not started", stderr: ""))
-        }
-        let unopened = session.sendFile(at: video.path)
-        XCTAssertEqual(unopened.sentence, "The file is in Downloads. The TV needs a player to open it.")
-        XCTAssertTrue(unopened.raw.contains("Activity not started"))
-
-        fake.calls = []
-        fake.handler = { arguments in
-            if arguments == ["-P", "5037", "devices"] {
-                return .success(CommandResult(status: 0, stdout: "List of devices attached\n192.0.2.20:5555\tdevice\n", stderr: ""))
-            }
-            if arguments.contains("push") {
-                return .success(CommandResult(status: 0, stdout: "1 file pushed", stderr: ""))
-            }
-            return .success(CommandResult(status: 0, stdout: "Error: No activity found to handle Intent", stderr: ""))
-        }
-        let noPlayer = session.sendFile(at: video.path)
-        XCTAssertEqual(noPlayer.sentence, Copy.nothingCanOpen)
-        XCTAssertTrue(noPlayer.isError)
-        XCTAssertTrue(noPlayer.raw.contains("No activity found to handle Intent"))
+        let installed = session.installApk(at: apk.path)
+        XCTAssertEqual(installed.sentence, "Installed.")
+        XCTAssertFalse(installed.isError)
+        XCTAssertTrue(installed.raw.contains("Success"))
+        XCTAssertEqual(InstallLog.text(sentence: installed.sentence, raw: installed.raw), "Installed.\nSuccess")
     }
 
     func testJobsDoNothingWithoutADebuggingConnection() throws {
@@ -259,9 +294,39 @@ final class MacJobTests: XCTestCase {
         let session = RemoteSession(settings: settings, runner: fake, reader: AliveReader(), fileExists: { _ in true })
         _ = session.refresh()
         let report = session.installApk(at: apk.path)
-        XCTAssertEqual(report.sentence, "This needs a network debugging connection.")
+        XCTAssertEqual(report.sentence, Copy.notConnected)
         XCTAssertFalse(fake.calls.contains { $0.arguments.contains("install") })
-        XCTAssertEqual(session.sendLink("https://example.com").sentence, "This needs a network debugging connection.")
+    }
+
+    func testScreenshotOfASleepingTVSaysSoAndDoesNotCapture() {
+        let fake = FakeRunner()
+        let session = connectedSession(fake, temporaryDirectory: NSTemporaryDirectory())
+        var wakefulness = "  mWakefulness=Asleep\n"
+        fake.handler = { arguments in
+            if arguments == ["-P", "5037", "devices"] {
+                return .success(CommandResult(status: 0, stdout: "List of devices attached\n192.0.2.20:5555\tdevice\n", stderr: ""))
+            }
+            if arguments.contains("dumpsys") {
+                return .success(CommandResult(status: 0, stdout: wakefulness, stderr: ""))
+            }
+            return .success(CommandResult(status: 0, stdout: "", stderr: ""))
+        }
+        let asleep = session.captureScreenshot()
+        XCTAssertNil(asleep.png)
+        XCTAssertTrue(asleep.isError)
+        XCTAssertEqual(asleep.sentence, "The TV is asleep. Turn it on first.")
+        XCTAssertFalse(fake.calls.contains { $0.arguments.contains("exec-out") || $0.arguments.contains("pull") })
+
+        fake.calls = []
+        wakefulness = "  mWakefulness=Dozing\n"
+        XCTAssertEqual(session.captureScreenshot().sentence, ScreenshotCapture.asleep)
+        XCTAssertFalse(fake.calls.contains { $0.arguments.contains("exec-out") })
+
+        // Awake goes on to capture as before.
+        fake.calls = []
+        wakefulness = "  mWakefulness=Awake\n"
+        _ = session.captureScreenshot()
+        XCTAssertTrue(fake.calls.contains { $0.arguments.contains("exec-out") })
     }
 
     private func connectedSession(_ fake: FakeRunner, temporaryDirectory: String) -> RemoteSession {

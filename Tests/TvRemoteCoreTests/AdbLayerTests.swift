@@ -32,6 +32,15 @@ final class AdbLayerTests: XCTestCase {
         XCTAssertEqual(AdbOutput.parseConnect("already connected to 10.0.0.8:5555"), .alreadyConnected)
         let refused = "cannot connect to 10.0.0.8:5555: Connection refused"
         XCTAssertEqual(AdbOutput.parseConnect(refused), .failed(refused))
+        XCTAssertEqual(
+            AdbOutput.parseConnect(""),
+            .failed("The TV didn't answer. Check the connection and try again.")
+        )
+        XCTAssertEqual(
+            RemoteError.commandFailed("").description,
+            "The TV didn't answer. Check the connection and try again."
+        )
+        XCTAssertEqual(TvPicture(power: .reachableOnly).statusLine(appName: "Netflix"), "Connected · Netflix")
         XCTAssertTrue(AdbOutput.isRefusal(refused))
         XCTAssertTrue(AdbOutput.isRefusal("connection refused"))
         XCTAssertFalse(AdbOutput.isRefusal("failed to connect to 10.0.0.8:5555"))

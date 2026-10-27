@@ -3,6 +3,7 @@ import Foundation
 /// One transfer at a time. A finish call clears the busy flag only for the token that set it.
 public final class TransferGate {
     public static let busySentence = "One transfer at a time."
+    public static let busyStep = "Wait for the current transfer."
 
     private let lock = NSLock()
     private var next: UInt = 0

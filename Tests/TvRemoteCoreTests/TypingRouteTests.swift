@@ -37,6 +37,6 @@ final class TypingRouteTests: XCTestCase {
         guard case .unsupported(let message) = TypingRoute.choose(text: "hi", brand: .generic, sonyAvailable: false, adbAvailable: false) else {
             return XCTFail("expected unsupported")
         }
-        XCTAssertTrue(message.contains("network debugging") || message.contains("text field"))
+        XCTAssertEqual(message, "Typing needs the TV to be connected, with a text field open.")
     }
 }

@@ -56,34 +56,34 @@ public enum SetupCopy {
             var lines = [
                 SetupLine(key: "setup.debug.wireless.1", text: "On the TV, open Settings, then System, then Developer options."),
                 SetupLine(key: "setup.debug.wireless.2", text: "Turn on Wireless debugging."),
-                SetupLine(key: "setup.debug.wireless.3", text: "Choose pair with a code. You will need the pairing port and the code."),
-                SetupLine(key: "setup.debug.legacy.1", text: "Older sets use network debugging on port 5555."),
+                SetupLine(key: "setup.debug.wireless.3", text: "Choose pair with a code. You will need the number and the code shown on the TV."),
+                SetupLine(key: "setup.debug.legacy.1", text: "Older sets connect without a pairing code."),
                 SetupLine(key: "setup.debug.legacy.2", text: "When this Mac connects, accept Allow on the TV.")
             ]
             if brand == .sony && wantsTyping {
-                lines.insert(SetupLine(key: "setup.sony.typing.1", text: "Typing needs network debugging as well as IP control."), at: 0)
+                lines.insert(SetupLine(key: "setup.sony.typing.1", text: "Typing needs this Mac to be allowed on the TV, as well as the control key."), at: 0)
             }
             return lines
         case .sonyKey:
             return [
-                SetupLine(key: "setup.sony.ip.1", text: "On the TV, turn on IP control."),
-                SetupLine(key: "setup.sony.ip.2", text: "Set a pre-shared key. Enter the same key here. It stays in the Keychain.")
+                SetupLine(key: "setup.sony.ip.1", text: "On the TV, turn on control from the network."),
+                SetupLine(key: "setup.sony.ip.2", text: "Set a control key. Enter the same key here. It stays in the Keychain.")
             ]
         case .remember where brand == .xiaomi:
             return [
-                SetupLine(key: "setup.xiaomi.1", text: "Experimental. This TV uses local control on port 6095. Typing and power-on are not available.")
+                SetupLine(key: "setup.xiaomi.1", text: "This TV can use the remote buttons. Typing and turning it on from here aren't available.")
             ]
         case .pair:
             return [
-                SetupLine(key: "setup.pair.1", text: "Enter the pairing port and the 6-digit code shown on the TV.")
+                SetupLine(key: "setup.pair.1", text: "Enter the number and the 6-digit code shown on the TV.")
             ]
         case .allow:
             return [
-                SetupLine(key: "setup.allow.1", text: "Accept the Allow prompt on the TV. This Mac then connects on port 5555.")
+                SetupLine(key: "setup.allow.1", text: "Accept the Allow prompt on the TV. This Mac then connects.")
             ]
         case .sonyTyping:
             return [
-                SetupLine(key: "setup.sony.choice.1", text: "IP control runs the remote. Turn on network debugging only if you want to type.")
+                SetupLine(key: "setup.sony.choice.1", text: "The control key runs the remote. Allow this Mac on the TV only if you want to type.")
             ]
         default:
             return []
@@ -163,7 +163,7 @@ public struct SetupWizard: Equatable {
         case (.manual, .submitManual(let rawHost, let rawPort)):
             let normalized = HostInput.normalize(rawHost)
             guard HostInput.isValidHost(normalized.host) else {
-                message = "Enter an IP address or a hostname."
+                message = "Enter the TV's address."
                 return .none
             }
             host = normalized.host
@@ -195,7 +195,7 @@ public struct SetupWizard: Equatable {
                   (1...65535).contains(pairPort),
                   code.count == 6,
                   code.allSatisfy(\.isNumber) else {
-                message = "Enter the pairing port and the 6-digit code."
+                message = "Enter the number and the 6-digit code shown on the TV."
                 return .none
             }
             return .pairAndConnect(host: host, pairPort: pairPort, code: code, connectPort: port)

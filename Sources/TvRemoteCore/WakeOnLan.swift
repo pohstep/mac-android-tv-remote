@@ -51,6 +51,7 @@ public struct WakeOnLanSender: WakeOnLanSending {
 
     public func send(mac: String, broadcastHost: String, port: UInt16) throws {
         guard let macBytes = MACAddress.bytes(mac) else {
+            NSLog("%@", "rejected MAC address \(mac)")
             throw RemoteError.invalidMac(mac)
         }
         let packet = MagicPacket.bytes(for: macBytes)
@@ -67,7 +68,8 @@ enum UDPBroadcast {
         #endif
         let fd = socket(AF_INET, socketType, 0)
         if fd < 0 {
-            throw RemoteError.commandFailed("Couldn't open a UDP socket for Wake-on-LAN.")
+            NSLog("%@", "couldn't open a UDP socket (\(String(cString: strerror(errno))))")
+            throw RemoteError.commandFailed(PowerActions.couldNotTurnOn)
         }
         defer { close(fd) }
 
@@ -93,7 +95,8 @@ enum UDPBroadcast {
             }
         }
         if sent < 0 || sent != packet.count {
-            throw RemoteError.commandFailed("Couldn't send the Wake-on-LAN packet (\(String(cString: strerror(errno)))).")
+            NSLog("%@", "couldn't send the wake packet (\(String(cString: strerror(errno))))")
+            throw RemoteError.commandFailed(PowerActions.couldNotTurnOn)
         }
     }
 }

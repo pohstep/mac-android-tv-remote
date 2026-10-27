@@ -59,8 +59,9 @@ final class SessionTests: XCTestCase {
         guard case .adbMissing(let message) = status else {
             return XCTFail("expected adb missing, got \(status)")
         }
-        XCTAssertTrue(message.contains("adb isn't installed"))
-        XCTAssertTrue(message.contains("brew install android-platform-tools"))
+        XCTAssertEqual(message, Copy.helperMissing)
+        XCTAssertFalse(message.localizedCaseInsensitiveContains("homebrew"))
+        XCTAssertFalse(message.contains("android-platform-tools"))
     }
 
     func testRefreshReportsRefusal() {
@@ -252,20 +253,26 @@ final class SessionTests: XCTestCase {
             return XCTFail("expected unauthorized, got \(status)")
         }
         XCTAssertEqual(serial, "tv.tailnet.ts.net:5555")
-        XCTAssertTrue(status.detail.contains("Accept the debugging prompt"))
+        XCTAssertTrue(status.detail.contains("isn't allowed yet"))
     }
 
     func testPowerSendsWakeKeyWhenConnectedAndMagicPacketWhenNot() {
         var settings = Settings.factoryDefaults()
         settings.host = "192.0.2.20"
-        settings.wolEnabled = true
         settings.macAddress = "aa-bb-cc-dd-ee-ff"
         let fake = FakeRunner()
-        fake.script = [
-            .success(CommandResult(status: 0, stdout: "connected to 192.0.2.20:5555", stderr: "")),
-            .success(CommandResult(status: 0, stdout: "List of devices attached\n192.0.2.20:5555\tdevice\n", stderr: "")),
-            .success(CommandResult(status: 0, stdout: "", stderr: ""))
-        ]
+        fake.handler = { arguments in
+            if arguments.contains("connect") {
+                return .success(CommandResult(status: 0, stdout: "connected to 192.0.2.20:5555", stderr: ""))
+            }
+            if arguments.contains("devices") {
+                return .success(CommandResult(status: 0, stdout: "List of devices attached\n192.0.2.20:5555\tdevice\n", stderr: ""))
+            }
+            if arguments.contains("dumpsys") && arguments.contains("power") {
+                return .success(CommandResult(status: 0, stdout: "mWakefulness=Awake", stderr: ""))
+            }
+            return .success(CommandResult(status: 0, stdout: "", stderr: ""))
+        }
         let wake = FakeWake()
         let session = RemoteSession(
             settings: settings,
@@ -275,38 +282,43 @@ final class SessionTests: XCTestCase {
             homeDirectory: "/Users/tester"
         )
         _ = session.refresh()
+        armFastPower(session)
         let wakeReport = session.pressPower()
-        XCTAssertEqual(wakeReport.title, "Sent wake")
-        XCTAssertEqual(fake.calls.last?.arguments, ["-P", "5037"] + AdbCommands.keyEvent(serial: "192.0.2.20:5555", key: .wakeup))
+        XCTAssertEqual(wakeReport.title, "Turned on.")
+        XCTAssertEqual(wakeReport.detail, "")
+        XCTAssertTrue(fake.calls.contains { $0.arguments.contains("KEYCODE_WAKEUP") })
         XCTAssertTrue(wake.sent.isEmpty)
 
         let asleep = RemoteSession(settings: settings, runner: FakeRunner(), wol: wake, fileExists: { _ in false })
+        XCTAssertTrue(asleep.canWakeOnLan)
+        armFastPower(asleep)
         let packet = asleep.pressPower()
-        XCTAssertEqual(packet.title, "Sent Wake-on-LAN")
-        XCTAssertEqual(wake.sent.first?.mac, "aa-bb-cc-dd-ee-ff")
-        XCTAssertEqual(wake.sent.first?.host, "255.255.255.255")
-        XCTAssertEqual(wake.sent.first?.port, 9)
+        XCTAssertEqual(packet.title, PowerActions.didNotRespond)
+        XCTAssertTrue(packet.isError)
+        XCTAssertTrue(wake.sent.contains { $0.mac == "aa-bb-cc-dd-ee-ff" && $0.host == "192.0.2.255" && $0.port == 9 })
+        XCTAssertTrue(wake.sent.contains { $0.host == "192.0.2.20" && $0.port == 7 })
     }
 
     func testPowerWithoutMacExplainsStandby() {
         var settings = Settings.factoryDefaults()
         settings.host = "192.0.2.20"
         let session = RemoteSession(settings: settings, runner: FakeRunner(), fileExists: { _ in true })
+        XCTAssertFalse(session.canWakeOnLan)
         let report = session.pressPower()
-        XCTAssertEqual(report.title, "The TV isn't reachable")
-        XCTAssertTrue(report.detail.contains("Wake-on-LAN"))
+        XCTAssertEqual(report.title, PowerActions.couldNotTurnOn)
+        XCTAssertEqual(report.detail, "")
         XCTAssertTrue(report.isError)
     }
 
     func testSleepRequiresAConnection() {
         var settings = Settings.factoryDefaults()
         settings.host = "192.0.2.20"
-        settings.wolEnabled = true
         settings.macAddress = "aa:bb:cc:dd:ee:ff"
         let session = RemoteSession(settings: settings, runner: FakeRunner(), fileExists: { _ in false })
         let report = session.pressSleep()
         XCTAssertTrue(report.isError)
-        XCTAssertTrue(report.detail.contains("Sleep needs a live adb connection"))
+        XCTAssertEqual(report.title, PowerActions.couldNotTurnOff)
+        XCTAssertEqual(report.detail, "")
     }
 
     func testLaunchDoesNotCallAdbForABadPackage() {
@@ -346,7 +358,7 @@ final class SessionTests: XCTestCase {
         let serial = "192.0.2.8:5555"
         XCTAssertEqual(
             Copy.unreachable(serial: serial),
-            "Couldn't reach the TV at \(serial). Check that it is on, on the same network, and that network debugging is enabled."
+            "Couldn't reach the TV at \(serial). Check that it is on and on the same network, then try again."
         )
         XCTAssertFalse(Copy.unreachable(serial: serial).contains("Local Network"))
         XCTAssertFalse(Copy.unreachable(serial: serial).localizedCaseInsensitiveContains("android"))
@@ -395,6 +407,163 @@ final class SessionTests: XCTestCase {
         }
         return fake
     }
+
+    func testTypeStopsWhenNoFieldIsReady() {
+        let fake = FakeRunner()
+        let session = connected(fake)
+        fake.handler = { arguments in
+            if arguments.contains("dumpsys") && arguments.contains("input_method") {
+                return .success(CommandResult(status: 0, stdout: "mServedView=null\nmInputShown=false", stderr: ""))
+            }
+            return .success(CommandResult(status: 0, stdout: "", stderr: ""))
+        }
+        let report = session.type("hello")
+        XCTAssertEqual(report.detail, TypingReadiness.notReady)
+        XCTAssertTrue(report.isError)
+        XCTAssertFalse(fake.calls.contains { $0.arguments.contains("text") && $0.arguments.contains("input") })
+    }
+
+    func testSonyRouteRefusesAHiddenKeyboard() {
+        var settings = Settings.factoryDefaults()
+        settings.host = "192.0.2.20"
+        settings.brand = .sony
+        let fake = FakeRunner()
+        let http = ScriptedHTTP()
+        fake.handler = { arguments in
+            if arguments.contains("connect") {
+                return .success(CommandResult(status: 0, stdout: "connected to 192.0.2.20:5555", stderr: ""))
+            }
+            if arguments.contains("devices") {
+                return .success(CommandResult(status: 0, stdout: "List of devices attached\n192.0.2.20:5555\tdevice\n", stderr: ""))
+            }
+            if arguments.contains("input_method") {
+                return .success(CommandResult(status: 0, stdout: "mServedView=com.netflix.ninja/.Main\nmInputShown=false", stderr: ""))
+            }
+            return .success(CommandResult(status: 0, stdout: "", stderr: ""))
+        }
+        let session = RemoteSession(
+            settings: settings,
+            runner: fake,
+            http: http,
+            fileExists: { $0 == "/usr/local/bin/adb" },
+            homeDirectory: "/Users/tester"
+        )
+        session.setPreSharedKey("secret")
+        _ = session.refresh()
+        let report = session.type("你好")
+        XCTAssertEqual(report.detail, TypingReadiness.notReady)
+        XCTAssertTrue(http.calls.isEmpty)
+    }
+
+    func testUrlIsTypedAsPlainText() {
+        let fake = FakeRunner()
+        let session = connected(fake)
+        fake.handler = { arguments in
+            if arguments.contains("dumpsys") && arguments.contains("input_method") {
+                return .success(CommandResult(status: 0, stdout: "mInputShown=true", stderr: ""))
+            }
+            return .success(CommandResult(status: 0, stdout: "", stderr: ""))
+        }
+        let report = session.type("https://example.com/watch")
+        XCTAssertFalse(report.isError)
+        XCTAssertTrue(fake.calls.contains { $0.arguments.contains("input") && $0.arguments.contains("text") })
+        XCTAssertFalse(fake.calls.contains { $0.arguments.contains("android.intent.action.VIEW") })
+    }
+
+    func testRefreshLearnsAMissingMacOnceAndLeavesAKnownMacAlone() throws {
+        let tally = LookupTally()
+        let missing = try learnedSession(macAddress: "", tally: tally)
+        let status = missing.session.refresh()
+        guard case .connected = status else {
+            return XCTFail("expected a connection, got \(status)")
+        }
+        let learned = missing.session.settingsSnapshot()
+        XCTAssertEqual(learned.macAddress, "AA:BB:CC:DD:EE:FF")
+        XCTAssertEqual(learned.devices.first { $0.id == "living" }?.macAddress, "AA:BB:CC:DD:EE:FF")
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let store = SettingsStore(url: directory.appendingPathComponent("settings.json"))
+        try store.save(learned)
+        let loaded = store.load().settings
+        XCTAssertEqual(loaded.macAddress, "AA:BB:CC:DD:EE:FF")
+        XCTAssertEqual(loaded.devices.first { $0.id == "living" }?.macAddress, "AA:BB:CC:DD:EE:FF")
+        let lookedUp = tally.value
+        XCTAssertEqual(missing.runner.calls.filter { $0.arguments.contains { $0.contains("wlan0") } }.count, 1)
+        XCTAssertFalse(missing.runner.calls.contains { $0.arguments.contains { $0.contains("eth0") } })
+        _ = missing.session.refresh()
+        XCTAssertEqual(tally.value, lookedUp)
+        XCTAssertEqual(missing.session.settingsSnapshot().macAddress, "AA:BB:CC:DD:EE:FF")
+
+        let known = try learnedSession(macAddress: "11:22:33:44:55:66", tally: LookupTally())
+        _ = known.session.refresh()
+        XCTAssertEqual(known.session.settingsSnapshot().macAddress, "11:22:33:44:55:66")
+        XCTAssertEqual(known.session.settingsSnapshot().devices.first { $0.id == "living" }?.macAddress, "11:22:33:44:55:66")
+        XCTAssertFalse(known.runner.calls.contains { $0.executable == "/usr/sbin/arp" || $0.arguments == ["-an"] })
+        XCTAssertFalse(known.runner.calls.contains { $0.arguments.contains { $0.contains("wlan0") || $0.contains("eth0") } })
+    }
+
+    private func learnedSession(macAddress: String, tally: LookupTally) throws -> (session: RemoteSession, runner: FakeRunner) {
+        let tv = StoredTV(id: "living", name: "Living Room", brand: .sony, host: "192.0.2.20", port: 5555, macAddress: macAddress)
+        var settings = Settings.factoryDefaults().applying(tv)
+        settings.adbPath = "/usr/local/bin/adb"
+        let runner = FakeRunner()
+        runner.handler = { arguments in
+            if arguments.contains("connect") {
+                return .success(CommandResult(status: 0, stdout: "connected to 192.0.2.20:5555", stderr: ""))
+            }
+            if arguments.contains("devices") {
+                return .success(CommandResult(status: 0, stdout: "List of devices attached\n192.0.2.20:5555\tdevice\n", stderr: ""))
+            }
+            if arguments == ["-an"] || arguments.contains(where: { $0.contains("wlan0") || $0.contains("eth0") }) {
+                tally.value += 1
+                if arguments.contains(where: { $0.contains("wlan0") }) {
+                    return .success(CommandResult(status: 0, stdout: "aa:bb:cc:dd:ee:ff\n", stderr: ""))
+                }
+                return .success(CommandResult(status: 0, stdout: "", stderr: ""))
+            }
+            return .success(CommandResult(status: 0, stdout: "", stderr: ""))
+        }
+        let session = RemoteSession(
+            settings: settings,
+            runner: runner,
+            fileExists: { $0 == "/usr/local/bin/adb" },
+            pathEnvironment: "",
+            homeDirectory: "/Users/tester"
+        )
+        return (session, runner)
+    }
+
+    private func connected(_ fake: FakeRunner) -> RemoteSession {
+        var settings = Settings.factoryDefaults()
+        settings.host = "192.0.2.20"
+        settings.port = 5555
+        fake.script = [
+            .success(CommandResult(status: 0, stdout: "connected to 192.0.2.20:5555", stderr: "")),
+            .success(CommandResult(status: 0, stdout: "List of devices attached\n192.0.2.20:5555\tdevice\n", stderr: ""))
+        ]
+        let session = RemoteSession(
+            settings: settings,
+            runner: fake,
+            fileExists: { $0 == "/usr/local/bin/adb" },
+            homeDirectory: "/Users/tester"
+        )
+        _ = session.refresh()
+        fake.script = []
+        return session
+    }
+}
+
+private final class LookupTally {
+    var value = 0
+}
+
+private final class PowerClock {
+    var now = Date(timeIntervalSince1970: 1_700_000_000)
+}
+
+func armFastPower(_ session: RemoteSession) {
+    let clock = PowerClock()
+    session.powerNow = { clock.now }
+    session.powerSleep = { interval in clock.now = clock.now.addingTimeInterval(interval) }
 }
 
 private final class DeviceScript {

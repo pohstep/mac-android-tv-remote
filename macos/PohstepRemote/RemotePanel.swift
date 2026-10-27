@@ -9,12 +9,9 @@ struct RemotePanel: View {
     @State private var volumeDraft: Double = 0
     @State private var volumeIsLive = false
     @State private var inputOpen = false
-    @State private var powerArmed = false
     @State private var typeDraft = ""
-    @State private var linkDraft = ""
     @State private var dropTargeted = false
     @FocusState private var typeFocused: Bool
-    @FocusState private var linkFocused: Bool
 
     @Environment(\.colorSchemeContrast) private var contrast
 
@@ -47,18 +44,19 @@ struct RemotePanel: View {
             if model.typeFocusID > 0 {
                 typeFocused = true
             }
-            if model.linkFocusID > 0 {
-                linkFocused = true
-            }
         }
         .onChange(of: model.typeFocusID) { _ in
             typeFocused = true
         }
-        .onChange(of: model.linkFocusID) { _ in
-            linkFocused = true
-        }
         .onDrop(of: [.fileURL], isTargeted: $dropTargeted) { providers in
             loadDroppedFiles(providers)
+        }
+        .onChange(of: dropTargeted) { targeted in
+            if targeted {
+                model.noteFileDrag()
+            } else {
+                model.noteFileDragEnded()
+            }
         }
     }
 
@@ -159,7 +157,7 @@ struct RemotePanel: View {
 
     private var offlineChrome: some View {
         VStack(alignment: .leading, spacing: GlassMetrics.sectionGap) {
-            header(status: offlineStatus, dot: Palette.dotOffline, showsPower: false)
+            header(status: offlineStatus, dot: Palette.dotOffline, showsPower: true)
             failureLine
             VStack(spacing: 8) {
                 Button(action: { model.refreshNow() }) {
@@ -169,19 +167,6 @@ struct RemotePanel: View {
                     }
                 }
                 .buttonStyle(FolioPrimaryStyle(expands: true))
-                Button(action: { model.wake() }) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "power")
-                            .font(.system(size: 13))
-                        Text("Turn on with Wake-on-LAN")
-                            .font(.system(size: 12))
-                            .underline()
-                    }
-                    .foregroundColor(secondaryInk)
-                    .frame(height: 28)
-                }
-                .buttonStyle(.plain)
-                .frame(maxWidth: .infinity)
             }
             remoteBody
                 .opacity(0.45)
@@ -323,6 +308,35 @@ struct RemotePanel: View {
     }
 
     private var typeRow: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            typeField
+                .onDrop(of: [.plainText, .utf8PlainText, .text, .url], isTargeted: nil) { providers in
+                    loadDroppedText(providers)
+                }
+            if !model.typeNotice.isEmpty {
+                Text(model.typeNotice)
+                    .font(.system(size: 11))
+                    .foregroundColor(Palette.text)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if model.typeCanRetry {
+                HStack(spacing: 8) {
+                    Button("Retry") { model.sendTypedText(typeDraft) }
+                        .disabled(model.typeBusy)
+                    if model.typeNeedsSetup {
+                        Button("Open Settings") { model.showSettings() }
+                        Button("Set up a new TV") { model.showWizard() }
+                    }
+                }
+                .font(.system(size: 12))
+            }
+        }
+        .onChange(of: model.typeClearToken) { _ in
+            typeDraft = ""
+        }
+    }
+
+    private var typeField: some View {
         let focused = typeFocused
         let strong = contrast == .increased
         let border: CGFloat = focused ? 1.5 : (strong ? 1.5 : 1)
@@ -340,11 +354,7 @@ struct RemotePanel: View {
             .font(.system(size: 13))
             .foregroundColor(Palette.text)
             .focused($typeFocused)
-            .onSubmit {
-                let text = typeDraft
-                typeDraft = ""
-                model.sendTypedText(text)
-            }
+            .onSubmit { model.sendTypedText(typeDraft) }
             if focused {
                 Text("Return to send")
                     .font(.system(size: 11))
@@ -385,17 +395,6 @@ struct RemotePanel: View {
     private var macTools: some View {
         VStack(alignment: .leading, spacing: 6) {
             input
-            TextField("Paste a link", text: $linkDraft)
-                .folioFieldChrome(focused: linkFocused)
-                .focused($linkFocused)
-                .onSubmit {
-                    let text = linkDraft
-                    linkDraft = ""
-                    model.sendLink(text)
-                }
-            Text("Return sends. \(model.linkHotkey.display) focuses this field. Web links only.")
-                .font(.system(size: 11))
-                .foregroundColor(tertiaryInk)
             HStack(spacing: 8) {
                 Button("Screenshot") { model.takeScreenshot() }
                     .disabled(model.jobBusy)
@@ -403,7 +402,7 @@ struct RemotePanel: View {
                     .disabled(model.screenshotPNG == nil)
                 Button("Save…") { model.saveScreenshot() }
                     .disabled(model.screenshotPNG == nil)
-                Button("Send file…") { model.chooseFileToSend() }
+                Button("Choose .apk…") { model.chooseApk() }
                     .disabled(model.jobBusy)
                 if model.jobBusy && model.jobCancellable {
                     Button("Cancel") { model.cancelJob() }
@@ -417,17 +416,52 @@ struct RemotePanel: View {
                     .frame(maxWidth: .infinity, maxHeight: 96)
                     .accessibilityLabel("Screenshot")
             }
-            Text(dropTargeted ? "Drop the app file to install it." : "Drop an app file here or on the menu bar icon.")
-                .font(.system(size: 11))
-                .foregroundColor(tertiaryInk)
-            Text("Sending a file needs a player on the TV.")
+            Text(dropTargeted ? "Drop the app file to install it." : "Drop an app file here or on the menu bar icon, or choose an .apk.")
                 .font(.system(size: 11))
                 .foregroundColor(tertiaryInk)
             if !model.jobLine.isEmpty {
-                Text(model.jobLine)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(model.jobIsError ? Palette.text : Palette.muted)
-                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 6) {
+                    if model.jobBusy {
+                        ProgressView()
+                            .controlSize(.small)
+                            .accessibilityLabel("Installing")
+                    }
+                    Text(model.jobLine)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(model.jobIsError ? Palette.text : Palette.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            if let step = InstallExplain.recovery(for: model.jobLine, kind: model.jobKind), model.jobIsError {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(step)
+                        .font(.system(size: 11))
+                        .foregroundColor(tertiaryInk)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if model.jobKind == .screenshot {
+                        Button("Retry") { model.takeScreenshot() }
+                            .font(.system(size: 12))
+                            .disabled(model.jobBusy)
+                    }
+                }
+            }
+            if !model.installLog.isEmpty {
+                HStack(spacing: 8) {
+                    Button(model.showInstallLog ? "Hide log" : "Show log") {
+                        model.showInstallLog.toggle()
+                    }
+                    if model.showInstallLog {
+                        Button("Copy") { model.copyInstallLog() }
+                    }
+                }
+                .font(.system(size: 12))
+                if model.showInstallLog {
+                    Text(model.installLog)
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(tertiaryInk)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             if !model.jobRaw.isEmpty {
                 Text(model.jobRaw)
@@ -454,7 +488,11 @@ struct RemotePanel: View {
                 } else {
                     url = nil
                 }
-                guard let url, url.path.lowercased().hasSuffix(".apk") else { return }
+                guard let url else { return }
+                guard ApkPick.isApk(url.path) else {
+                    found.refuse()
+                    return
+                }
                 let scoped = url.startAccessingSecurityScopedResource()
                 defer { if scoped { url.stopAccessingSecurityScopedResource() } }
                 if let staged = model.stageDroppedFile(url) {
@@ -463,42 +501,88 @@ struct RemotePanel: View {
             }
         }
         group.notify(queue: .main) {
-            model.receiveStaged(found.paths)
+            if found.paths.isEmpty {
+                model.refuseNonApk()
+            } else {
+                model.receiveStaged(found.paths, skipped: found.refusedCount)
+            }
         }
         return !providers.isEmpty
     }
 
+    private func loadDroppedText(_ providers: [NSItemProvider]) -> Bool {
+        let textProviders = providers.filter {
+            !DroppedText.isFileDrop($0.registeredTypeIdentifiers)
+                && !$0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier)
+        }
+        guard !textProviders.isEmpty else { return false }
+        for provider in textProviders {
+            if provider.hasItemConformingToTypeIdentifier(UTType.url.identifier) {
+                provider.loadItem(forTypeIdentifier: UTType.url.identifier, options: nil) { item, _ in
+                    let raw: String
+                    if let url = item as? URL {
+                        raw = url.absoluteString
+                    } else if let data = item as? Data, let url = URL(dataRepresentation: data, relativeTo: nil) {
+                        raw = url.absoluteString
+                    } else {
+                        return
+                    }
+                    applyDroppedText(raw)
+                }
+                return true
+            }
+            let identifier = UTType.plainText.identifier
+            guard provider.hasItemConformingToTypeIdentifier(identifier)
+                    || provider.hasItemConformingToTypeIdentifier(UTType.text.identifier)
+                    || provider.hasItemConformingToTypeIdentifier(UTType.utf8PlainText.identifier) else { continue }
+            provider.loadItem(forTypeIdentifier: identifier, options: nil) { item, _ in
+                let raw: String
+                if let text = item as? String {
+                    raw = text
+                } else if let data = item as? Data {
+                    raw = String(data: data, encoding: .utf8) ?? ""
+                } else {
+                    return
+                }
+                applyDroppedText(raw)
+            }
+            return true
+        }
+        return false
+    }
+
+    private func applyDroppedText(_ raw: String) {
+        DispatchQueue.main.async {
+            typeDraft = DroppedText.append(typeDraft, raw)
+        }
+    }
+
     @ViewBuilder
     private var powerControl: some View {
-        if showsWake {
-            Chip(width: 64, height: GlassMetrics.power, corner: 12, prominent: true, action: { model.wake() }) {
-                Text("Wake")
-                    .font(.system(size: 13, weight: .semibold))
-            }
-            .accessibilityLabel("Wake")
-        } else {
-            // Two clicks within 2 s: the first arms (red), the second turns the TV off.
-            HStack(spacing: 6) {
-                if powerArmed {
-                    Text("Click again to turn off")
-                        .font(.system(size: 11))
-                        .foregroundColor(Palette.text)
-                }
-                Chip(width: GlassMetrics.power, height: GlassMetrics.power, corner: 16, action: {
-                    if powerArmed {
-                        powerArmed = false
-                        model.sleep()
-                    } else {
-                        powerArmed = true
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { powerArmed = false }
-                    }
+        let button = model.powerButton
+        VStack(alignment: .trailing, spacing: 4) {
+            if button.label == PowerButtonModel.unsupportedLabel {
+                Text(button.label)
+                    .font(.system(size: 11))
+                    .foregroundColor(tertiaryInk)
+                    .multilineTextAlignment(.trailing)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityLabel(button.label)
+            } else {
+                Chip(width: 96, height: GlassMetrics.power, corner: 12, prominent: button.action == .turnOn, action: {
+                    model.pressPowerButton()
                 }) {
-                    Image(systemName: "power")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(powerArmed ? .red : Palette.text)
+                    Text(button.label)
+                        .font(.system(size: 13, weight: .semibold))
+                        .lineLimit(1)
                 }
-                .background(Circle().fill(powerArmed ? Color.red.opacity(0.35) : Color.clear))
-                .accessibilityLabel(powerArmed ? "Click again to turn off" : "Sleep")
+                .disabled(!button.enabled)
+                .accessibilityLabel(button.label)
+            }
+            if !model.powerLine.isEmpty {
+                Text(model.powerLine)
+                    .font(.system(size: 11))
+                    .foregroundColor(Palette.text)
             }
         }
     }
@@ -1025,17 +1109,8 @@ struct RemotePanel: View {
     }
 
     private var tvIsOn: Bool {
-        switch model.picture.power {
-        case .on, .reachableOnly:
-            return true
-        case .off:
-            return false
-        case .unknown:
-            return model.status.isConnected
-        }
+        PowerChrome.showsOn(model.picture.power)
     }
-
-    private var showsWake: Bool { !tvIsOn }
 
     private var appName: String? {
         guard let package = model.picture.foregroundPackage else { return nil }
@@ -1332,9 +1407,18 @@ private struct RingWedge: Shape {
 private final class DropBox {
     private let lock = NSLock()
     private(set) var paths: [String] = []
+    private(set) var refused = false
+    private(set) var refusedCount = 0
     func add(_ path: String) {
         lock.lock()
         paths.append(path)
+        lock.unlock()
+    }
+
+    func refuse() {
+        lock.lock()
+        refused = true
+        refusedCount += 1
         lock.unlock()
     }
 }

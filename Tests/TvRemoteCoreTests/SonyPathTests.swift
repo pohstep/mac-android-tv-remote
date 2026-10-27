@@ -159,7 +159,8 @@ final class SonyPathTests: XCTestCase {
         let session = RemoteSession(settings: settings, runner: FakeRunner(), http: http, fileExists: { _ in false })
         let report = session.setVolume(10)
         XCTAssertTrue(report.isError)
-        XCTAssertTrue(report.detail.contains("pre-shared key"))
+        XCTAssertEqual(report.title, "Exact volume isn't set up for this TV")
+        XCTAssertTrue(report.detail.contains("Open Settings"))
         XCTAssertTrue(http.calls.isEmpty)
     }
 
@@ -175,6 +176,10 @@ final class SonyPathTests: XCTestCase {
         runner.script = [
             .success(CommandResult(status: 0, stdout: "connected to 127.0.0.1:5555", stderr: "")),
             .success(CommandResult(status: 0, stdout: "List of devices attached\n127.0.0.1:5555\tdevice\n", stderr: "")),
+            .success(CommandResult(status: 0, stdout: "", stderr: "")),
+            .success(CommandResult(status: 0, stdout: "", stderr: "")),
+            .success(CommandResult(status: 0, stdout: "", stderr: "")),
+            .success(CommandResult(status: 0, stdout: "mWakefulness=Awake", stderr: "")),
             .success(CommandResult(status: 0, stdout: "mCurrentFocus=Window{aa u0 com.netflix.ninja/com.netflix.ninja.MainActivity}", stderr: "")),
             .success(CommandResult(status: 0, stdout: "state=PlaybackState {state=3, position=0}\nandroid.media.metadata.TITLE=The Beef\nandroid.media.metadata.ARTIST=The Bear\n", stderr: ""))
         ]
@@ -209,6 +214,7 @@ final class SonyPathTests: XCTestCase {
         let text = String(data: saved, encoding: .utf8) ?? ""
         XCTAssertFalse(text.contains("psk"))
         XCTAssertFalse(text.contains(secret))
+        XCTAssertFalse(text.contains("wolEnabled"))
         XCTAssertEqual(Settings.factoryDefaults().host, "")
         XCTAssertEqual(Settings.factoryDefaults().port, 5555)
     }
@@ -297,5 +303,68 @@ final class SonyPathTests: XCTestCase {
         XCTAssertFalse(log.contains("192.0.2.57"))
         XCTAssertFalse(adb.contains("192.0.2.57"))
         XCTAssertTrue(adb.contains("KEYCODE_DPAD_UP"))
+    }
+
+    func testSonyOnlyRefreshLearnsAMissingMacOnceAndLeavesAKnownMacAlone() throws {
+        let power = HttpReply(status: 200, body: Data(#"{"result":[{"status":"active"}]}"#.utf8))
+        let missing = sonyOnlySession(macAddress: "")
+        missing.http.script = [power, power]
+        missing.runner.handler = { arguments in
+            if arguments == ["-an"] {
+                return .success(CommandResult(status: 0, stdout: "? (192.0.2.20) at aa:bb:cc:dd:ee:ff on en0\n", stderr: ""))
+            }
+            return .success(CommandResult(status: 0, stdout: "", stderr: ""))
+        }
+        let status = missing.session.refresh()
+        guard case .connected = status else {
+            return XCTFail("expected a Sony connection, got \(status)")
+        }
+        let learned = missing.session.settingsSnapshot()
+        XCTAssertEqual(learned.macAddress, "AA:BB:CC:DD:EE:FF")
+        XCTAssertEqual(learned.devices.first { $0.id == "living" }?.macAddress, "AA:BB:CC:DD:EE:FF")
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let store = SettingsStore(url: directory.appendingPathComponent("settings.json"))
+        try store.save(learned)
+        let loaded = store.load().settings
+        XCTAssertEqual(loaded.macAddress, "AA:BB:CC:DD:EE:FF")
+        XCTAssertEqual(loaded.devices.first { $0.id == "living" }?.macAddress, "AA:BB:CC:DD:EE:FF")
+        XCTAssertEqual(missing.runner.calls.filter { $0.executable == "/usr/sbin/arp" }.count, 1)
+        XCTAssertFalse(missing.runner.calls.contains { $0.arguments.contains { $0.contains("wlan0") || $0.contains("eth0") || $0 == "connect" } })
+        _ = missing.session.refresh()
+        XCTAssertEqual(missing.runner.calls.filter { $0.executable == "/usr/sbin/arp" }.count, 1)
+        XCTAssertEqual(missing.session.settingsSnapshot().macAddress, "AA:BB:CC:DD:EE:FF")
+
+        let known = sonyOnlySession(macAddress: "11:22:33:44:55:66")
+        known.http.script = [power]
+        _ = known.session.refresh()
+        XCTAssertEqual(known.session.settingsSnapshot().macAddress, "11:22:33:44:55:66")
+        XCTAssertEqual(known.session.settingsSnapshot().devices.first { $0.id == "living" }?.macAddress, "11:22:33:44:55:66")
+        XCTAssertFalse(known.runner.calls.contains { $0.executable == "/usr/sbin/arp" || $0.arguments == ["-an"] })
+        XCTAssertFalse(known.runner.calls.contains { $0.arguments.contains { $0.contains("wlan0") || $0.contains("eth0") } })
+    }
+
+    private func sonyOnlySession(macAddress: String) -> (session: RemoteSession, runner: FakeRunner, http: ScriptedHTTP) {
+        let tv = StoredTV(
+            id: "living",
+            name: "Living Room",
+            brand: .sony,
+            host: "192.0.2.20",
+            port: 80,
+            macAddress: macAddress,
+            useDebugging: false
+        )
+        let settings = Settings.factoryDefaults().applying(tv)
+        let runner = FakeRunner()
+        let http = ScriptedHTTP()
+        let session = RemoteSession(
+            settings: settings,
+            runner: runner,
+            http: http,
+            fileExists: { _ in false },
+            pathEnvironment: "",
+            homeDirectory: "/Users/tester"
+        )
+        session.setPreSharedKey(secret)
+        return (session, runner, http)
     }
 }

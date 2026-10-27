@@ -120,7 +120,7 @@ public struct GenericTVBackend: TvBackend {
 
     public func selectHDMI(_ port: Int, context: TvActionContext) -> ActionReport {
         guard (1...4).contains(port) else {
-            return ActionReport(title: "Unknown input", detail: "HDMI ports are 1 to 4.", isError: true)
+            return ActionReport(title: "Unknown input", detail: "Choose HDMI 1, 2, 3, or 4.", isError: true)
         }
         return sendKey(AndroidKey.hdmiPorts[port - 1], context: context)
     }
@@ -156,7 +156,7 @@ public struct SonyIPBackend: TvBackend {
             return ActionReport(title: "Typed \(text.count) characters", detail: "Sony IP", isError: false)
         }
         context.onSonyFailure()
-        return ActionReport(title: "Couldn't type", detail: "Open a text field on the TV, then try again.", isError: true)
+        return ActionReport(title: "Couldn't type", detail: TypingReadiness.notReady, isError: true)
     }
 
     public func launch(package: String, name: String, context: TvActionContext) -> ActionReport {
@@ -165,7 +165,7 @@ public struct SonyIPBackend: TvBackend {
 
     public func selectHDMI(_ port: Int, context: TvActionContext) -> ActionReport {
         guard (1...4).contains(port) else {
-            return ActionReport(title: "Unknown input", detail: "HDMI ports are 1 to 4.", isError: true)
+            return ActionReport(title: "Unknown input", detail: "Choose HDMI 1, 2, 3, or 4.", isError: true)
         }
         if context.allowSony {
             let sony = SonyClient(http: context.http)
@@ -183,7 +183,8 @@ public struct SonyIPBackend: TvBackend {
             let sony = SonyClient(http: context.http)
             if sony.setPower(on: on, host: context.host, port: context.controlPort, psk: context.psk) {
                 context.onSonySuccess()
-                return ActionReport(title: on ? "Sent wake" : "Sent sleep", detail: "Sony IP", isError: false)
+                NSLog("%@", "Sony IP power")
+                return ActionReport(title: on ? "Sent wake" : "Sent sleep", detail: "", isError: false)
             }
             context.onSonyFailure()
         }
@@ -223,7 +224,7 @@ public struct XiaomiTVBackend: TvBackend {
 
     public func selectHDMI(_ port: Int, context: TvActionContext) -> ActionReport {
         guard (1...4).contains(port) else {
-            return ActionReport(title: "Unknown input", detail: "HDMI ports are 1 to 4.", isError: true)
+            return ActionReport(title: "Unknown input", detail: "Choose HDMI 1, 2, 3, or 4.", isError: true)
         }
         let client = XiaomiClient(reader: context.reader)
         let control = context.controlPort == 0 ? 6095 : context.controlPort

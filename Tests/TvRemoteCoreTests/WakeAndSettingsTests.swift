@@ -70,12 +70,14 @@ final class WakeAndSettingsTests: XCTestCase {
         var settings = Settings.factoryDefaults()
         settings.host = "bravia.tailnet.ts.net"
         settings.port = 5555
-        settings.wolEnabled = true
         settings.macAddress = "AA:BB:CC:DD:EE:FF"
         settings.apps.append(TvApp(id: "extra", name: "Kodi", packageName: "org.xbmc.kodi"))
         try store.save(settings)
+        let saved = try String(contentsOf: url, encoding: .utf8)
+        XCTAssertFalse(saved.contains("wolEnabled"))
         let loaded = store.load()
         XCTAssertEqual(loaded.settings.host, "bravia.tailnet.ts.net")
+        XCTAssertEqual(loaded.settings.macAddress, "AA:BB:CC:DD:EE:FF")
         XCTAssertEqual(loaded.settings.apps.last?.packageName, "org.xbmc.kodi")
         XCTAssertNil(loaded.warning)
 
