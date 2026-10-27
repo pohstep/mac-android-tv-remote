@@ -3,7 +3,7 @@ import Foundation
 #if os(macOS)
 import Network
 
-/// Browses `_adb-tls-connect._tcp` and `_adb-tls-pairing._tcp` with Network.framework.
+/// Browses the service types in `DiscoveryService.types` with Network.framework.
 /// Resolution opens a short TCP connection and cancels it once the address is known.
 /// Untested against a television; the parser in `DiscoveryParse` is what the tests cover.
 public final class BonjourListing: ServiceListing {
@@ -26,6 +26,7 @@ public final class BonjourListing: ServiceListing {
             browser.browseResultsChangedHandler = { results, _ in
                 for result in results {
                     guard case .service(let name, let serviceType, _, _) = result.endpoint else { continue }
+                    let model = BonjourListing.modelName(result.metadata)
                     let connection = NWConnection(to: result.endpoint, using: .tcp)
                     lock.lock()
                     connections.append(connection)
@@ -36,7 +37,8 @@ public final class BonjourListing: ServiceListing {
                             if let endpoint = BonjourListing.endpoint(
                                 name: name,
                                 serviceType: serviceType,
-                                remote: connection.currentPath?.remoteEndpoint
+                                remote: connection.currentPath?.remoteEndpoint,
+                                model: model
                             ) {
                                 lock.lock()
                                 found.append(endpoint)
@@ -68,7 +70,18 @@ public final class BonjourListing: ServiceListing {
         return snapshot
     }
 
-    static func endpoint(name: String, serviceType: String, remote: NWEndpoint?) -> ServiceEndpoint? {
+    static func modelName(_ metadata: NWBrowser.Result.Metadata) -> String {
+        switch metadata {
+        case .bonjour(let record):
+            return record["md"] ?? ""
+        case .none:
+            return ""
+        @unknown default:
+            return ""
+        }
+    }
+
+    static func endpoint(name: String, serviceType: String, remote: NWEndpoint?, model: String) -> ServiceEndpoint? {
         guard case .hostPort(let host, let port)? = remote else { return nil }
         let hostText: String
         switch host {
@@ -83,7 +96,7 @@ public final class BonjourListing: ServiceListing {
         }
         let number = Int(port.rawValue)
         guard !hostText.isEmpty, (1...65535).contains(number) else { return nil }
-        return ServiceEndpoint(name: name, host: hostText, port: number, serviceType: DiscoveryService.normalize(serviceType))
+        return ServiceEndpoint(name: name, host: hostText, port: number, serviceType: DiscoveryService.normalize(serviceType), model: model)
     }
 }
 #endif

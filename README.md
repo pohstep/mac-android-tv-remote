@@ -8,7 +8,7 @@ Zapbar was called Mac Android TV Remote up to v1.0.1. Same project, new name.
 
 ## Install
 
-1. Download `Zapbar-1.1.1.zip` (or `Zapbar-1.1.1.dmg`) from the [latest release](https://github.com/pohstep/mac-android-tv-remote/releases/latest).
+1. Download `Zapbar-1.2.0.zip` (or `Zapbar-1.2.0.dmg`) from the [latest release](https://github.com/pohstep/mac-android-tv-remote/releases/latest).
 2. Move **Zapbar** to Applications and open it. It is not signed with an Apple developer account, so macOS asks first. See [First launch](#first-launch-unsigned-app).
 3. Follow the setup window, or use **Try demo TV** to look around without a TV.
 
@@ -29,8 +29,8 @@ Zapbar was called Mac Android TV Remote up to v1.0.1. Same project, new name.
 - **App tiles** with names, and the TV's own icon where the TV provides one, with **More apps…** for the rest of the list.
 - **Inputs** with the names the TV reports.
 - **Power** is one button. The label follows the TV: **Turn off** when it is on, **Turn on** when it is off or still unknown. While Zapbar is checking, the button says **Checking…**. Turn on and Turn off try the other ways on their own. The button does not name those ways.
-- **Several TVs.** The last one reconnects on launch. Power is in the menu bar. Release and sandbox builds leave a v1.0 settings file and the old keychain item unread, so the first launch does not ask for Keychain access. `scripts/build-dev.sh` sets `ZAPBAR_MIGRATE_V1` and can bring that TV and key across.
-- **Setup** walks through brand, finding the TV (or typing an address), debugging, pairing or Allow, and saving.
+- **Several TVs.** The last one reconnects on launch. The panel and the menu say **Connecting…** first. Power is in the menu bar. Release and sandbox builds leave a v1.0 settings file and the old keychain item unread, so the first launch does not ask for Keychain access. `scripts/build-dev.sh` sets `ZAPBAR_MIGRATE_V1` and can bring that TV and key across.
+- **Setup** looks for a Sony and a Xiaomi set in one search. Pick the set. Type an address only if the search finds nothing. When the TV needs a switch turned on by hand, setup shows that one step, waits until the TV answers, and continues. Demo mode stays available when nothing is found.
 - **Type on the TV.** A field in the panel sends on Return, including a pasted URL as plain text. Cut, Copy, Paste, and Select All are on the Edit menu, and Command-V still works while keyboard-as-remote is on. `⌃⌥T` opens the panel and focuses the field. If no text field is focused on the TV, the text stays and **Retry** sends it again. A drop adds to the field. An empty send asks you to type something.
 - **Try demo TV** opens a connected panel with no TV on the network. It is on the find step when nothing is found, and in Settings. Leave demo returns to a saved TV. Demo mode is not saved.
 - **Screenshot** copies the TV picture to the clipboard or saves it. **Save…** starts in Desktop, or Pictures if Desktop is not there, with the name `Zapbar Screenshot YYYY-MM-DD at HH.mm.ss.png`. The lines are "Saved" and "Couldn't save". A black picture is kept, and the panel says the TV may block screenshots of protected video.
@@ -52,9 +52,14 @@ Xiaomi control (remote buttons, apps, and HDMI) is **experimental**. It was chec
 
 ### On a Sony TV
 
-1. **Settings → Network → IP control**. Turn on control from the network, set a control key, and enter the same key in Zapbar.
-2. **Remote start**: **On**, if you want the set to wake from standby.
-3. Optional, for typing: allow this Mac on the TV and accept the prompt the first time it connects. Skip this if you only want the remote buttons.
+1. On the TV, open **Settings → Network**. Turn on control from the network, and set a control key.
+2. In Zapbar, pick the set. Enter the same control key. Zapbar continues when the TV answers. The key is saved in the Keychain when you save the TV.
+3. **Remote start**: **On**, if you want the set to wake from standby.
+4. Optional, for typing: choose **Also set up typing**. On the TV, open **Settings → System → Developer options** and turn on **Network debugging**. When the TV shows a number and a code, enter both. Skip this if you only want the remote buttons.
+
+### On a Xiaomi set
+
+Pick **Xiaomi**. The set is in the same search as a Sony set. This path is experimental. Typing and turning it on from here aren't available. You can save the set if the check does not answer.
 
 ### On another TV
 
@@ -62,7 +67,7 @@ Xiaomi control (remote buttons, apps, and HDMI) is **experimental**. It was chec
 2. When the TV shows a number and a 6-digit code, enter both. Zapbar then connects.
 3. On an older set, accept **Allow** on the TV.
 
-You can always type the TV address instead of waiting for discovery.
+You can always type the TV address instead of waiting for discovery. **Try demo TV** remains on the find step when the search finishes with nothing. A saved TV reconnects without opening setup. If it cannot be reached, the panel says so and offers **Retry** and **Set up a new TV**.
 
 ### On the Mac
 
@@ -120,7 +125,7 @@ With an explicit directory and a signing identity:
 SANDBOX=1 PLATFORM_TOOLS="$HOME/platform-tools" SIGN_IDENTITY="-" NO_INSTALL=1 scripts/build-local.sh
 ```
 
-The host is signed with `macos/PohstepRemote/Zapbar.entitlements` (`app-sandbox`, `network.client`, `network.server`) and the hardened runtime. The helper at `Contents/Helpers/adb` is signed with `macos/PohstepRemote/adb-helper.entitlements` (`app-sandbox` and `inherit` only) and the hardened runtime. Every `adb` launch sets `TMPDIR` to the app temporary directory. A sandboxed build sets `ADB_SERVER_SOCKET` to `tcp:localhost:5038` and passes `-P 5038`, so the helper starts its own server. The other build uses `tcp:localhost:5037` and `-P 5037`. The non-sandbox build still looks for a user-installed `adb` when the helper is absent.
+The host is signed with `macos/PohstepRemote/Zapbar.entitlements` (`app-sandbox`, `network.client`, `network.server`) and the hardened runtime. SSDP uses those network entitlements. The iOS multicast entitlement is not added: Apple does not require it on macOS, and an ad-hoc signature cannot carry that restricted entitlement. The helper at `Contents/Helpers/adb` is signed with `macos/PohstepRemote/adb-helper.entitlements` (`app-sandbox` and `inherit` only) and the hardened runtime. Every `adb` launch sets `TMPDIR` to the app temporary directory. A sandboxed build sets `ADB_SERVER_SOCKET` to `tcp:localhost:5038` and passes `-P 5038`, so the helper starts its own server. The other build uses `tcp:localhost:5037` and `-P 5037`. The non-sandbox build still looks for a user-installed `adb` when the helper is absent.
 
 See [docs/adb-notice.md](docs/adb-notice.md) for the Apache-2.0 notice.
 

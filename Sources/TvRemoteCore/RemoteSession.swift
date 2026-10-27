@@ -933,6 +933,11 @@ public final class RemoteSession {
         )
     }
 
+    /// True when the bundled helper, or a user install outside the sandbox, can be launched.
+    public func typingHelperAvailable() -> Bool {
+        resolvedAdbPath() != nil
+    }
+
     private func resolvedAdbPath(custom: String? = nil) -> String? {
         let path = custom ?? lock.critical { settings.adbPath }
         let locator = AdbLocator(

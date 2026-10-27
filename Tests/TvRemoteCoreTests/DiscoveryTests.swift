@@ -91,6 +91,90 @@ final class DiscoveryTests: XCTestCase {
         XCTAssertTrue(empty.found.isEmpty)
         XCTAssertTrue(empty.manualEntryAvailable)
     }
+
+    func testSonyModelFillsTheNameWhenTheSetOnlySaysTV() {
+        let body = #"{"result":[{"product":"TV","model":"KD-55X80L","macAddr":"AA:BB:CC:DD:EE:FF"}],"id":1}"#
+        let found = DiscoveryParse.sony(host: "192.0.2.8", status: 200, body: body)
+        XCTAssertEqual(found?.name, "KD-55X80L")
+        XCTAssertEqual(found?.model, "KD-55X80L")
+        XCTAssertEqual(found?.macAddress, "AA:BB:CC:DD:EE:FF")
+        let identity = DiscoveryParse.sonyIdentity(host: "192.0.2.8", status: 200, body: body)
+        XCTAssertEqual(identity?.model, "KD-55X80L")
+        XCTAssertNil(DiscoveryParse.sonyIdentity(host: "192.0.2.8", status: 403, body: #"{"error":[403,"Forbidden"]}"#))
+    }
+
+    func testLegacyAdbAndCastAreListedAndSpeakersAreNot() {
+        let tvs = DiscoveryParse.bonjour([
+            ServiceEndpoint(name: "Living Room", host: "192.0.2.8", port: 5555, serviceType: "_adb._tcp."),
+            ServiceEndpoint(name: "Bravia", host: "192.0.2.9", port: 8009, serviceType: "_googlecast._tcp", model: "BRAVIA 4K"),
+            ServiceEndpoint(name: "Kitchen speaker", host: "192.0.2.11", port: 8009, serviceType: "_googlecast._tcp", model: "Google Home"),
+            ServiceEndpoint(name: "Shield", host: "192.0.2.12", port: 6466, serviceType: "_androidtvremote2._tcp", model: "SHIELD Android TV")
+        ])
+        let byHost = Dictionary(uniqueKeysWithValues: tvs.map { ($0.host, $0) })
+        XCTAssertEqual(byHost["192.0.2.8"]?.legacyAdbPort, 5555)
+        XCTAssertEqual(byHost["192.0.2.8"]?.brand, .generic)
+        XCTAssertEqual(byHost["192.0.2.9"]?.brand, .sony)
+        XCTAssertEqual(byHost["192.0.2.9"]?.controlPort, 80)
+        XCTAssertEqual(byHost["192.0.2.9"]?.model, "BRAVIA 4K")
+        XCTAssertEqual(byHost["192.0.2.9"]?.listTitle, "Bravia · BRAVIA 4K · 192.0.2.9")
+        XCTAssertNil(byHost["192.0.2.11"])
+        XCTAssertEqual(byHost["192.0.2.12"]?.brand, .generic)
+        XCTAssertEqual(byHost["192.0.2.12"]?.name, "Shield")
+        XCTAssertFalse(CastFilter.include(name: "Nest Hub", model: "Nest Hub"))
+        XCTAssertTrue(CastFilter.include(name: "Living Room", model: "Chromecast Google TV"))
+    }
+
+    func testSsdpSonyKeepsDebuggingHintsFromTheSameHost() {
+        let ssdp = DiscoveredTV(name: "Sony TV", brand: .sony, host: "192.0.2.8", port: 5555, controlPort: 80, source: "ssdp-scalar")
+        let pairing = ServiceEndpoint(name: "Living Room", host: "192.0.2.8", port: 37111, serviceType: DiscoveryService.pairingType)
+        let outcome = DiscoveryEngine(
+            serviceEndpoints: [pairing],
+            localAddresses: [],
+            prober: StaticSubnetProbe(found: []),
+            ssdpFound: [ssdp],
+            portProbe: StaticPortProbe(open: ["192.0.2.8:5555"])
+        ).find()
+        XCTAssertEqual(outcome.found.count, 1)
+        XCTAssertEqual(outcome.found[0].brand, .sony)
+        XCTAssertEqual(outcome.found[0].controlPort, 80)
+        XCTAssertEqual(outcome.found[0].name, "Living Room")
+        XCTAssertEqual(outcome.found[0].pairingPort, 37111)
+        XCTAssertEqual(outcome.found[0].legacyAdbPort, 5555)
+        XCTAssertTrue(outcome.manualEntryAvailable)
+    }
+
+    func testSonyAndXiaomiDedupedInOnePassAndNamed() {
+        let sony = DiscoveredTV(name: "Sony TV", brand: .sony, host: "192.0.2.8", port: 80, controlPort: 80, source: "ssdp-scalar")
+        let sameHost = DiscoveredTV(name: "Living Room", brand: .xiaomi, host: "192.0.2.8", port: 6095, controlPort: 6095, source: "ssdp-xiaomi")
+        let other = DiscoveredTV(name: "Den", brand: .xiaomi, host: "192.0.2.40", port: 6095, controlPort: 6095, source: "ssdp-xiaomi", model: "MiTV")
+        let rows = DiscoveryParse.deduped([sony, sameHost, other])
+        XCTAssertEqual(rows.count, 2)
+        XCTAssertEqual(rows[0].host, "192.0.2.8")
+        XCTAssertEqual(rows[0].brand, .sony)
+        XCTAssertEqual(rows[0].name, "Living Room")
+        XCTAssertEqual(rows[0].controlPort, 80)
+        XCTAssertEqual(rows[1].host, "192.0.2.40")
+        XCTAssertEqual(rows[1].brand, .xiaomi)
+        XCTAssertEqual(rows[1].name, "Den")
+        let placeholder = DiscoveredTV(name: "Xiaomi TV", brand: .xiaomi, host: "192.0.2.41", port: 6095, controlPort: 6095, source: "ssdp-xiaomi")
+        let named = DiscoveryNaming.apply(
+            [placeholder],
+            namer: StaticTvNaming(identity: TvIdentity(name: "Bedroom", model: "Mi Box", macAddress: "AA:BB:CC:DD:EE:01"))
+        )
+        XCTAssertEqual(named[0].name, "Bedroom")
+        XCTAssertEqual(named[0].model, "Mi Box")
+        XCTAssertEqual(named[0].macAddress, "AA:BB:CC:DD:EE:01")
+    }
+
+    func testDescribedNameReplacesAPlaceholder() {
+        let row = DiscoveredTV(name: "Sony TV", brand: .sony, host: "192.0.2.8", port: 5555, controlPort: 80, source: "ssdp-scalar")
+        let naming = StaticTvNaming(identity: TvIdentity(name: "Living Room", model: "KD-55X80L", macAddress: "AA:BB:CC:DD:EE:FF"))
+        let named = DiscoveryNaming.apply([row], namer: naming)
+        XCTAssertEqual(named[0].name, "Living Room")
+        XCTAssertEqual(named[0].model, "KD-55X80L")
+        XCTAssertEqual(named[0].macAddress, "AA:BB:CC:DD:EE:FF")
+        XCTAssertEqual(named[0].listTitle, "Living Room · KD-55X80L · 192.0.2.8")
+    }
 }
 
 private struct RecordingProbe: SubnetProbing {
@@ -100,4 +184,9 @@ private struct RecordingProbe: SubnetProbing {
         record(hosts)
         return found
     }
+}
+
+private struct StaticTvNaming: TvNaming {
+    var identity: TvIdentity
+    func describe(host: String, brand: TvBrand) -> TvIdentity? { identity }
 }
