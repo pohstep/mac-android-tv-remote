@@ -18,7 +18,7 @@ enum MenuBarIcon {
 /// Clicks are forwarded to the button.
 final class StatusDrop: NSView {
     weak var button: NSStatusBarButton?
-    var onApks: ([URL]) -> Void = { _ in }
+    var onApks: ([URL], Int) -> Void = { _, _ in }
     var onRefused: () -> Void = {}
 
     override init(frame: NSRect) {
@@ -38,12 +38,13 @@ final class StatusDrop: NSView {
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
         let dropped = urls(from: sender)
-        let apks = dropped.filter { $0.path.lowercased().hasSuffix(".apk") }
+        let apks = dropped.filter { ApkPick.isApk($0.path) }
+        let skipped = dropped.count - apks.count
         if apks.isEmpty {
             if !dropped.isEmpty { onRefused() }
             return false
         }
-        onApks(apks)
+        onApks(apks, skipped)
         return true
     }
 
@@ -159,8 +160,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let overlay = StatusDrop(frame: button.bounds)
         overlay.autoresizingMask = [.width, .height]
         overlay.button = button
-        overlay.onApks = { [weak self] urls in
-            self?.model.receiveApks(urls)
+        overlay.onApks = { [weak self] urls, skipped in
+            self?.model.receiveApks(urls, skipped: skipped)
         }
         overlay.onRefused = { [weak self] in
             self?.model.refuseNonApk()

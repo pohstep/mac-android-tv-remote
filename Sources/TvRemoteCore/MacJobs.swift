@@ -1,5 +1,11 @@
 import Foundation
 
+public enum JobKind: Equatable {
+    case install
+    case screenshot
+    case other
+}
+
 public struct JobReport: Equatable {
     public var sentence: String
     public var raw: String
@@ -60,10 +66,21 @@ public enum InstallExplain {
         }
     }
 
-    /// What to do after a failed install. Nil when the sentence already names the next step, or it is not an install result.
-    public static func recovery(for sentence: String) -> String? {
+    public static let unknownStep = "Check the TV and the network, then choose the .apk again."
+    public static let reconnectStep = "Reconnect the TV, then choose the .apk again."
+
+    /// What to do next. Install failures always have a step. Screenshot failures use their own.
+    public static func recovery(for sentence: String, kind: JobKind = .install) -> String? {
+        if kind == .screenshot {
+            return screenshotRecovery(sentence)
+        }
+        return installRecovery(sentence)
+    }
+
+    private static func installRecovery(_ sentence: String) -> String? {
         switch sentence {
-        case "Installed.", "Cancelled.", "Taking a screenshot…", "Screenshot ready.":
+        case "Installed.", "Cancelled.", "Taking a screenshot…", "Screenshot ready.",
+             "Copied.", "Saved", "Couldn't save", ScreenshotCapture.asleep, ApkPick.onlyApk:
             return nil
         case "The TV already has a newer version of this app.":
             return "Choose a newer .apk."
@@ -81,10 +98,10 @@ public enum InstallExplain {
             return "Choose a different .apk."
         case "The TV cancelled the install.", "The TV refused the install.", "The install didn't finish.":
             return "Check the TV, then choose the .apk again."
-        case "That file can't be read.", "This needs a network debugging connection.":
+        case "That file can't be read.":
             return "Choose the .apk again."
-        case ApkPick.onlyApk:
-            return nil
+        case "This needs a network debugging connection.":
+            return reconnectStep
         default:
             if sentence.hasPrefix("This Mac isn't authorized") {
                 return "Accept the prompt on the TV, then choose the .apk again."
@@ -92,7 +109,21 @@ public enum InstallExplain {
             if sentence.hasSuffix("is offline. The TV may be asleep or still booting.") {
                 return "Wake the TV, then choose the .apk again."
             }
+            return unknownStep
+        }
+    }
+
+    private static func screenshotRecovery(_ sentence: String) -> String? {
+        switch sentence {
+        case "Screenshot ready.", "Taking a screenshot…", "Copied.", "Saved", "Cancelled.",
+             ScreenshotCapture.asleep, ScreenshotBytes.blankSentence:
             return nil
+        case "The screenshot didn't come back.":
+            return nil
+        case ScreenshotCapture.needsLink:
+            return "Check the connection, then press Screenshot."
+        default:
+            return "Check the connection, then press Screenshot."
         }
     }
 
@@ -107,6 +138,19 @@ public enum ApkPick {
 
     public static func isApk(_ path: String) -> Bool {
         path.lowercased().hasSuffix(".apk")
+    }
+
+    public static func skipped(_ count: Int) -> String {
+        let files = count == 1 ? "file" : "files"
+        return "Skipped \(count) \(files) that aren't .apk."
+    }
+
+    /// Adds the skipped-file sentence onto a finished install result.
+    public static func notingSkipped(_ report: JobReport, skipped count: Int) -> JobReport {
+        guard count > 0 else { return report }
+        let note = skipped(count)
+        let sentence = report.sentence.isEmpty ? note : "\(report.sentence) \(note)"
+        return JobReport(sentence: sentence, raw: report.raw, isError: report.isError)
     }
 }
 
@@ -123,12 +167,20 @@ public enum InstallLog {
         }
         return lines.joined(separator: "\n")
     }
+
+    public static func append(_ log: String, _ entry: String) -> String {
+        let trimmed = entry.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return log }
+        if log.isEmpty { return trimmed }
+        return log + "\n\n" + trimmed
+    }
 }
 
 public enum ScreenshotCapture {
     public static let remotePath = "/sdcard/Download/zapbar-screen.png"
     /// A sleeping TV gives no picture, and asking it takes about half a minute. Say so first.
     public static let asleep = "The TV is asleep. Turn it on first."
+    public static let needsLink = "A screenshot needs a network debugging connection."
 
     /// A valid PNG, including an all-black frame, is kept. A broken exec-out result uses the fallback bytes.
     public static func resolve(execOut: Data, fallbackRaw: String = "", fallback: () -> (Data, String)) -> ScreenshotResult {

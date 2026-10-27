@@ -598,7 +598,7 @@ public final class RemoteSession {
 
     public func captureScreenshot() -> ScreenshotResult {
         guard let serial = debuggingSerial() else {
-            return ScreenshotResult(png: nil, sentence: "This needs a network debugging connection.", raw: "", isError: true)
+            return ScreenshotResult(png: nil, sentence: ScreenshotCapture.needsLink, raw: "", isError: true)
         }
         armTransfer(remote: nil, resetCancel: true)
         defer { endTransfer() }

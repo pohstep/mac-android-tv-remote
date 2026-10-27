@@ -34,6 +34,7 @@ final class AppModel: ObservableObject {
     @Published var jobIsError = false
     @Published var installLog = ""
     @Published var showInstallLog = false
+    @Published var jobKind: JobKind = .other
     @Published var jobBusy = false
     @Published var jobCancellable = false
     @Published var screenshotPNG: Data?
@@ -612,42 +613,53 @@ final class AppModel: ObservableObject {
         stageReadableCopy(of: url)
     }
 
-    func receiveStaged(_ paths: [String]) {
+    func receiveStaged(_ paths: [String], skipped: Int = 0) {
         if demoOn {
             discard(takePendingStages())
-            let apks = paths.filter { $0.lowercased().hasSuffix(".apk") }
+            let apks = paths.filter { ApkPick.isApk($0) }
             guard !apks.isEmpty else {
                 noteJob(JobReport(sentence: ApkPick.onlyApk, raw: "", isError: true))
                 return
             }
+            let held = skipped
+            jobKind = .install
+            installLog = ""
+            showInstallLog = false
             runJob("Installing…", cancellable: false) { [weak self] _ in
-                self?.demo.installApk(at: apks[0]) ?? JobReport(sentence: "Cancelled.", raw: "", isError: true)
+                let report = self?.demo.installApk(at: apks[0]) ?? JobReport(sentence: "Cancelled.", raw: "", isError: true)
+                return ApkPick.notingSkipped(report, skipped: held)
             }
             return
         }
         let directories = takePendingStages()
-        let apks = paths.filter { $0.lowercased().hasSuffix(".apk") }
+        let apks = paths.filter { ApkPick.isApk($0) }
         guard !apks.isEmpty else {
             discard(directories)
             noteJob(JobReport(sentence: ApkPick.onlyApk, raw: "", isError: true))
             return
         }
-        runInstalls(apks, directories: directories)
+        runInstalls(apks, directories: directories, skipped: skipped)
     }
 
-    func receiveApks(_ urls: [URL]) {
+    func receiveApks(_ urls: [URL], skipped extraSkipped: Int = 0) {
         if demoOn {
             let apks = urls.filter { $0.path.lowercased().hasSuffix(".apk") }
             guard !apks.isEmpty else {
                 noteJob(JobReport(sentence: ApkPick.onlyApk, raw: "", isError: true))
                 return
             }
+            let skipped = extraSkipped + (urls.count - apks.count)
+            jobKind = .install
+            installLog = ""
+            showInstallLog = false
             runJob("Installing…", cancellable: false) { [weak self] _ in
-                self?.demo.installApk(at: apks[0].path) ?? JobReport(sentence: "Cancelled.", raw: "", isError: true)
+                let report = self?.demo.installApk(at: apks[0].path) ?? JobReport(sentence: "Cancelled.", raw: "", isError: true)
+                return ApkPick.notingSkipped(report, skipped: skipped)
             }
             return
         }
-        let apks = urls.filter { $0.path.lowercased().hasSuffix(".apk") }
+        let apks = urls.filter { ApkPick.isApk($0.path) }
+        let skipped = extraSkipped + (urls.count - apks.count)
         guard !apks.isEmpty else {
             noteJob(JobReport(sentence: ApkPick.onlyApk, raw: "", isError: true))
             return
@@ -666,7 +678,7 @@ final class AppModel: ObservableObject {
             noteJob(JobReport(sentence: "That file can't be read.", raw: "", isError: true))
             return
         }
-        runInstalls(paths, directories: directories)
+        runInstalls(paths, directories: directories, skipped: skipped)
     }
 
     func installApk(at path: String) {
@@ -680,6 +692,9 @@ final class AppModel: ObservableObject {
     }
 
     func takeScreenshot() {
+        jobKind = .screenshot
+        installLog = ""
+        showInstallLog = false
         runJob("Taking a screenshot…", cancellable: false) { [weak self] _ in
             guard let self else { return JobReport(sentence: "Cancelled.", raw: "", isError: true) }
             let shot = self.demoOn ? self.demo.captureScreenshot() : self.session.captureScreenshot()
@@ -811,13 +826,22 @@ final class AppModel: ObservableObject {
     }
 
     private func rememberInstall(_ report: JobReport) {
+        jobKind = .install
         installLog = InstallLog.text(sentence: report.sentence, raw: report.raw)
         showInstallLog = false
     }
 
-    private func runInstalls(_ paths: [String], directories: [String]) {
+    private func appendInstall(_ report: JobReport) {
+        jobKind = .install
+        installLog = InstallLog.append(installLog, InstallLog.text(sentence: report.sentence, raw: report.raw))
+    }
+
+    private func runInstalls(_ paths: [String], directories: [String], skipped: Int = 0) {
         guard let first = paths.first else { return }
         let name = URL(fileURLWithPath: first).lastPathComponent
+        jobKind = .install
+        installLog = ""
+        showInstallLog = false
         runJob("Installing \(name)…", directories: directories, cancellable: true) { [weak self] token in
             guard let self else { return JobReport(sentence: "Cancelled.", raw: "", isError: true) }
             var index = 0
@@ -830,11 +854,20 @@ final class AppModel: ObservableObject {
                         self.jobLine = "Installing \(file)…"
                     }
                 }
-                if self.demoOn { return self.demo.installApk(at: path, clearingCancel: clear) }
-                return self.session.installApk(at: path, clearingCancel: clear)
+                let one: JobReport
+                if self.demoOn {
+                    one = self.demo.installApk(at: path, clearingCancel: clear)
+                } else {
+                    one = self.session.installApk(at: path, clearingCancel: clear)
+                }
+                DispatchQueue.main.async { self.appendInstall(one) }
+                return one
             }
-            DispatchQueue.main.async { self.rememberInstall(report) }
-            return report
+            if skipped > 0 {
+                let note = JobReport(sentence: ApkPick.skipped(skipped), raw: "", isError: false)
+                DispatchQueue.main.async { self.appendInstall(note) }
+            }
+            return ApkPick.notingSkipped(report, skipped: skipped)
         }
     }
 

@@ -80,6 +80,36 @@ final class MacJobTests: XCTestCase {
         XCTAssertTrue(ApkPick.isApk("/tmp/Show.APK"))
     }
 
+    func testInstallRecoveryHasItsOwnNextStep() {
+        XCTAssertEqual(
+            InstallExplain.recovery(for: "This needs a network debugging connection."),
+            InstallExplain.reconnectStep
+        )
+        XCTAssertEqual(
+            InstallExplain.recovery(for: "This needs a network debugging connection.", kind: .screenshot),
+            "Check the connection, then press Screenshot."
+        )
+        XCTAssertEqual(
+            InstallExplain.recovery(for: ScreenshotCapture.needsLink, kind: .screenshot),
+            "Check the connection, then press Screenshot."
+        )
+        XCTAssertEqual(InstallExplain.recovery(for: Copy.stoppedAnswering), InstallExplain.unknownStep)
+        XCTAssertEqual(InstallExplain.recovery(for: "adb isn't installed."), InstallExplain.unknownStep)
+        XCTAssertEqual(InstallExplain.recovery(for: "The install didn't finish."), "Check the TV, then choose the .apk again.")
+        XCTAssertEqual(ApkPick.skipped(1), "Skipped 1 file that aren't .apk.")
+        XCTAssertEqual(ApkPick.skipped(3), "Skipped 3 files that aren't .apk.")
+        let noted = ApkPick.notingSkipped(
+            JobReport(sentence: "Installed.", raw: "Success", isError: false),
+            skipped: 2
+        )
+        XCTAssertEqual(noted.sentence, "Installed. Skipped 2 files that aren't .apk.")
+        XCTAssertEqual(
+            InstallLog.append("Installed.\nSuccess", ApkPick.skipped(1)),
+            "Installed.\nSuccess\n\nSkipped 1 file that aren't .apk."
+        )
+        XCTAssertEqual(InstallLog.append("", "Installed."), "Installed.")
+    }
+
     func testScreenshotBlankBrokenAndSaveThenPull() throws {
         XCTAssertEqual(ScreenshotBytes.kind(redPNG), .picture)
         XCTAssertEqual(ScreenshotBytes.kind(blackPNG), .blank)

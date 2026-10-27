@@ -439,7 +439,7 @@ struct RemotePanel: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            if let step = InstallExplain.recovery(for: model.jobLine), model.jobIsError {
+            if let step = InstallExplain.recovery(for: model.jobLine, kind: model.jobKind), model.jobIsError {
                 Text(step)
                     .font(.system(size: 11))
                     .foregroundColor(tertiaryInk)
@@ -489,7 +489,7 @@ struct RemotePanel: View {
                     url = nil
                 }
                 guard let url else { return }
-                guard url.path.lowercased().hasSuffix(".apk") else {
+                guard ApkPick.isApk(url.path) else {
                     found.refuse()
                     return
                 }
@@ -501,10 +501,10 @@ struct RemotePanel: View {
             }
         }
         group.notify(queue: .main) {
-            if found.paths.isEmpty && found.refused {
+            if found.paths.isEmpty {
                 model.refuseNonApk()
             } else {
-                model.receiveStaged(found.paths)
+                model.receiveStaged(found.paths, skipped: found.refusedCount)
             }
         }
         return !providers.isEmpty
@@ -1417,6 +1417,7 @@ private final class DropBox {
     private let lock = NSLock()
     private(set) var paths: [String] = []
     private(set) var refused = false
+    private(set) var refusedCount = 0
     func add(_ path: String) {
         lock.lock()
         paths.append(path)
@@ -1426,6 +1427,7 @@ private final class DropBox {
     func refuse() {
         lock.lock()
         refused = true
+        refusedCount += 1
         lock.unlock()
     }
 }
