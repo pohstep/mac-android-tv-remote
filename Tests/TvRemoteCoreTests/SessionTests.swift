@@ -421,6 +421,38 @@ final class SessionTests: XCTestCase {
         XCTAssertFalse(fake.calls.contains { $0.arguments.contains("text") && $0.arguments.contains("input") })
     }
 
+    func testSonyRouteRefusesAHiddenKeyboard() {
+        var settings = Settings.factoryDefaults()
+        settings.host = "192.0.2.20"
+        settings.brand = .sony
+        let fake = FakeRunner()
+        let http = ScriptedHTTP()
+        fake.handler = { arguments in
+            if arguments.contains("connect") {
+                return .success(CommandResult(status: 0, stdout: "connected to 192.0.2.20:5555", stderr: ""))
+            }
+            if arguments.contains("devices") {
+                return .success(CommandResult(status: 0, stdout: "List of devices attached\n192.0.2.20:5555\tdevice\n", stderr: ""))
+            }
+            if arguments.contains("input_method") {
+                return .success(CommandResult(status: 0, stdout: "mServedView=com.netflix.ninja/.Main\nmInputShown=false", stderr: ""))
+            }
+            return .success(CommandResult(status: 0, stdout: "", stderr: ""))
+        }
+        let session = RemoteSession(
+            settings: settings,
+            runner: fake,
+            http: http,
+            fileExists: { $0 == "/usr/local/bin/adb" },
+            homeDirectory: "/Users/tester"
+        )
+        session.setPreSharedKey("secret")
+        _ = session.refresh()
+        let report = session.type("你好")
+        XCTAssertEqual(report.detail, TypingReadiness.notReady)
+        XCTAssertTrue(http.calls.isEmpty)
+    }
+
     func testUrlIsTypedAsPlainText() {
         let fake = FakeRunner()
         let session = connected(fake)
