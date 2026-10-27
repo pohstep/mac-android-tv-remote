@@ -559,11 +559,13 @@ final class AppModel: ObservableObject {
     func setLoginItem(_ on: Bool) {
         do {
             try LoginItemBridge.setEnabled(on)
+            refreshLoginItem()
         } catch {
-            banner = "Zapbar couldn't change the login item."
+            refreshLoginItem()
+            loginItem = LoginItemMapping.withChangeFailure(loginItem)
+            banner = loginItem.message
             bannerIsError = true
         }
-        refreshLoginItem()
     }
 
     func openLoginItems() {

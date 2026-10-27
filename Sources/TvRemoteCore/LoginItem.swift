@@ -40,4 +40,11 @@ public enum LoginItemMapping {
             return LoginItemPresentation(isOn: false, message: "", showsOpenSettings: false)
         }
     }
+
+    public static let changeFailed = "Zapbar couldn't change the login item. Open Login Items and switch Zapbar there."
+
+    /// Keeps the real on/off state and shows the failure with a way into System Settings.
+    public static func withChangeFailure(_ presentation: LoginItemPresentation) -> LoginItemPresentation {
+        LoginItemPresentation(isOn: presentation.isOn, message: changeFailed, showsOpenSettings: true)
+    }
 }

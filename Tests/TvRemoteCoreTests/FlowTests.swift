@@ -64,6 +64,11 @@ final class FlowTests: XCTestCase {
         XCTAssertFalse(missing.showsOpenSettings)
         XCTAssertEqual(missing.message, "Zapbar isn't set to open at login. Turn the switch on again.")
         XCTAssertEqual(LoginItemMapping.present(.notRegistered), LoginItemPresentation(isOn: false, message: "", showsOpenSettings: false))
+        let failed = LoginItemMapping.withChangeFailure(LoginItemMapping.present(.enabled))
+        XCTAssertTrue(failed.isOn)
+        XCTAssertTrue(failed.showsOpenSettings)
+        XCTAssertEqual(failed.message, LoginItemMapping.changeFailed)
+        XCTAssertTrue(failed.message.contains("Open Login Items"))
     }
 
     func testPowerPollIsBetweenThreeAndFiveSeconds() {
