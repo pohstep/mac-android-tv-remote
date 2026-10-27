@@ -5,16 +5,38 @@ final class FlowTests: XCTestCase {
     func testTypingReadinessAndEditMenu() {
         XCTAssertEqual(TypingReadiness.reading("mInputShown=true"), .ready)
         XCTAssertEqual(TypingReadiness.reading("mServedView=null"), .notReady)
-        XCTAssertEqual(TypingReadiness.reading("mServedView=com.android.tv/.Search"), .ready)
+        XCTAssertEqual(TypingReadiness.reading("mServedView=com.android.tv/.Search"), .notReady)
+        XCTAssertEqual(
+            TypingReadiness.reading("mServedView=com.netflix.ninja/.Main\nmInputShown=false"),
+            .notReady
+        )
+        XCTAssertEqual(
+            TypingReadiness.reading("mServedView=com.netflix.ninja/.Main\n  mServedView=null"),
+            .notReady
+        )
+        XCTAssertEqual(
+            TypingReadiness.reading("mInputShown=true\nmServedView=com.android.tv/.Search"),
+            .ready
+        )
         XCTAssertEqual(TypingReadiness.reading("mInputShown=false"), .notReady)
         XCTAssertEqual(TypingReadiness.reading("no field here"), .unknown)
         XCTAssertEqual(
             TypingReadiness.notReady,
-            "Nothing on the TV is ready for typing. Open a search or text box on the TV, then Send again."
+            "No text field is focused on the TV. Open a search or text box on the TV, then press Retry."
         )
+        XCTAssertEqual(TypingReadiness.empty, "Type something to send.")
+        XCTAssertTrue(TypingReadiness.showRetry(failed: true))
+        XCTAssertFalse(TypingReadiness.showRetry(failed: false))
+        XCTAssertTrue(TypingReadiness.showSetup(failed: true, connected: false))
+        XCTAssertFalse(TypingReadiness.showSetup(failed: true, connected: true))
         XCTAssertEqual(StandardEditMenu.items.map(\.keyEquivalent), ["x", "c", "v", "a"])
         XCTAssertEqual(StandardEditMenu.items.map(\.action), ["cut:", "copy:", "paste:", "selectAll:"])
         XCTAssertEqual(DroppedText.plain("  https://example.com/a \n"), "https://example.com/a")
+        XCTAssertEqual(DroppedText.append("hello", "https://example.com"), "hello https://example.com")
+        XCTAssertEqual(DroppedText.append("hello\n", "more"), "hello\nmore")
+        XCTAssertEqual(DroppedText.append("", "  hi  "), "hi")
+        XCTAssertTrue(DroppedText.isFileDrop(["public.file-url"]))
+        XCTAssertFalse(DroppedText.isFileDrop(["public.url", "public.plain-text"]))
     }
 
     func testScreenshotNameAndStartFolder() {

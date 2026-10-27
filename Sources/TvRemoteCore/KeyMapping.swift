@@ -96,8 +96,13 @@ public enum KeyMapping {
     public static func effect(
         for chord: KeyChord,
         keyboardMode: Bool,
-        hotkey: Hotkey = .default
+        hotkey: Hotkey = .default,
+        textFieldFocused: Bool = false
     ) -> KeyEffect {
+        // A focused text field keeps every key, including Command-V, on the Mac.
+        if textFieldFocused {
+            return .passthrough
+        }
         if hotkey.matches(chord) {
             return .toggleKeyboardMode
         }

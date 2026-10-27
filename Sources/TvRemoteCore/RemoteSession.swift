@@ -106,10 +106,15 @@ public final class RemoteSession {
         return pending
     }
 
-    public func ingest(_ chord: KeyChord) -> IngestResult {
+    public func ingest(_ chord: KeyChord, textFieldFocused: Bool = false) -> IngestResult {
         lock.lock()
         let mode = keyboardMode
-        let effect = KeyMapping.effect(for: chord, keyboardMode: mode, hotkey: hotkey)
+        let effect = KeyMapping.effect(
+            for: chord,
+            keyboardMode: mode,
+            hotkey: hotkey,
+            textFieldFocused: textFieldFocused
+        )
         switch effect {
         case .ignore:
             lock.unlock()
@@ -412,12 +417,7 @@ public final class RemoteSession {
         )
         switch route {
         case .adb:
-            if currentAdbLink(), let serial = connectedSerial() {
-                let dump = (try? client().shell(["dumpsys", "input_method"], serial: serial)) ?? ""
-                if TypingReadiness.reading(dump) == .notReady {
-                    return ActionReport(title: "Couldn't type", detail: TypingReadiness.notReady, isError: true)
-                }
-            }
+            if let blocked = blockedByReadiness() { return blocked }
             let report = GenericTVBackend().sendText(text, context: makeContext(allowSony: false))
             if report.isError {
                 NSLog("Zapbar: adb typing failed for %d chars", count)
@@ -426,6 +426,7 @@ public final class RemoteSession {
             }
             return report
         case .sony:
+            if let blocked = blockedByReadiness() { return blocked }
             let field = lock.critical { () -> String in sonyField += text; return sonyField }
             let report = SonyIPBackend().sendText(text, context: makeContext(allowSony: true, replacementText: field))
             if report.isError {
@@ -438,6 +439,14 @@ public final class RemoteSession {
         case .unsupported(let message):
             return ActionReport(title: "Couldn't type", detail: message, isError: true)
         }
+    }
+
+    /// adb can see the keyboard. A Sony-only TV cannot; Sony's own refusal uses the same sentence.
+    private func blockedByReadiness() -> ActionReport? {
+        guard currentAdbLink(), let serial = connectedSerial() else { return nil }
+        let dump = (try? client().shell(["dumpsys", "input_method"], serial: serial)) ?? ""
+        guard TypingReadiness.reading(dump) == .notReady else { return nil }
+        return ActionReport(title: "Couldn't type", detail: TypingReadiness.notReady, isError: true)
     }
 
     /// Launcher export first, then leanback activities. Nil when adb is not connected or both reads fail.

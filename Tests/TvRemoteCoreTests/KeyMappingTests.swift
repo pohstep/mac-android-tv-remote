@@ -54,6 +54,22 @@ final class KeyMappingTests: XCTestCase {
     func testCommandShortcutsPassThrough() {
         let copy = KeyChord(key: .ansi("c"), modifiers: [.command], characters: "c")
         XCTAssertEqual(KeyMapping.effect(for: copy, keyboardMode: true), .passthrough)
+        let paste = KeyChord(key: .ansi("v"), modifiers: [.command], characters: "v")
+        XCTAssertEqual(KeyMapping.effect(for: paste, keyboardMode: true), .passthrough)
+        XCTAssertEqual(KeyMapping.effect(for: paste, keyboardMode: false), .ignore)
+        let letter = KeyChord(key: .ansi("a"), characters: "a")
+        XCTAssertEqual(
+            KeyMapping.effect(for: letter, keyboardMode: true, textFieldFocused: true),
+            .passthrough
+        )
+        XCTAssertEqual(
+            KeyMapping.effect(for: KeyChord(key: .arrowUp), keyboardMode: true, textFieldFocused: true),
+            .passthrough
+        )
+        XCTAssertEqual(
+            KeyMapping.effect(for: paste, keyboardMode: true, textFieldFocused: true),
+            .passthrough
+        )
         let quit = KeyChord(key: .ansi("q"), modifiers: [.command])
         XCTAssertEqual(KeyMapping.effect(for: quit, keyboardMode: true), .passthrough)
     }

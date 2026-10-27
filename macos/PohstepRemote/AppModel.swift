@@ -23,8 +23,10 @@ final class AppModel: ObservableObject {
     @Published var typeFocusID = 0
     @Published var typeNotice = ""
     @Published var typeCanRetry = false
+    @Published var typeNeedsSetup = false
     @Published var typeBusy = false
     @Published var typeClearToken = 0
+    private var typeHintItem: DispatchWorkItem?
     @Published var powerBusy = false
     @Published var loginItem = LoginItemMapping.present(.notRegistered)
     @Published var jobLine = ""
@@ -549,11 +551,17 @@ final class AppModel: ObservableObject {
 
     func sendTypedText(_ text: String) {
         let sending = text
-        guard !sending.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        guard !sending.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            showTypeHint(TypingReadiness.empty)
+            return
+        }
         guard !typeBusy else { return }
+        typeHintItem?.cancel()
         typeBusy = true
         typeNotice = ""
         typeCanRetry = false
+        typeNeedsSetup = false
+        let connected = demoOn || session.status.isConnected
         let work: () -> ActionReport = { [weak self] in
             guard let self else {
                 return ActionReport(title: "Couldn't type", detail: "", isError: true)
@@ -568,12 +576,14 @@ final class AppModel: ObservableObject {
                 self.typeBusy = false
                 if report.isError {
                     self.typeNotice = report.detail.isEmpty ? report.title : report.detail
-                    self.typeCanRetry = self.typeNotice == TypingReadiness.notReady
+                    self.typeCanRetry = TypingReadiness.showRetry(failed: true)
+                    self.typeNeedsSetup = TypingReadiness.showSetup(failed: true, connected: connected)
                     self.banner = self.typeNotice
                     self.bannerIsError = true
                 } else {
                     self.typeNotice = ""
                     self.typeCanRetry = false
+                    self.typeNeedsSetup = false
                     self.typeClearToken += 1
                     if self.bannerIsError { self.banner = "" }
                     self.bannerIsError = false
@@ -581,6 +591,21 @@ final class AppModel: ObservableObject {
                 self.onChromeChanged?()
             }
         }
+    }
+
+    private func showTypeHint(_ text: String) {
+        typeHintItem?.cancel()
+        typeNotice = text
+        typeCanRetry = false
+        typeNeedsSetup = false
+        let item = DispatchWorkItem { [weak self] in
+            guard let self, self.typeNotice == text else { return }
+            self.typeNotice = ""
+            self.onChromeChanged?()
+        }
+        typeHintItem = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: item)
+        onChromeChanged?()
     }
 
     func stageDroppedFile(_ url: URL) -> String? {

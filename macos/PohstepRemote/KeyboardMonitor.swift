@@ -92,6 +92,17 @@ final class KeyboardMonitor {
         let chord = chord(from: event, keyCode: keyCode)
         guard let model else { return Unmanaged.passUnretained(event) }
 
+        let fieldFocused = textFieldIsFirstResponder()
+        // Command-V and every key aimed at the type field stay on the Mac.
+        if fieldFocused || KeyMapping.effect(
+            for: chord,
+            keyboardMode: model.keyboardMode,
+            hotkey: model.hotkey,
+            textFieldFocused: fieldFocused
+        ) == .passthrough {
+            return Unmanaged.passUnretained(event)
+        }
+
         if model.typeHotkey.matches(chord) {
             swallowed.insert(keyCode)
             DispatchQueue.main.async {
@@ -114,6 +125,11 @@ final class KeyboardMonitor {
             }
             return nil
         }
+    }
+
+    private func textFieldIsFirstResponder() -> Bool {
+        guard let responder = NSApp.keyWindow?.firstResponder else { return false }
+        return responder is NSTextView || responder is NSTextField
     }
 
     private func chord(from event: CGEvent, keyCode: Int64) -> KeyChord {

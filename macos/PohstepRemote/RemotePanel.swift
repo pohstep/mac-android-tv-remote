@@ -327,9 +327,15 @@ struct RemotePanel: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             if model.typeCanRetry {
-                Button("Retry") { model.sendTypedText(typeDraft) }
-                    .disabled(model.typeBusy)
-                    .font(.system(size: 12))
+                HStack(spacing: 8) {
+                    Button("Retry") { model.sendTypedText(typeDraft) }
+                        .disabled(model.typeBusy)
+                    if model.typeNeedsSetup {
+                        Button("Open Settings") { model.showSettings() }
+                        Button("Set up a new TV") { model.showWizard() }
+                    }
+                }
+                .font(.system(size: 12))
             }
         }
         .onChange(of: model.typeClearToken) { _ in
@@ -505,7 +511,12 @@ struct RemotePanel: View {
     }
 
     private func loadDroppedText(_ providers: [NSItemProvider]) -> Bool {
-        for provider in providers {
+        let textProviders = providers.filter {
+            !DroppedText.isFileDrop($0.registeredTypeIdentifiers)
+                && !$0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier)
+        }
+        guard !textProviders.isEmpty else { return false }
+        for provider in textProviders {
             if provider.hasItemConformingToTypeIdentifier(UTType.url.identifier) {
                 provider.loadItem(forTypeIdentifier: UTType.url.identifier, options: nil) { item, _ in
                     let raw: String
@@ -541,9 +552,9 @@ struct RemotePanel: View {
     }
 
     private func applyDroppedText(_ raw: String) {
-        let text = DroppedText.plain(raw)
-        guard !text.isEmpty else { return }
-        DispatchQueue.main.async { typeDraft = text }
+        DispatchQueue.main.async {
+            typeDraft = DroppedText.append(typeDraft, raw)
+        }
     }
 
     @ViewBuilder

@@ -7,21 +7,29 @@ public enum TypingField: Equatable {
 }
 
 public enum TypingReadiness {
-    public static let notReady = "Nothing on the TV is ready for typing. Open a search or text box on the TV, then Send again."
+    public static let notReady = "No text field is focused on the TV. Open a search or text box on the TV, then press Retry."
+    public static let empty = "Type something to send."
 
-    /// `dumpsys input_method`. A served view or a visible keyboard means a field is ready.
-    /// `mServedView=null` or a hidden keyboard means it is not. Anything else is unknown.
+    /// `dumpsys input_method`. Ready only when the keyboard is actually shown.
+    /// A hidden keyboard is not ready even if a view is served (Netflix). A nested
+    /// `mServedView=null` is not ready. A served view with no shown keyboard is not ready.
     public static func reading(_ dump: String) -> TypingField {
         let lower = dump.lowercased()
+        if lower.contains("minputshown=false") { return .notReady }
         if lower.contains("minputshown=true") { return .ready }
         if lower.range(of: #"mservedview\s*=\s*null\b"#, options: .regularExpression) != nil {
             return .notReady
         }
         if lower.range(of: #"mservedview\s*=\s*\S+"#, options: .regularExpression) != nil {
-            return .ready
+            return .notReady
         }
-        if lower.contains("minputshown=false") { return .notReady }
         return .unknown
+    }
+
+    public static func showRetry(failed: Bool) -> Bool { failed }
+
+    public static func showSetup(failed: Bool, connected: Bool) -> Bool {
+        failed && !connected
     }
 }
 
@@ -52,5 +60,23 @@ public enum DroppedText {
     /// A dropped string or URL, kept as the user dropped it. No scheme check.
     public static func plain(_ raw: String) -> String {
         raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Adds dropped text onto what is already in the field. A file URL is not text.
+    public static func append(_ existing: String, _ raw: String) -> String {
+        let text = plain(raw)
+        guard !text.isEmpty else { return existing }
+        if existing.isEmpty { return text }
+        if existing.contains("\n") || text.contains("\n") {
+            let separator = existing.hasSuffix("\n") ? "" : "\n"
+            return existing + separator + text
+        }
+        let separator = existing.hasSuffix(" ") ? "" : " "
+        return existing + separator + text
+    }
+
+    /// `public.file-url` belongs to the install drop, not the type field.
+    public static func isFileDrop(_ typeIdentifiers: [String]) -> Bool {
+        typeIdentifiers.contains("public.file-url")
     }
 }
