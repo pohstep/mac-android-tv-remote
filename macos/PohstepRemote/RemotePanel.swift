@@ -440,10 +440,17 @@ struct RemotePanel: View {
                 }
             }
             if let step = InstallExplain.recovery(for: model.jobLine, kind: model.jobKind), model.jobIsError {
-                Text(step)
-                    .font(.system(size: 11))
-                    .foregroundColor(tertiaryInk)
-                    .fixedSize(horizontal: false, vertical: true)
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(step)
+                        .font(.system(size: 11))
+                        .foregroundColor(tertiaryInk)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if model.jobKind == .screenshot {
+                        Button("Retry") { model.takeScreenshot() }
+                            .font(.system(size: 12))
+                            .disabled(model.jobBusy)
+                    }
+                }
             }
             if !model.installLog.isEmpty {
                 HStack(spacing: 8) {

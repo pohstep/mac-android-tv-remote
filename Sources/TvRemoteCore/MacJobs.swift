@@ -119,6 +119,8 @@ public enum InstallExplain {
              ScreenshotCapture.asleep, ScreenshotBytes.blankSentence:
             return nil
         case "The screenshot didn't come back.":
+            return "Press Screenshot again. If the TV is showing protected video, try another screen."
+        case "Couldn't save", "Couldn't save. Choose another folder and press Save… again.":
             return nil
         case ScreenshotCapture.needsLink:
             return "Check the connection, then press Screenshot."

@@ -110,6 +110,21 @@ final class MacJobTests: XCTestCase {
         XCTAssertEqual(InstallLog.append("", "Installed."), "Installed.")
     }
 
+    func testScreenshotFailureSaysWhatToDoNext() {
+        XCTAssertEqual(
+            InstallExplain.recovery(for: "The screenshot didn't come back.", kind: .screenshot),
+            "Press Screenshot again. If the TV is showing protected video, try another screen."
+        )
+        XCTAssertNil(InstallExplain.recovery(for: "Couldn't save. Choose another folder and press Save… again.", kind: .screenshot))
+        XCTAssertEqual(
+            InstallLog.text(
+                sentence: "Couldn't save. Choose another folder and press Save… again.",
+                raw: "Permission denied"
+            ),
+            "Couldn't save. Choose another folder and press Save… again.\nPermission denied"
+        )
+    }
+
     func testScreenshotBlankBrokenAndSaveThenPull() throws {
         XCTAssertEqual(ScreenshotBytes.kind(redPNG), .picture)
         XCTAssertEqual(ScreenshotBytes.kind(blackPNG), .blank)

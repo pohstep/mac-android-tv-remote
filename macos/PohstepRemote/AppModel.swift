@@ -695,7 +695,7 @@ final class AppModel: ObservableObject {
         jobKind = .screenshot
         installLog = ""
         showInstallLog = false
-        runJob("Taking a screenshot…", cancellable: false) { [weak self] _ in
+        runJob("Taking a screenshot…", cancellable: true) { [weak self] _ in
             guard let self else { return JobReport(sentence: "Cancelled.", raw: "", isError: true) }
             let shot = self.demoOn ? self.demo.captureScreenshot() : self.session.captureScreenshot()
             DispatchQueue.main.async { self.screenshotPNG = shot.png }
@@ -778,9 +778,12 @@ final class AppModel: ObservableObject {
             jobRaw = ""
             jobIsError = false
         } catch {
-            jobLine = "Couldn't save"
-            jobRaw = ""
+            let sentence = "Couldn't save. Choose another folder and press Save… again."
+            jobKind = .screenshot
+            jobLine = sentence
+            jobRaw = error.localizedDescription
             jobIsError = true
+            installLog = InstallLog.text(sentence: sentence, raw: error.localizedDescription)
         }
     }
 

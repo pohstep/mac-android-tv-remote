@@ -24,9 +24,9 @@ Zapbar installs .apk files only. There is no send-to-Downloads and no image, vid
 
 ## 3. Screenshot
 
-**Screenshot** shows "Taking a screenshot…", then a preview and "Screenshot ready." A black protected frame still shows, with the protected-video line. Failure: "didn't come back" or needs a debugging connection. **Copy** says "Copied." and stays off until there is a picture. Copy and the preview are unchanged. A real capture needs the TV.
+**Screenshot** shows "Taking a screenshot…", then a preview and "Screenshot ready." A black protected frame still shows, with the protected-video line. **Cancel** stops a capture that is still running. If the picture doesn't come back, the next step is "Press Screenshot again. If the TV is showing protected video, try another screen." and **Retry** sits beside that line. A missing debugging connection says "Check the connection, then press Screenshot." **Copy** says "Copied." and stays off until there is a picture. Copy and the preview are unchanged. A real capture needs the TV.
 
-**Save…** sits beside Copy. The app may already write files the user picks in the save dialog. The dialog starts in Desktop when that folder URL exists, otherwise Pictures. Default name "Zapbar Screenshot YYYY-MM-DD at HH.mm.ss.png", PNG. Lines: "Saved" and "Couldn't save". No sound. The name is tested here. Whether the dialog opens on Desktop inside the sandbox needs a Mac.
+**Save…** sits beside Copy. The app may already write files the user picks in the save dialog. The dialog starts in Desktop when that folder URL exists, otherwise Pictures. Default name "Zapbar Screenshot YYYY-MM-DD at HH.mm.ss.png", PNG. Success says "Saved". A failed save says "Couldn't save. Choose another folder and press Save… again." and the system error stays in the log. No sound. The name is tested here. Whether the dialog opens on Desktop inside the sandbox needs a Mac.
 
 ## 4. Power
 
