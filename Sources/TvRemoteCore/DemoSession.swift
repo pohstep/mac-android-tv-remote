@@ -14,7 +14,6 @@ public enum DemoCopy {
     public static let tryIt = "Try demo TV"
     public static let noneFound = "No TV found."
     public static let sent = "Sent."
-    public static let file = "The file is in Downloads. The TV needs a player to open it."
     public static let install = "Installed."
     public static let shot = "Screenshot."
 }
@@ -29,7 +28,6 @@ public protocol TvActing: AnyObject {
     func setVolume(_ level: Int) -> ActionReport
     func selectHdmi(_ port: Int) -> ActionReport
     func selectInput(uri: String) -> ActionReport
-    func sendFile(at path: String) -> JobReport
     func installApk(at path: String, clearingCancel: Bool) -> JobReport
     func captureScreenshot() -> ScreenshotResult
     func refresh() -> LinkStatus
@@ -93,11 +91,6 @@ public final class DemoSession: TvActing {
     public func selectInput(uri: String) -> ActionReport {
         _ = uri
         return ActionReport(title: DemoCopy.sent, detail: "", isError: false)
-    }
-
-    public func sendFile(at path: String) -> JobReport {
-        _ = path
-        return JobReport(sentence: DemoCopy.file, raw: "", isError: false)
     }
 
     public func installApk(at path: String, clearingCancel: Bool = true) -> JobReport {

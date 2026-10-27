@@ -233,8 +233,9 @@ final class ReviewFixesTests: XCTestCase {
             }
             return .success(CommandResult(status: 0, stdout: "", stderr: ""))
         }
-        XCTAssertEqual(offline.session.sendFile(at: video.path).sentence, Copy.offline(serial: "192.0.2.20:5555"))
-        XCTAssertFalse(offline.fake.calls.contains { $0.arguments.contains("push") })
+        XCTAssertEqual(offline.session.installApk(at: apk.path).sentence, Copy.offline(serial: "192.0.2.20:5555"))
+        XCTAssertFalse(offline.fake.calls.contains { $0.arguments.contains("install") })
+        XCTAssertEqual(offline.session.installApk(at: video.path).sentence, ApkPick.onlyApk)
 
         let timed = connectedSession()
         timed.fake.handler = { arguments in
@@ -251,29 +252,6 @@ final class ReviewFixesTests: XCTestCase {
         XCTAssertFalse(stalled.sentence.contains("Helpers/adb"))
         XCTAssertFalse(stalled.raw.contains("adb"))
         XCTAssertNotEqual(stalled.sentence, "The TV refused the install.")
-    }
-
-    func testOpenFailureAfterAPushKeepsTheFileSentence() throws {
-        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("zapbar-open-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        let video = folder.appendingPathComponent("Clip.mp4")
-        try Data([0]).write(to: video)
-        let rig = connectedSession()
-        rig.fake.handler = { arguments in
-            if arguments == ["-P", "5037", "devices"] {
-                return .success(CommandResult(status: 0, stdout: "List of devices attached\n192.0.2.20:5555\tdevice\n", stderr: ""))
-            }
-            if arguments.contains("push") {
-                return .success(CommandResult(status: 0, stdout: "1 file pushed", stderr: ""))
-            }
-            return .failure(RemoteError.timedOut("/usr/local/bin/adb"))
-        }
-        let report = rig.session.sendFile(at: video.path)
-        XCTAssertEqual(report.sentence, FileSend.stayedOnTV)
-        XCTAssertEqual(report.sentence, "The file is on the TV in Downloads, but it did not open.")
-        XCTAssertNotEqual(report.sentence, "The file didn't reach the TV.")
-        XCTAssertFalse(report.raw.contains("/usr/local/bin/adb"))
-        XCTAssertTrue(rig.fake.calls.contains { $0.arguments.contains("push") })
     }
 
     func testBrokenExecOutFallsBackAndDeletesTheTempFiles() throws {
@@ -309,29 +287,9 @@ final class ReviewFixesTests: XCTestCase {
     func testCancelRemovesThePartialRemoteFile() throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("zapbar-cancel-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        let video = folder.appendingPathComponent("Clip.mp4")
-        try Data([0]).write(to: video)
         let apk = folder.appendingPathComponent("Show.apk")
         try Data([0x50]).write(to: apk)
         let rig = connectedSession()
-        rig.fake.handler = { [session = rig.session] arguments in
-            if arguments == ["-P", "5037", "devices"] {
-                return .success(CommandResult(status: 0, stdout: "List of devices attached\n192.0.2.20:5555\tdevice\n", stderr: ""))
-            }
-            if arguments.contains("push") {
-                session.cancelTransfer()
-                return .success(CommandResult(status: 143, stdout: "", stderr: "terminated"))
-            }
-            return .success(CommandResult(status: 0, stdout: "", stderr: ""))
-        }
-        let pushed = rig.session.sendFile(at: video.path)
-        XCTAssertEqual(pushed.sentence, "Cancelled.")
-        XCTAssertEqual(rig.fake.cancelCount, 1)
-        XCTAssertTrue(rig.fake.calls.contains {
-            let line = $0.arguments.joined(separator: " ")
-            return line.contains("rm -f") && line.contains("/sdcard/Download/Clip.mp4")
-        })
-
         rig.session.cancelTransfer()
         let install = rig.session.installApk(at: apk.path, clearingCancel: false)
         XCTAssertEqual(install.sentence, "Cancelled.")

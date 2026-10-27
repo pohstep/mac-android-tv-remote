@@ -384,7 +384,7 @@ struct RemotePanel: View {
                     .disabled(model.screenshotPNG == nil)
                 Button("Save…") { model.saveScreenshot() }
                     .disabled(model.screenshotPNG == nil)
-                Button("Send file…") { model.chooseFileToSend() }
+                Button("Choose .apk…") { model.chooseApk() }
                     .disabled(model.jobBusy)
                 if model.jobBusy && model.jobCancellable {
                     Button("Cancel") { model.cancelJob() }
@@ -398,17 +398,45 @@ struct RemotePanel: View {
                     .frame(maxWidth: .infinity, maxHeight: 96)
                     .accessibilityLabel("Screenshot")
             }
-            Text(dropTargeted ? "Drop the app file to install it." : "Drop an app file here or on the menu bar icon.")
-                .font(.system(size: 11))
-                .foregroundColor(tertiaryInk)
-            Text("Sending a file needs a player on the TV.")
+            Text(dropTargeted ? "Drop the app file to install it." : "Drop an app file here or on the menu bar icon, or choose an .apk.")
                 .font(.system(size: 11))
                 .foregroundColor(tertiaryInk)
             if !model.jobLine.isEmpty {
-                Text(model.jobLine)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(model.jobIsError ? Palette.text : Palette.muted)
+                HStack(spacing: 6) {
+                    if model.jobBusy {
+                        ProgressView()
+                            .controlSize(.small)
+                            .accessibilityLabel("Installing")
+                    }
+                    Text(model.jobLine)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(model.jobIsError ? Palette.text : Palette.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            if let step = InstallExplain.recovery(for: model.jobLine), model.jobIsError {
+                Text(step)
+                    .font(.system(size: 11))
+                    .foregroundColor(tertiaryInk)
                     .fixedSize(horizontal: false, vertical: true)
+            }
+            if !model.installLog.isEmpty {
+                HStack(spacing: 8) {
+                    Button(model.showInstallLog ? "Hide log" : "Show log") {
+                        model.showInstallLog.toggle()
+                    }
+                    if model.showInstallLog {
+                        Button("Copy") { model.copyInstallLog() }
+                    }
+                }
+                .font(.system(size: 12))
+                if model.showInstallLog {
+                    Text(model.installLog)
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(tertiaryInk)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             if !model.jobRaw.isEmpty {
                 Text(model.jobRaw)
@@ -435,7 +463,11 @@ struct RemotePanel: View {
                 } else {
                     url = nil
                 }
-                guard let url, url.path.lowercased().hasSuffix(".apk") else { return }
+                guard let url else { return }
+                guard url.path.lowercased().hasSuffix(".apk") else {
+                    found.refuse()
+                    return
+                }
                 let scoped = url.startAccessingSecurityScopedResource()
                 defer { if scoped { url.stopAccessingSecurityScopedResource() } }
                 if let staged = model.stageDroppedFile(url) {
@@ -444,7 +476,11 @@ struct RemotePanel: View {
             }
         }
         group.notify(queue: .main) {
-            model.receiveStaged(found.paths)
+            if found.paths.isEmpty && found.refused {
+                model.refuseNonApk()
+            } else {
+                model.receiveStaged(found.paths)
+            }
         }
         return !providers.isEmpty
     }
@@ -1313,9 +1349,16 @@ private struct RingWedge: Shape {
 private final class DropBox {
     private let lock = NSLock()
     private(set) var paths: [String] = []
+    private(set) var refused = false
     func add(_ path: String) {
         lock.lock()
         paths.append(path)
+        lock.unlock()
+    }
+
+    func refuse() {
+        lock.lock()
+        refused = true
         lock.unlock()
     }
 }

@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 final class AppModel: ObservableObject {
     @Published var settings: Settings
@@ -23,6 +24,8 @@ final class AppModel: ObservableObject {
     @Published var jobLine = ""
     @Published var jobRaw = ""
     @Published var jobIsError = false
+    @Published var installLog = ""
+    @Published var showInstallLog = false
     @Published var jobBusy = false
     @Published var jobCancellable = false
     @Published var screenshotPNG: Data?
@@ -502,7 +505,7 @@ final class AppModel: ObservableObject {
             discard(takePendingStages())
             let apks = paths.filter { $0.lowercased().hasSuffix(".apk") }
             guard !apks.isEmpty else {
-                noteJob(JobReport(sentence: "Drop an app file ending in .apk.", raw: "", isError: true))
+                noteJob(JobReport(sentence: ApkPick.onlyApk, raw: "", isError: true))
                 return
             }
             runJob("Installing…", cancellable: false) { [weak self] _ in
@@ -514,7 +517,7 @@ final class AppModel: ObservableObject {
         let apks = paths.filter { $0.lowercased().hasSuffix(".apk") }
         guard !apks.isEmpty else {
             discard(directories)
-            noteJob(JobReport(sentence: "Drop an app file ending in .apk.", raw: "", isError: true))
+            noteJob(JobReport(sentence: ApkPick.onlyApk, raw: "", isError: true))
             return
         }
         runInstalls(apks, directories: directories)
@@ -524,7 +527,7 @@ final class AppModel: ObservableObject {
         if demoOn {
             let apks = urls.filter { $0.path.lowercased().hasSuffix(".apk") }
             guard !apks.isEmpty else {
-                noteJob(JobReport(sentence: "Drop an app file ending in .apk.", raw: "", isError: true))
+                noteJob(JobReport(sentence: ApkPick.onlyApk, raw: "", isError: true))
                 return
             }
             runJob("Installing…", cancellable: false) { [weak self] _ in
@@ -534,7 +537,7 @@ final class AppModel: ObservableObject {
         }
         let apks = urls.filter { $0.path.lowercased().hasSuffix(".apk") }
         guard !apks.isEmpty else {
-            noteJob(JobReport(sentence: "Drop an app file ending in .apk.", raw: "", isError: true))
+            noteJob(JobReport(sentence: ApkPick.onlyApk, raw: "", isError: true))
             return
         }
         var paths: [String] = []
@@ -660,29 +663,50 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func chooseFileToSend() {
+    func refuseNonApk() {
+        noteJob(JobReport(sentence: ApkPick.onlyApk, raw: "", isError: true))
+        rememberInstall(JobReport(sentence: ApkPick.onlyApk, raw: "", isError: true))
+    }
+
+    func chooseApk() {
         let panel = NSOpenPanel()
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
-        panel.prompt = "Send"
-        panel.message = "The TV needs a player to open the file."
+        panel.prompt = "Install"
+        panel.message = "Choose an app file ending in .apk."
+        if let apk = UTType(filenameExtension: "apk") {
+            panel.allowedContentTypes = [apk]
+        }
         guard panel.runModal() == .OK, let url = panel.url else { return }
+        guard ApkPick.isApk(url.path) else {
+            refuseNonApk()
+            return
+        }
         let scoped = url.startAccessingSecurityScopedResource()
         let staged = stageReadableCopy(of: url)
         if scoped { url.stopAccessingSecurityScopedResource() }
         let directories = takePendingStages()
         guard let staged else {
             discard(directories)
-            noteJob(JobReport(sentence: "That file can't be read.", raw: url.lastPathComponent, isError: true))
+            let report = JobReport(sentence: "That file can't be read.", raw: url.lastPathComponent, isError: true)
+            noteJob(report)
+            rememberInstall(report)
             return
         }
-        let name = URL(fileURLWithPath: staged).lastPathComponent
-        runJob("Sending \(name)…", directories: directories, cancellable: !demoOn) { [weak self] _ in
-            guard let self else { return JobReport(sentence: "Cancelled.", raw: "", isError: true) }
-            if self.demoOn { return self.demo.sendFile(at: staged) }
-            return self.session.sendFile(at: staged)
-        }
+        runInstalls([staged], directories: directories)
+    }
+
+    func copyInstallLog() {
+        guard !installLog.isEmpty else { return }
+        let board = NSPasteboard.general
+        board.clearContents()
+        board.setString(installLog, forType: .string)
+    }
+
+    private func rememberInstall(_ report: JobReport) {
+        installLog = InstallLog.text(sentence: report.sentence, raw: report.raw)
+        showInstallLog = false
     }
 
     private func runInstalls(_ paths: [String], directories: [String]) {
@@ -691,7 +715,7 @@ final class AppModel: ObservableObject {
         runJob("Installing \(name)…", directories: directories, cancellable: true) { [weak self] token in
             guard let self else { return JobReport(sentence: "Cancelled.", raw: "", isError: true) }
             var index = 0
-            return SerialTransfers.run(paths) { path in
+            let report = SerialTransfers.run(paths) { path in
                 let file = URL(fileURLWithPath: path).lastPathComponent
                 let clear = index == 0
                 index += 1
@@ -703,6 +727,8 @@ final class AppModel: ObservableObject {
                 if self.demoOn { return self.demo.installApk(at: path, clearingCancel: clear) }
                 return self.session.installApk(at: path, clearingCancel: clear)
             }
+            DispatchQueue.main.async { self.rememberInstall(report) }
+            return report
         }
     }
 
@@ -744,6 +770,7 @@ final class AppModel: ObservableObject {
         jobLine = report.sentence
         jobRaw = report.raw
         jobIsError = report.isError
+        rememberInstall(report)
     }
 
     private func stageReadableCopy(of url: URL) -> String? {

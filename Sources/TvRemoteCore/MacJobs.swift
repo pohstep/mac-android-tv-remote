@@ -60,60 +60,68 @@ public enum InstallExplain {
         }
     }
 
+    /// What to do after a failed install. Nil when the sentence already names the next step, or it is not an install result.
+    public static func recovery(for sentence: String) -> String? {
+        switch sentence {
+        case "Installed.", "Cancelled.", "Taking a screenshot…", "Screenshot ready.":
+            return nil
+        case "The TV already has a newer version of this app.":
+            return "Choose a newer .apk."
+        case "This file doesn't match the app already on the TV.":
+            return "Remove that app on the TV, then choose the .apk again."
+        case "The TV doesn't have enough free space.":
+            return "Free some space on the TV, then choose the .apk again."
+        case "This app needs a newer system than the TV has.", "This app isn't built for this TV.":
+            return "Choose an app built for this TV."
+        case "The TV blocked the install. Check the TV's install settings.":
+            return "Then choose the .apk again."
+        case "The TV blocked the install.":
+            return "Allow the install on the TV, then choose the .apk again."
+        case "That file isn't an installable app.", "The TV is missing a library this app needs.":
+            return "Choose a different .apk."
+        case "The TV cancelled the install.", "The TV refused the install.", "The install didn't finish.":
+            return "Check the TV, then choose the .apk again."
+        case "That file can't be read.", "This needs a network debugging connection.":
+            return "Choose the .apk again."
+        case ApkPick.onlyApk:
+            return nil
+        default:
+            if sentence.hasPrefix("This Mac isn't authorized") {
+                return "Accept the prompt on the TV, then choose the .apk again."
+            }
+            if sentence.hasSuffix("is offline. The TV may be asleep or still booting.") {
+                return "Wake the TV, then choose the .apk again."
+            }
+            return nil
+        }
+    }
+
     public static func failureCode(_ text: String) -> String? {
         guard let range = text.range(of: #"INSTALL_[A-Z0-9_]+"#, options: .regularExpression) else { return nil }
         return String(text[range])
     }
 }
 
-public enum FileSend {
-    public static let playerSentence = "Sent. The TV needs a player to open it."
-    public static let playerLeftBehind = "The file is in Downloads. The TV needs a player to open it."
-    /// Push finished and the open command failed. The file is still in Downloads.
-    public static let stayedOnTV = "The file is on the TV in Downloads, but it did not open."
+public enum ApkPick {
+    public static let onlyApk = "Only .apk files can be installed. Choose an .apk…"
 
-    public static func downloadPath(for localPath: String) -> String {
-        var name = URL(fileURLWithPath: localPath).lastPathComponent
-        if name.isEmpty || name == "." || name == "/" { name = "file" }
-        name = name.replacingOccurrences(of: "/", with: "")
-        return "/sdcard/Download/\(name)"
+    public static func isApk(_ path: String) -> Bool {
+        path.lowercased().hasSuffix(".apk")
     }
+}
 
-    public static func fileURL(remotePath: String) -> String {
-        let encoded = remotePath.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? remotePath
-        return "file://\(encoded)"
-    }
-
-    public static func mimeType(for path: String) -> String {
-        switch URL(fileURLWithPath: path).pathExtension.lowercased() {
-        case "mp4", "m4v": return "video/mp4"
-        case "mkv": return "video/x-matroska"
-        case "webm": return "video/webm"
-        case "mov": return "video/quicktime"
-        case "avi": return "video/x-msvideo"
-        case "mp3": return "audio/mpeg"
-        case "m4a", "aac": return "audio/mp4"
-        case "jpg", "jpeg": return "image/jpeg"
-        case "png": return "image/png"
-        case "gif": return "image/gif"
-        case "webp": return "image/webp"
-        case "pdf": return "application/pdf"
-        default: return "application/octet-stream"
+public enum InstallLog {
+    /// The text shown in Show log and copied from it. The cause, the next step, then the raw install output.
+    public static func text(sentence: String, raw: String) -> String {
+        var lines = [sentence]
+        if let step = InstallExplain.recovery(for: sentence), !step.isEmpty {
+            lines.append(step)
         }
-    }
-
-    public static func pushSentence(status: Int32, output: String) -> String {
-        let lower = output.lowercased()
-        if status == 0 && !lower.contains("error") && !lower.contains("failed") {
-            return playerSentence
+        let detail = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !detail.isEmpty {
+            lines.append(detail)
         }
-        if lower.contains("no space") || lower.contains("insufficient") {
-            return "The TV doesn't have enough free space."
-        }
-        if lower.contains("permission denied") || lower.contains("read-only") {
-            return "The TV refused that folder."
-        }
-        return "The file didn't reach the TV."
+        return lines.joined(separator: "\n")
     }
 }
 

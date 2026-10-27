@@ -551,8 +551,8 @@ public final class RemoteSession {
 
     public func installApk(at path: String, clearingCancel: Bool = true) -> JobReport {
         let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.lowercased().hasSuffix(".apk") else {
-            return JobReport(sentence: "Drop an app file ending in .apk.", raw: "", isError: true)
+        guard ApkPick.isApk(trimmed) else {
+            return JobReport(sentence: ApkPick.onlyApk, raw: "", isError: true)
         }
         guard FileManager.default.fileExists(atPath: trimmed) else {
             return JobReport(sentence: "That file can't be read.", raw: "", isError: true)
@@ -571,7 +571,7 @@ public final class RemoteSession {
             let raw = result.combined.trimmingCharacters(in: .whitespacesAndNewlines)
             let sentence = InstallExplain.sentence(status: result.status, output: raw)
             let failed = sentence != "Installed."
-            return JobReport(sentence: sentence, raw: failed ? raw : "", isError: failed)
+            return JobReport(sentence: sentence, raw: raw, isError: failed)
         } catch {
             if wasCancelled() { return cancelledJob() }
             return failureJob(error)
@@ -606,70 +606,6 @@ public final class RemoteSession {
         }
         if wasCancelled() { return cancelledScreenshot() }
         return result
-    }
-
-    public func sendFile(at path: String) -> JobReport {
-        let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard FileManager.default.fileExists(atPath: trimmed) else {
-            return JobReport(sentence: "That file can't be read.", raw: "", isError: true)
-        }
-        guard let serial = debuggingSerial() else {
-            return debuggingRequired()
-        }
-        let remote = FileSend.downloadPath(for: trimmed)
-        let mime = FileSend.mimeType(for: trimmed)
-        armTransfer(remote: remote, resetCancel: true)
-        defer { endTransfer() }
-        let client = client()
-        if let blocked = prepareTransfer(client: client, serial: serial) { return blocked }
-        if wasCancelled() {
-            removePartial(client: client, remote: remote, serial: serial)
-            return cancelledJob()
-        }
-        let pushed: CommandResult
-        do {
-            pushed = try client.pushFile(localPath: trimmed, remotePath: remote, serial: serial)
-        } catch {
-            if wasCancelled() {
-                removePartial(client: client, remote: remote, serial: serial)
-                return cancelledJob()
-            }
-            if isTimeout(error) { return failureJob(error) }
-            return JobReport(sentence: "The file didn't reach the TV.", raw: safeDetail(error), isError: true)
-        }
-        if wasCancelled() {
-            removePartial(client: client, remote: remote, serial: serial)
-            return cancelledJob()
-        }
-        let pushText = pushed.combined.trimmingCharacters(in: .whitespacesAndNewlines)
-        let pushSentence = FileSend.pushSentence(status: pushed.status, output: pushText)
-        if pushSentence != FileSend.playerSentence {
-            return JobReport(sentence: pushSentence, raw: pushText, isError: true)
-        }
-        do {
-            let opened = try client.openFile(fileURL: FileSend.fileURL(remotePath: remote), mime: mime, serial: serial)
-            if wasCancelled() {
-                removePartial(client: client, remote: remote, serial: serial)
-                return cancelledJob()
-            }
-            let openText = opened.combined.trimmingCharacters(in: .whitespacesAndNewlines)
-            if AdbOutput.cannotOpenView(openText) {
-                return JobReport(sentence: Copy.nothingCanOpen, raw: openText, isError: true)
-            }
-            if AdbOutput.outputIndicatesFailure(openText, status: opened.status) {
-                return JobReport(sentence: FileSend.playerLeftBehind, raw: openText, isError: true)
-            }
-            return JobReport(sentence: FileSend.playerSentence, raw: "", isError: false)
-        } catch {
-            if wasCancelled() {
-                removePartial(client: client, remote: remote, serial: serial)
-                return cancelledJob()
-            }
-            if isTimeout(error) {
-                return JobReport(sentence: FileSend.stayedOnTV, raw: "", isError: true)
-            }
-            return JobReport(sentence: FileSend.stayedOnTV, raw: safeDetail(error), isError: true)
-        }
     }
 
     /// Sony IP control first. A live debugging link sends the wake key and skips the magic packet.
@@ -907,10 +843,6 @@ public final class RemoteSession {
         if isTimeout(error) { return "" }
         if let remote = error as? RemoteError, case .notFound = remote { return "" }
         return errorText(error)
-    }
-
-    private func removePartial(client: AdbClient, remote: String, serial: String) {
-        _ = try? client.removeRemote(remote, serial: serial)
     }
 
     private func armTransfer(remote: String?, resetCancel: Bool) {

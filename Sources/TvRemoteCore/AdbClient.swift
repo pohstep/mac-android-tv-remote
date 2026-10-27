@@ -120,14 +120,6 @@ public struct AdbClient {
         try run(AdbCommands.removeRemote(serial: serial, remotePath: remotePath), timeout: 15)
     }
 
-    public func pushFile(localPath: String, remotePath: String, serial: String) throws -> CommandResult {
-        try run(AdbCommands.push(serial: serial, localPath: localPath, remotePath: remotePath), timeout: 180)
-    }
-
-    public func openFile(fileURL: String, mime: String, serial: String) throws -> CommandResult {
-        try run(AdbCommands.viewFile(serial: serial, fileURL: fileURL, mime: mime), timeout: 20)
-    }
-
     /// Stops the adb server this client started. Waits at most `AdbLaunch.quitWait`.
     public func killServer() {
         _ = try? run(["kill-server"], timeout: AdbLaunch.quitWait)

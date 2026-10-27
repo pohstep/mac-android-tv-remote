@@ -127,14 +127,6 @@ public enum AdbCommands {
         ["-s", serial, "shell", "rm -f \(ShellWords.quote(remotePath))"]
     }
 
-    public static func push(serial: String, localPath: String, remotePath: String) -> [String] {
-        ["-s", serial, "push", localPath, remotePath]
-    }
-
-    public static func viewFile(serial: String, fileURL: String, mime: String) -> [String] {
-        let command = "am start -a android.intent.action.VIEW -d \(ShellWords.quote(fileURL)) -t \(ShellWords.quote(mime))"
-        return ["-s", serial, "shell", command]
-    }
 }
 
 public enum ShellWords {

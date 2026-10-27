@@ -2,7 +2,7 @@
 
 Approved behavior for this PR. **Needs real TV** or **Needs Jim's Mac** cannot be proved in the test suite. Everything else is covered by a fake transport or a pure check.
 
-No dead end. Each action shows one calm line (opened, installed, queued, or why it failed) and a next step. Empty screens say what to do. A failed switch comes back usable. Text the user typed stays in the field until the TV accepts it.
+No dead end. Each action shows one calm line (installed, or why it failed) and a next step. Empty screens say what to do. A failed switch comes back usable. Text the user typed stays in the field until the TV accepts it.
 
 ## Not connected
 
@@ -18,13 +18,9 @@ Paste works from the Mac: a standard Edit menu (Cut, Copy, Paste, Select All, Co
 
 If nothing on the TV is ready for typing, the line is "Nothing on the TV is ready for typing. Open a search or text box on the TV, then Send again." The text stays in the field. **Retry** sends it again and the button comes back when the try finishes. Other failures (not connected, this TV can't type) also leave the text in place and say what happened. Needs a real TV to prove a focused search box really receives the characters.
 
-## 2. File
+## 2. Install an app
 
-Drop on the panel or the menu-bar icon still installs only an app file. Anything else: "Drop an app file ending in .apk." Success: "Installed." Failures name the cause (newer version, does not match, no space, needs a newer system, not built for this TV, blocked, cancelled, not a real app, missing library, or "The install didn't finish."). Drop again when the job ends. A real install needs the TV.
-
-**Send file…** accepts only: app (.apk); video mp4, m4v, mov, mkv, webm, avi; audio mp3, m4a, aac; image jpg, png, gif, webp. Anything else is not sent. The line is "Not supported. Accepted: apk; video mp4, m4v, mov, mkv, webm, avi; audio mp3, m4a, aac; image jpg, png, gif, webp." The hint under the button lists the same types before a file is chosen.
-
-An apk installs and says "Installed." Image, video, and audio are copied to the TV's Downloads and opened. "Opened on the TV." when the TV accepts them. "Queued in Downloads." when the file is there but no player started. Copy failed: "The file didn't reach the TV." No space: "The TV doesn't have enough free space." Folder refused: "The TV refused that folder." Unreadable: "That file can't be read." **Cancel** removes a partial copy. **Send file…** is usable again when the job ends. Whether a player really opens the file needs the TV.
+Zapbar installs .apk files only. There is no send-to-Downloads and no image, video, or audio send. Drop an .apk on the panel or the menu-bar icon, or press **Choose .apk…** (the picker only offers .apk files). While it runs the line says "Installing …" with a spinner. **Cancel** stops it. Success: "Installed." Failure names the cause (newer version already there, file does not match, no space, needs a newer system, not built for this TV, blocked, cancelled, not a real app, missing library, or "The install didn't finish.") and a next step, usually choose the .apk again. A file that is not an .apk, dropped or picked, says "Only .apk files can be installed. Choose an .apk…" and the picker button stays there. **Show log** opens the install text (the sentence, the next step, and the raw output). **Copy** copies that text, and the text can be selected. The button works again when the install ends. A real install needs the TV. The wording and the log are tested here.
 
 ## 3. Screenshot
 

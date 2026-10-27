@@ -21,10 +21,6 @@ final class DemoTests: XCTestCase {
         XCTAssertEqual(demo.type("https://example.com/show").title, "Sent.")
         XCTAssertEqual(demo.refresh(), .connected(serial: "Demo TV"))
 
-        let file = demo.sendFile(at: "/tmp/clip.mp4")
-        XCTAssertEqual(file.sentence, "The file is in Downloads. The TV needs a player to open it.")
-        XCTAssertFalse(file.isError)
-
         let install = demo.installApk(at: "/tmp/app.apk", clearingCancel: true)
         XCTAssertEqual(install.sentence, "Installed.")
         XCTAssertFalse(install.isError)
