@@ -900,7 +900,9 @@ public final class RemoteSession {
         }
         let serial = "\(host):\(target.port)"
         if SonyClient(http: http).powerStatus(host: target.host, port: target.port, psk: target.psk) != nil {
-            return assign(.connected(serial: serial))
+            let status = assign(.connected(serial: serial))
+            learnMacAfterConnect()
+            return status
         }
         return assign(.offline(serial: serial))
     }
@@ -962,7 +964,7 @@ public final class RemoteSession {
         lock.critical { adbLink }
     }
 
-    /// Once per TV, after the helper is up, fill a missing MAC. A known MAC is left alone.
+    /// Once per TV, after a successful connection, fill a missing MAC. A known MAC is left alone.
     private func learnMacAfterConnect() {
         let skip = lock.critical { () -> Bool in
             if didTryMacOnConnect { return true }

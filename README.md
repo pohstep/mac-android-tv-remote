@@ -45,7 +45,7 @@ Xiaomi control (remote buttons, apps, and HDMI) is **experimental**. It was chec
 ## Requirements
 
 - macOS 13 Ventura or later (Intel or Apple silicon).
-- A TV on the same network. A Sony needs **IP control** and a control key. Other sets need this Mac allowed on the TV.
+- A TV on the same network. A Sony needs network control turned on (see Setup) and a control key. Other sets need this Mac allowed on the TV.
 - A sandboxed build needs a local copy of the connection helper on the build machine. See [docs/adb-notice.md](docs/adb-notice.md). The app never downloads it.
 
 ## Setup

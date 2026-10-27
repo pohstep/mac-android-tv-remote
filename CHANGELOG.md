@@ -9,7 +9,8 @@
 - Setup, banners, and errors say what to do next. One skipped file says "isn't an .apk"; more than one says "aren't .apk." A second transfer says to wait for the current one.
 - A failed login-item change shows in Settings, with Open Login Items.
 - The app list comes from the leanback query.
-- Turn on keeps working after the TV slept overnight. The address is learned once while the TV is connected and saved with that TV. Build 4.
+- Turn on keeps working after the TV slept overnight. The address is learned once while the TV is connected and saved with that TV.
+- A Sony set up without typing learns that address the same way, once, when network control answers. A known address is left alone. Build 5.
 
 ## 1.1 — 2026-10-26
 
