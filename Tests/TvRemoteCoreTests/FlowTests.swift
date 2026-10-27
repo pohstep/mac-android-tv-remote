@@ -17,6 +17,20 @@ final class FlowTests: XCTestCase {
         XCTAssertEqual(DroppedText.plain("  https://example.com/a \n"), "https://example.com/a")
     }
 
+    func testScreenshotNameAndStartFolder() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let date = calendar.date(from: DateComponents(year: 2026, month: 10, day: 27, hour: 20, minute: 15, second: 3))!
+        XCTAssertEqual(
+            ScreenshotSave.fileName(at: date, timeZone: TimeZone(secondsFromGMT: 0)!),
+            "Zapbar Screenshot 2026-10-27 at 20.15.03.png"
+        )
+        let desktop = URL(fileURLWithPath: "/Users/tester/Desktop")
+        let pictures = URL(fileURLWithPath: "/Users/tester/Pictures")
+        XCTAssertEqual(ScreenshotSave.startDirectory(desktop: desktop, pictures: pictures), desktop)
+        XCTAssertEqual(ScreenshotSave.startDirectory(desktop: nil, pictures: pictures), pictures)
+    }
+
     func testPowerPollIsBetweenThreeAndFiveSeconds() {
         XCTAssertGreaterThanOrEqual(RefreshCadence.whileOpen, 3)
         XCTAssertLessThanOrEqual(RefreshCadence.whileOpen, 5)

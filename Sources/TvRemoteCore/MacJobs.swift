@@ -152,6 +152,19 @@ public enum ScreenshotCapture {
 public enum ScreenshotSave {
     public static let defaultName = "Zapbar screenshot.png"
 
+    /// Desktop when that folder URL exists, otherwise Pictures. The panel may start there even if this process cannot read the folder.
+    public static func startDirectory(desktop: URL?, pictures: URL?) -> URL? {
+        desktop ?? pictures
+    }
+
+    public static func fileName(at date: Date, timeZone: TimeZone = .current) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = timeZone
+        formatter.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
+        return "Zapbar Screenshot \(formatter.string(from: date)).png"
+    }
+
     /// Next free file name. Never returns a name that is already in `existing`.
     public static func availableName(existing: Set<String>, preferred: String = defaultName) -> String {
         if !existing.contains(preferred) { return preferred }

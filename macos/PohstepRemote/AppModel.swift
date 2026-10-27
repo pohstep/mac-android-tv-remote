@@ -701,30 +701,24 @@ final class AppModel: ObservableObject {
         panel.canCreateDirectories = true
         panel.prompt = "Save"
         panel.message = "Save the screenshot."
-        let folder = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
-        if let folder {
+        panel.allowedContentTypes = [.png]
+        let desktop = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first
+        let pictures = FileManager.default.urls(for: .picturesDirectory, in: .userDomainMask).first
+        if let folder = ScreenshotSave.startDirectory(desktop: desktop, pictures: pictures) {
             panel.directoryURL = folder
-            let names = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
-            panel.nameFieldStringValue = ScreenshotSave.availableName(existing: Set(names))
-        } else {
-            panel.nameFieldStringValue = ScreenshotSave.defaultName
         }
+        panel.nameFieldStringValue = ScreenshotSave.fileName(at: Date())
         guard panel.runModal() == .OK, let chosen = panel.url else { return }
         let scoped = chosen.startAccessingSecurityScopedResource()
         defer { if scoped { chosen.stopAccessingSecurityScopedResource() } }
-        let parent = chosen.deletingLastPathComponent()
-        let names = Set((try? FileManager.default.contentsOfDirectory(atPath: parent.path)) ?? [])
-        let dest = parent.appendingPathComponent(
-            ScreenshotSave.availableName(existing: names, preferred: chosen.lastPathComponent)
-        )
         do {
-            try png.write(to: dest)
-            jobLine = "Saved."
-            jobRaw = dest.path
+            try png.write(to: chosen)
+            jobLine = "Saved"
+            jobRaw = ""
             jobIsError = false
         } catch {
-            jobLine = "The screenshot couldn't be saved."
-            jobRaw = error.localizedDescription
+            jobLine = "Couldn't save"
+            jobRaw = ""
             jobIsError = true
         }
     }
