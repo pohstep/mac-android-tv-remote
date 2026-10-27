@@ -2,7 +2,23 @@
 
 # Zapbar
 
-A macOS menu bar remote: D-pad, apps, inputs, volume, power, and typing on the TV.
+A macOS menu bar remote for your TV: D-pad, app tiles, inputs, volume, power, and typing on the TV.
+
+Zapbar was called Mac Android TV Remote up to v1.0.1. Same project, new name.
+
+## Install
+
+1. Download `Zapbar-1.1.zip` (or the `.dmg`) from the [latest release](https://github.com/pohstep/mac-android-tv-remote/releases/latest).
+2. Move **Zapbar** to Applications and open it. It is not signed with an Apple developer account, so macOS asks first. See [First launch](#first-launch-unsigned-app).
+3. Follow the setup window, or use **Try demo TV** to look around without a TV.
+
+## What it can't do yet
+
+- Tested first on a Sony Bravia (Google TV / Android TV). Other brands are unverified.
+- Typing, links, screenshots, files and app-file install need network debugging on the TV (Developer options). The TV asks once to allow this Mac. Zapbar bundles its own `adb` helper in the release app.
+- Typing is English only. No Chinese input.
+- Mac only, macOS 13 or later.
+
 
 ![Panel](docs/screenshots/panel.png)
 
@@ -10,14 +26,14 @@ A macOS menu bar remote: D-pad, apps, inputs, volume, power, and typing on the T
 
 - **D-pad, OK, Back, Home**, play/pause, previous/next.
 - **Volume** slider, steps and mute.
-- **Apps** read from the TV, with **More apps…** for the rest of the list.
+- **App tiles** with names, and the TV's own icon where the TV provides one, with **More apps…** for the rest of the list.
 - **Inputs** with the names the TV reports.
 - **Power on from standby** where the TV allows it: Sony IP control, then Wake-on-LAN, then a wake key, then a status check. Power off asks for a second click.
 - **Several TVs.** The last one reconnects on launch. Wake is in the menu bar. Release and sandbox builds leave a v1.0 settings file and the old keychain item unread, so the first launch does not ask for Keychain access. `scripts/build-dev.sh` sets `ZAPBAR_MIGRATE_V1` and can bring that TV and key across.
 - **Setup** walks through brand, finding the TV (or typing an address), debugging, pairing or Allow, and saving.
-- **Type on the TV.** A field in the panel sends on Return. `⌃⌥T` opens the panel and focuses it. Plain letters go over the debugging connection. If a route can't type, the panel says so.
+- **Type on the TV.** A field in the panel sends on Return; paste text or a link into it too. `⌃⌥T` opens the panel and focuses it. Plain letters go over the debugging connection. If a route can't type, the panel says so.
 - **Try demo TV** opens a connected panel with no TV on the network. It is on the find step when nothing is found, and in Settings. Leave demo returns to a saved TV. Demo mode is not saved.
-- **Drop an app file** on the menu bar icon or the panel. Zapbar installs it and shows one plain sentence for the result. The original message stays under that sentence. Filenames can contain spaces.
+- **Drop an APK** (an app file) on the menu bar icon or the panel. Zapbar installs it and shows one plain sentence for the result. The original message stays under that sentence. Filenames can contain spaces.
 - **Send a web link** from the paste field or with `⌃⌥L`. Only `http` and `https` links are sent. The TV needs a browser.
 - **Screenshot** copies the TV picture to the clipboard or saves it. A black picture is kept, and the panel says the TV may block screenshots of protected video.
 - **Send a file** to the TV's Downloads folder and ask the TV to open it. The TV needs a player.
