@@ -20,6 +20,8 @@ final class StatusDrop: NSView {
     weak var button: NSStatusBarButton?
     var onFiles: ([URL]) -> Void = { _ in }
     var onDragEntered: () -> Void = {}
+    var onDragExited: () -> Void = {}
+    var onDragEnded: () -> Void = {}
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -37,10 +39,19 @@ final class StatusDrop: NSView {
         urls(from: sender).isEmpty ? [] : .copy
     }
 
+    override func draggingExited(_ sender: NSDraggingInfo?) {
+        onDragExited()
+    }
+
+    override func draggingEnded(_ sender: NSDraggingInfo?) {
+        onDragEnded()
+    }
+
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
         let dropped = urls(from: sender)
         guard !dropped.isEmpty else { return false }
         onFiles(dropped)
+        onDragEnded()
         return true
     }
 
@@ -138,13 +149,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.fileDragActive = true
             self?.outsideClickPending = false
         }
+        model.onFileDragEnded = { [weak self] in
+            self?.fileDragActive = false
+        }
         model.onDropAccepted = { [weak self] in
             guard let self else { return }
-            self.fileDragActive = true
+            self.fileDragActive = false
             self.outsideClickPending = false
             if !self.panel.isVisible {
                 self.openPanel()
             }
+            // openPanel writes a shorter window. The drop keeps the result up a little longer.
+            self.suppressCloseUntil = Date().addingTimeInterval(0.5)
         }
         model.start()
         applyIcon()
@@ -176,6 +192,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         overlay.onDragEntered = { [weak self] in
             self?.fileDragActive = true
             self?.outsideClickPending = false
+        }
+        overlay.onDragExited = { [weak self] in
+            self?.fileDragActive = false
+        }
+        overlay.onDragEnded = { [weak self] in
+            self?.fileDragActive = false
         }
         overlay.onFiles = { [weak self] urls in
             self?.model.receiveApks(urls)
@@ -226,7 +248,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// A Finder drag starts with a mouse-down outside the panel. Closing there hides the drop target.
-    /// The click only closes on mouse-up, and a drag pasteboard change keeps the panel up until the next click.
+    /// The click only closes on mouse-up. A drag in progress, or the short window after a drop, keeps the panel up.
     private func handlePointer(_ event: NSEvent) {
         let type = event.type
         if type == .leftMouseDown || type == .rightMouseDown {
@@ -247,8 +269,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let focusLost = !NSApp.isActive && !panel.isKeyWindow
         fileDragActive = false
         outsideClickPending = false
-        guard panel.isVisible, Date() > suppressCloseUntil else { return }
-        if PanelDismiss.shouldClose(dragInProgress: drag, focusLost: focusLost, clickOutside: click) {
+        guard panel.isVisible else { return }
+        let justDropped = Date() <= suppressCloseUntil
+        if PanelDismiss.shouldClose(
+            dragInProgress: drag,
+            justDropped: justDropped,
+            focusLost: focusLost,
+            clickOutside: click
+        ) {
             hidePanel()
         }
     }
@@ -269,10 +297,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func noteDragPasteboard(fromDraggedEvent: Bool) {
         let board = NSPasteboard(name: .drag)
-        guard board.changeCount != restingDragCount else { return }
-        restingDragCount = board.changeCount
+        let changed = board.changeCount != restingDragCount
+        if changed {
+            restingDragCount = board.changeCount
+        }
+        // A later drag event still has the file. Leaving the icon must not drop the flag mid-drag.
+        guard changed || fromDraggedEvent else { return }
         let files = board.canReadObject(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true])
-        if files || fromDraggedEvent {
+        if files || (fromDraggedEvent && changed) {
             fileDragActive = true
             outsideClickPending = false
         }

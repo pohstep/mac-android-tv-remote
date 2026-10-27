@@ -116,11 +116,12 @@ final class MacJobTests: XCTestCase {
     }
 
     func testPanelStaysOpenWhileAFileIsDragged() {
-        XCTAssertFalse(PanelDismiss.shouldClose(dragInProgress: true, focusLost: true, clickOutside: true))
-        XCTAssertFalse(PanelDismiss.shouldClose(dragInProgress: true, focusLost: false, clickOutside: false))
-        XCTAssertTrue(PanelDismiss.shouldClose(dragInProgress: false, focusLost: true, clickOutside: false))
-        XCTAssertTrue(PanelDismiss.shouldClose(dragInProgress: false, focusLost: false, clickOutside: true))
-        XCTAssertFalse(PanelDismiss.shouldClose(dragInProgress: false, focusLost: false, clickOutside: false))
+        XCTAssertFalse(PanelDismiss.shouldClose(dragInProgress: true, justDropped: false, focusLost: true, clickOutside: true))
+        XCTAssertFalse(PanelDismiss.shouldClose(dragInProgress: true, justDropped: false, focusLost: false, clickOutside: false))
+        XCTAssertFalse(PanelDismiss.shouldClose(dragInProgress: false, justDropped: true, focusLost: true, clickOutside: true))
+        XCTAssertTrue(PanelDismiss.shouldClose(dragInProgress: false, justDropped: false, focusLost: false, clickOutside: true))
+        XCTAssertTrue(PanelDismiss.shouldClose(dragInProgress: false, justDropped: false, focusLost: true, clickOutside: false))
+        XCTAssertFalse(PanelDismiss.shouldClose(dragInProgress: false, justDropped: false, focusLost: false, clickOutside: false))
     }
 
     func testFileDropRefusesTextInstallsAnApkAndNotesAMixedDrop() throws {
@@ -212,8 +213,8 @@ final class MacJobTests: XCTestCase {
         }
         XCTAssertNil(emptyPull.png)
         XCTAssertEqual(emptyPull.sentence, "The screenshot didn't come back.")
-        XCTAssertEqual(emptyPull.raw, "the screenshot image was empty")
-        XCTAssertFalse(emptyPull.raw.contains("1 file pulled"))
+        XCTAssertEqual(emptyPull.raw, "the screenshot image was empty\n1 file pulled, 0 skipped")
+        XCTAssertEqual(ScreenshotCapture.pulledLog(bytes: Data(), commandRaw: ""), "the screenshot image was empty")
         XCTAssertEqual(
             InstallExplain.recovery(for: emptyPull.sentence, kind: .screenshot),
             "Press Screenshot again. If the TV is showing protected video, try another screen."

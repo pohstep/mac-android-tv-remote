@@ -143,9 +143,15 @@ public enum InstallExplain {
 }
 
 public enum PanelDismiss {
-    /// A click outside, or focus leaving, closes the panel. A file drag in progress does not.
-    public static func shouldClose(dragInProgress: Bool, focusLost: Bool, clickOutside: Bool) -> Bool {
-        if dragInProgress { return false }
+    /// A click outside, or focus leaving, closes the panel.
+    /// A file drag in progress, or the short window after a drop, does not.
+    public static func shouldClose(
+        dragInProgress: Bool,
+        justDropped: Bool,
+        focusLost: Bool,
+        clickOutside: Bool
+    ) -> Bool {
+        if dragInProgress || justDropped { return false }
         return focusLost || clickOutside
     }
 }
@@ -226,11 +232,12 @@ public enum ScreenshotCapture {
     /// A sleeping TV gives no picture, and asking it takes about half a minute. Say so first.
     public static let asleep = "The TV is asleep. Turn it on first."
     public static let needsLink = "The TV isn't connected."
-    /// Log only. A pull that writes no bytes is not "1 file pulled".
+    /// Log only. An empty image keeps this line, then the pull command's own text.
     public static let emptyImageLog = "the screenshot image was empty"
 
     public static func pulledLog(bytes: Data, commandRaw: String) -> String {
-        bytes.isEmpty ? emptyImageLog : commandRaw
+        guard bytes.isEmpty else { return commandRaw }
+        return emptyImageLog + (commandRaw.isEmpty ? "" : "\n" + commandRaw)
     }
 
     /// A valid PNG, including an all-black frame, is kept. A broken exec-out result uses the fallback bytes.

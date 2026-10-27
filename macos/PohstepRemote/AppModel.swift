@@ -80,6 +80,8 @@ final class AppModel: ObservableObject {
     var onOpenPanel: (() -> Void)?
     /// A file drag is over the panel. The window stays up until the drag ends.
     var onFileDrag: (() -> Void)?
+    /// The file drag left the panel, or the drag ended without a drop.
+    var onFileDragEnded: (() -> Void)?
     /// A drop finished. Open the panel if it was closed so the result is visible.
     var onDropAccepted: (() -> Void)?
     private var hudItem: DispatchWorkItem?
@@ -686,6 +688,10 @@ final class AppModel: ObservableObject {
 
     func noteFileDrag() {
         onFileDrag?()
+    }
+
+    func noteFileDragEnded() {
+        onFileDragEnded?()
     }
 
     func receiveStaged(_ paths: [String], skipped: Int = 0) {

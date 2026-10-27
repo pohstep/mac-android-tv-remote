@@ -11,7 +11,8 @@
 - The app list comes from the leanback query.
 - Turn on keeps working after the TV slept overnight. The address is learned once while the TV is connected and saved with that TV.
 - A Sony set up without typing learns that address the same way, once, when network control answers. A known address is left alone.
-- Dragging a file from Finder no longer closes the panel. Drop it on the panel or the menu bar icon, and the result stays on screen. Build 6.
+- Dragging a file from Finder no longer closes the panel. Drop it on the panel or the menu bar icon, and the result stays on screen.
+- After a drop, the next click outside closes the panel again. An empty screenshot keeps the pull error in the log. Build 7.
 
 ## 1.1 — 2026-10-26
 

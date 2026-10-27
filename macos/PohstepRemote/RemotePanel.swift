@@ -52,7 +52,11 @@ struct RemotePanel: View {
             loadDroppedFiles(providers)
         }
         .onChange(of: dropTargeted) { targeted in
-            if targeted { model.noteFileDrag() }
+            if targeted {
+                model.noteFileDrag()
+            } else {
+                model.noteFileDragEnded()
+            }
         }
     }
 
