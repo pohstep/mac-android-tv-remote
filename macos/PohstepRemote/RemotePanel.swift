@@ -549,11 +549,12 @@ struct RemotePanel: View {
     @ViewBuilder
     private var powerControl: some View {
         if showsWake {
-            Chip(width: 64, height: GlassMetrics.power, corner: 12, prominent: true, action: { model.wake() }) {
-                Text("Wake")
+            Chip(width: 88, height: GlassMetrics.power, corner: 12, prominent: true, action: { model.wake() }) {
+                Text("Turn on")
                     .font(.system(size: 13, weight: .semibold))
             }
-            .accessibilityLabel("Wake")
+            .disabled(model.powerBusy)
+            .accessibilityLabel("Turn on")
         } else {
             // Two clicks within 2 s: the first arms (red), the second turns the TV off.
             HStack(spacing: 6) {
@@ -576,7 +577,8 @@ struct RemotePanel: View {
                         .foregroundColor(powerArmed ? .red : Palette.text)
                 }
                 .background(Circle().fill(powerArmed ? Color.red.opacity(0.35) : Color.clear))
-                .accessibilityLabel(powerArmed ? "Click again to turn off" : "Sleep")
+                .disabled(model.powerBusy)
+                .accessibilityLabel(powerArmed ? "Click again to turn off" : "Turn off")
             }
         }
     }
@@ -1103,14 +1105,7 @@ struct RemotePanel: View {
     }
 
     private var tvIsOn: Bool {
-        switch model.picture.power {
-        case .on, .reachableOnly:
-            return true
-        case .off:
-            return false
-        case .unknown:
-            return model.status.isConnected
-        }
+        PowerChrome.showsOn(model.picture.power)
     }
 
     private var showsWake: Bool { !tvIsOn }

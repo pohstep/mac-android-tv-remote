@@ -175,6 +175,7 @@ final class SonyPathTests: XCTestCase {
         runner.script = [
             .success(CommandResult(status: 0, stdout: "connected to 127.0.0.1:5555", stderr: "")),
             .success(CommandResult(status: 0, stdout: "List of devices attached\n127.0.0.1:5555\tdevice\n", stderr: "")),
+            .success(CommandResult(status: 0, stdout: "mWakefulness=Awake", stderr: "")),
             .success(CommandResult(status: 0, stdout: "mCurrentFocus=Window{aa u0 com.netflix.ninja/com.netflix.ninja.MainActivity}", stderr: "")),
             .success(CommandResult(status: 0, stdout: "state=PlaybackState {state=3, position=0}\nandroid.media.metadata.TITLE=The Beef\nandroid.media.metadata.ARTIST=The Bear\n", stderr: ""))
         ]

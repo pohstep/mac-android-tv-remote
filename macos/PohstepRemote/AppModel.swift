@@ -25,6 +25,7 @@ final class AppModel: ObservableObject {
     @Published var typeCanRetry = false
     @Published var typeBusy = false
     @Published var typeClearToken = 0
+    @Published var powerBusy = false
     @Published var jobLine = ""
     @Published var jobRaw = ""
     @Published var jobIsError = false
@@ -425,7 +426,7 @@ final class AppModel: ObservableObject {
             demoAct { $0.pressPower() }
             return
         }
-        run { $0.pressPower() }
+        beginPower { $0.pressPower() }
     }
 
     func sleep() {
@@ -433,7 +434,37 @@ final class AppModel: ObservableObject {
             demoAct { $0.pressSleep() }
             return
         }
-        run { $0.pressSleep() }
+        beginPower { $0.pressSleep() }
+    }
+
+    private func beginPower(_ work: @escaping (RemoteSession) -> ActionReport) {
+        guard !powerBusy else { return }
+        powerBusy = true
+        banner = ""
+        bannerIsError = false
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self else { return }
+            let report = work(self.session)
+            let learned = self.session.settings
+            DispatchQueue.main.async {
+                self.powerBusy = false
+                if learned.macAddress != self.settings.macAddress || learned.wolEnabled != self.settings.wolEnabled {
+                    self.settings.macAddress = learned.macAddress
+                    self.settings.wolEnabled = learned.wolEnabled
+                    self.pushSettings()
+                }
+                self.picture = self.session.currentPicture()
+                if report.isError && !report.title.isEmpty {
+                    self.banner = report.detail.isEmpty ? report.title : "\(report.title). \(report.detail)"
+                    self.bannerIsError = true
+                } else {
+                    self.banner = ""
+                    self.bannerIsError = false
+                }
+                self.refreshNow()
+                self.onChromeChanged?()
+            }
+        }
     }
 
     func selectHdmi(_ port: Int) {

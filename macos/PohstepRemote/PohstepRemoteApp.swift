@@ -343,7 +343,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             menu.addItem(toggle)
         }
 
-        let wake = NSMenuItem(title: "Wake", action: #selector(wakeFromMenu), keyEquivalent: "")
+        let wake = NSMenuItem(title: "Turn on", action: #selector(wakeFromMenu), keyEquivalent: "")
         wake.target = self
         menu.addItem(wake)
 

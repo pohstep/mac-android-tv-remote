@@ -261,11 +261,18 @@ final class SessionTests: XCTestCase {
         settings.wolEnabled = true
         settings.macAddress = "aa-bb-cc-dd-ee-ff"
         let fake = FakeRunner()
-        fake.script = [
-            .success(CommandResult(status: 0, stdout: "connected to 192.0.2.20:5555", stderr: "")),
-            .success(CommandResult(status: 0, stdout: "List of devices attached\n192.0.2.20:5555\tdevice\n", stderr: "")),
-            .success(CommandResult(status: 0, stdout: "", stderr: ""))
-        ]
+        fake.handler = { arguments in
+            if arguments.contains("connect") {
+                return .success(CommandResult(status: 0, stdout: "connected to 192.0.2.20:5555", stderr: ""))
+            }
+            if arguments.contains("devices") {
+                return .success(CommandResult(status: 0, stdout: "List of devices attached\n192.0.2.20:5555\tdevice\n", stderr: ""))
+            }
+            if arguments.contains("dumpsys") && arguments.contains("power") {
+                return .success(CommandResult(status: 0, stdout: "mWakefulness=Awake", stderr: ""))
+            }
+            return .success(CommandResult(status: 0, stdout: "", stderr: ""))
+        }
         let wake = FakeWake()
         let session = RemoteSession(
             settings: settings,
@@ -275,17 +282,20 @@ final class SessionTests: XCTestCase {
             homeDirectory: "/Users/tester"
         )
         _ = session.refresh()
+        armFastPower(session)
         let wakeReport = session.pressPower()
-        XCTAssertEqual(wakeReport.title, "Sent wake")
-        XCTAssertEqual(fake.calls.last?.arguments, ["-P", "5037"] + AdbCommands.keyEvent(serial: "192.0.2.20:5555", key: .wakeup))
+        XCTAssertEqual(wakeReport.title, "TV is on")
+        XCTAssertEqual(wakeReport.detail, "adb wake")
+        XCTAssertTrue(fake.calls.contains { $0.arguments.contains("KEYCODE_WAKEUP") })
         XCTAssertTrue(wake.sent.isEmpty)
 
         let asleep = RemoteSession(settings: settings, runner: FakeRunner(), wol: wake, fileExists: { _ in false })
+        armFastPower(asleep)
         let packet = asleep.pressPower()
-        XCTAssertEqual(packet.title, "Sent Wake-on-LAN")
-        XCTAssertEqual(wake.sent.first?.mac, "aa-bb-cc-dd-ee-ff")
-        XCTAssertEqual(wake.sent.first?.host, "255.255.255.255")
-        XCTAssertEqual(wake.sent.first?.port, 9)
+        XCTAssertEqual(packet.title, PowerActions.didNotRespond)
+        XCTAssertTrue(packet.isError)
+        XCTAssertTrue(wake.sent.contains { $0.mac == "aa-bb-cc-dd-ee-ff" && $0.host == "192.0.2.255" && $0.port == 9 })
+        XCTAssertTrue(wake.sent.contains { $0.host == "192.0.2.20" && $0.port == 7 })
     }
 
     func testPowerWithoutMacExplainsStandby() {
@@ -444,6 +454,16 @@ final class SessionTests: XCTestCase {
         fake.script = []
         return session
     }
+}
+
+private final class PowerClock {
+    var now = Date(timeIntervalSince1970: 1_700_000_000)
+}
+
+func armFastPower(_ session: RemoteSession) {
+    let clock = PowerClock()
+    session.powerNow = { clock.now }
+    session.powerSleep = { interval in clock.now = clock.now.addingTimeInterval(interval) }
 }
 
 private final class DeviceScript {

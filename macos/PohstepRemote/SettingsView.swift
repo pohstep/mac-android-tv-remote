@@ -85,7 +85,7 @@ struct SettingsView: View {
                     Toggle("Send a magic packet when the TV doesn't answer adb", isOn: wolBinding)
                     field("MAC address", text: macBinding, prompt: "AA:BB:CC:DD:EE:FF")
                     field("Broadcast", text: broadcastBinding, prompt: "255.255.255.255")
-                    Text("Power sends KEYCODE_WAKEUP when the TV is connected. From standby it sends this packet instead. Hold isn't required. Sleep is the separate button on the remote.")
+                    Text("Turn on tries the wake key, then Sony, then this magic packet on ports 9 and 7. Zapbar fills the MAC in when it can read it. Turn off is the power button, and it asks for a second click.")
                         .font(.system(size: 11))
                         .foregroundColor(Palette.muted)
                         .fixedSize(horizontal: false, vertical: true)

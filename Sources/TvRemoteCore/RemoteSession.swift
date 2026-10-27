@@ -34,6 +34,8 @@ public final class RemoteSession {
     private var adbLink = false
     private var cancelFlag = false
     private var transferRemote: String?
+    var powerSleep: (TimeInterval) -> Void = { Thread.sleep(forTimeInterval: $0) }
+    var powerNow: () -> Date = Date.init
 
     public init(
         settings: Settings,
@@ -347,10 +349,11 @@ public final class RemoteSession {
     public func refreshPicture() -> TvPicture {
         let current = lock.critical { status }
         var next = TvPicture()
+        var sonyPower: PowerReading?
         if let target = sonyCredentials() {
             let sony = SonyClient(http: http)
             if let power = sony.powerStatus(host: target.host, port: target.port, psk: target.psk) {
-                next.power = power
+                sonyPower = power
                 next.sonyReady = true
             }
             if let volume = sony.volume(host: target.host, port: target.port, psk: target.psk) {
@@ -374,11 +377,10 @@ public final class RemoteSession {
                 noteSonySuccess()
             }
         }
+        var wakeDump: String?
         if currentAdbLink(), case .connected(let serial) = current {
             next.adbReady = true
-            if next.power == .unknown {
-                next.power = .reachableOnly
-            }
+            wakeDump = try? client().shell(["dumpsys", "power"], serial: serial)
             if let dump = try? client().shell(["dumpsys", "window"], serial: serial) {
                 next.foregroundPackage = ScreenDump.foregroundPackage(dump)
             }
@@ -388,6 +390,7 @@ public final class RemoteSession {
                 next.isPlaying = playing.isPlaying
             }
         }
+        next.power = PowerMerge.choose(adbDump: wakeDump, sony: sonyPower)
         lock.critical { picture = next }
         return next
     }
@@ -614,89 +617,71 @@ public final class RemoteSession {
         return result
     }
 
-    /// Sony IP control first. A live debugging link sends the wake key and skips the magic packet.
-    /// Wake-on-LAN runs only when that link is down.
+    /// Turn on: adb wake, then Sony, then a magic packet. One fallback only. The button is usable when this returns.
     public func pressPower() -> ActionReport {
         if lock.critical({ settings.brand }) == .xiaomi {
             return XiaomiTVBackend().power(on: true, context: makeContext(allowSony: false))
         }
-        if setSonyPower(on: true) {
-            if let confirmed = confirmSonyPower(tried: ["Sony IP"]) { return confirmed }
-            return report("Sent wake", "Sony IP", error: false)
-        }
-        if let serial = connectedSerial(), (try? client().keyEvent(.wakeup, serial: serial)) != nil {
-            if let confirmed = confirmSonyPower(tried: ["adb wake"]) { return confirmed }
-            return report("Sent wake", "adb wake", error: false)
-        }
-        return sendWakeOnLan()
-    }
-
-    private func confirmSonyPower(tried: [String]) -> ActionReport? {
-        guard let target = sonyCredentials() else { return nil }
-        let sony = SonyClient(http: http)
-        for _ in 0..<4 {
-            Thread.sleep(forTimeInterval: 1.5)
-            if sony.powerStatus(host: target.host, port: target.port, psk: target.psk) == .on {
-                lock.critical { picture.power = .on }
-                return report("TV is on", tried.joined(separator: " → "), error: false)
-            }
-        }
-        return nil
+        learnMacIfMissing()
+        let attempt = PowerActions.turnOn(transport: self, sleep: powerSleep, now: powerNow)
+        lock.critical { picture.power = attempt.power }
+        return attempt.report
     }
 
     public func pressSleep() -> ActionReport {
         if lock.critical({ settings.brand }) == .xiaomi {
             return XiaomiTVBackend().power(on: false, context: makeContext(allowSony: false))
         }
-        if setSonyPower(on: false) {
-            return report("Sent sleep", "Sony IP set the power off", error: false)
+        let attempt = PowerActions.turnOff(transport: self, sleep: powerSleep, now: powerNow)
+        lock.critical { picture.power = attempt.power }
+        return attempt.report
+    }
+
+    /// Fills a missing MAC from the neighbour table or the TV, and turns the packet on so Turn on can use it.
+    private func learnMacIfMissing() {
+        let snapshot = lock.critical { settings }
+        if MACAddress.bytes(snapshot.macAddress) != nil { return }
+        var found: String?
+        if let result = try? runner.run("/usr/sbin/arp", arguments: ["-an"], timeout: 2) {
+            found = MacSources.neighbour(result.stdout, host: snapshot.host)
         }
-        guard let serial = connectedSerial() else {
-            return ActionReport(
-                title: "The TV isn't reachable",
-                detail: "Sleep needs a live adb connection. Wake-on-LAN can only turn the TV on.",
-                isError: true
-            )
+        if found == nil, currentAdbLink(), let serial = connectedSerial() {
+            for path in ["/sys/class/net/wlan0/address", "/sys/class/net/eth0/address"] {
+                if let text = try? client().shell(["cat", path], serial: serial),
+                   let mac = MacSources.addressFile(text) {
+                    found = mac
+                    break
+                }
+            }
         }
-        do {
-            try client().keyEvent(.sleep, serial: serial)
-            return ActionReport(title: "Sent sleep", detail: "KEYCODE_SLEEP to \(serial)", isError: false)
-        } catch {
-            return ActionReport(title: "Couldn't sleep the TV", detail: errorText(error), isError: true)
+        guard let found else { return }
+        lock.critical {
+            settings.macAddress = found
+            settings.wolEnabled = true
+            if let index = settings.devices.firstIndex(where: { $0.id == settings.activeDeviceID }) {
+                settings.devices[index].macAddress = found
+            }
         }
     }
 
-    private func sendWakeOnLan() -> ActionReport {
+    private func sendWakePacket() -> Bool {
         let snapshot = lock.critical { settings }
-        if snapshot.wolEnabled {
-            let mac = snapshot.macAddress.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard MACAddress.bytes(mac) != nil else {
-                return ActionReport(
-                    title: "Wake-on-LAN needs a MAC address",
-                    detail: "The TV isn't reachable over adb. Add its MAC in Settings.",
-                    isError: true
-                )
-            }
-            let broadcast = snapshot.broadcastAddress.trimmingCharacters(in: .whitespacesAndNewlines)
-            let host = broadcast.isEmpty ? "255.255.255.255" : broadcast
-            do {
-                try wol.send(mac: mac, broadcastHost: host, port: 9)
-                // Unicast too: some routers drop broadcast to sleeping ports.
-                try? wol.send(mac: mac, broadcastHost: snapshot.host, port: 9)
-                let pretty = MACAddress.display(mac) ?? mac
-                return ActionReport(title: "Sent Wake-on-LAN", detail: "Magic packet to \(pretty)", isError: false)
-            } catch {
-                return ActionReport(title: "Wake-on-LAN failed", detail: errorText(error), isError: true)
+        let mac = snapshot.macAddress.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard MACAddress.bytes(mac) != nil else { return false }
+        let broadcast = MacSources.subnetBroadcast(host: snapshot.host, configured: snapshot.broadcastAddress)
+        var targets = [broadcast]
+        if snapshot.host != broadcast && !snapshot.host.isEmpty {
+            targets.append(snapshot.host)
+        }
+        var sent = false
+        for port: UInt16 in [9, 7] {
+            for host in targets {
+                if (try? wol.send(mac: mac, broadcastHost: host, port: port)) != nil {
+                    sent = true
+                }
             }
         }
-        if case .adbMissing(let message) = status {
-            return ActionReport(title: "adb isn't installed", detail: message, isError: true)
-        }
-        return ActionReport(
-            title: "The TV isn't reachable",
-            detail: "Add its MAC address and turn on Wake-on-LAN to wake it from standby.",
-            isError: true
-        )
+        return sent
     }
 
     private func hdmiPort(in uri: String) -> Int? {
@@ -722,7 +707,6 @@ public final class RemoteSession {
         let sony = SonyClient(http: http)
         if sony.setPower(on: on, host: target.host, port: target.port, psk: target.psk) {
             noteSonySuccess()
-            lock.critical { picture.power = on ? .on : .off }
             return true
         }
         noteSonyFailure()
@@ -992,6 +976,52 @@ public final class RemoteSession {
             return scrub(remote.description)
         }
         return "The command failed."
+    }
+}
+
+extension RemoteSession: PowerTransport {
+    public var adbCanPressPower: Bool {
+        currentAdbLink() && connectedSerial() != nil
+    }
+
+    public var sonyCanPressPower: Bool {
+        sonyCredentials() != nil
+    }
+
+    public var canWakeOnLan: Bool {
+        let snapshot = lock.critical { settings }
+        return snapshot.wolEnabled && MACAddress.bytes(snapshot.macAddress) != nil
+    }
+
+    public func readPower() -> PowerReading {
+        var sony: PowerReading?
+        if let target = sonyCredentials() {
+            sony = SonyClient(http: http).powerStatus(host: target.host, port: target.port, psk: target.psk)
+        }
+        var dump: String?
+        if currentAdbLink(), let serial = connectedSerial() {
+            dump = try? client().shell(["dumpsys", "power"], serial: serial)
+        }
+        let merged = PowerMerge.choose(adbDump: dump, sony: sony)
+        lock.critical { picture.power = merged }
+        return merged
+    }
+
+    public func run(_ step: PowerStep) -> Bool {
+        switch step {
+        case .adbWake:
+            guard let serial = connectedSerial(), currentAdbLink() else { return false }
+            return (try? client().keyEvent(.wakeup, serial: serial)) != nil
+        case .adbSleep:
+            guard let serial = connectedSerial(), currentAdbLink() else { return false }
+            return (try? client().keyEvent(.sleep, serial: serial)) != nil
+        case .sonyOn:
+            return setSonyPower(on: true)
+        case .sonyOff:
+            return setSonyPower(on: false)
+        case .wakeOnLan:
+            return sendWakePacket()
+        }
     }
 }
 
