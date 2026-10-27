@@ -435,13 +435,13 @@ public final class RemoteSession {
     public func readApps() -> [TvApp]? {
         if let target = sonyCredentials() {
             let sonyApps = SonyClient(http: http).applications(host: target.host, port: target.port, psk: target.psk)
-            if !sonyApps.isEmpty { return sonyApps }
+            if !sonyApps.isEmpty { return sonyApps.map(namedApp) }
         }
         guard let serial = connectedSerial() else { return nil }
         let adb = client()
         if let text = try? adb.shell(["cat", AppIndex.launcherPath], serial: serial),
            let apps = AppIndex.parseLauncher(text), !apps.isEmpty {
-            return apps
+            return apps.map(namedApp)
         }
         guard let query = try? adb.shell([
             "cmd", "package", "query-activities",
@@ -451,11 +451,40 @@ public final class RemoteSession {
         let found = AppIndex.parseLeanback(query)
         guard !found.isEmpty else { return nil }
         return found.map { app in
-            if app.name != TvPicture.shortName(app.packageName) { return app }
-            guard let dump = try? adb.shell(["cmd", "package", "dump", app.packageName], serial: serial),
-                  let label = AppIndex.label(in: dump) else { return app }
-            return TvApp(id: app.id, name: label, packageName: app.packageName, favourite: false)
+            var label: String? = app.name
+            if app.name == TvPicture.shortName(app.packageName),
+               let dump = try? adb.shell(["cmd", "package", "dump", app.packageName], serial: serial),
+               let foundLabel = AppIndex.label(in: dump) {
+                label = foundLabel
+            }
+            return namedApp(app, label: label)
         }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    /// Background icon read. Does not hold the session lock across the pull.
+    public func loadAppIcon(package: String, cacheDirectory: URL) -> URL? {
+        guard PackageName.isValid(package) else { return nil }
+        guard let serial = connectedSerial(), let path = resolvedAdbPath() else { return nil }
+        var client = makeClient(path: path)
+        client.timeout = AppIconFetch.timeout
+        return AppIconFetch.fetch(package: package, serial: serial, client: client, cacheDirectory: cacheDirectory)
+    }
+
+    private func namedApp(_ app: TvApp) -> TvApp {
+        namedApp(app, label: app.name)
+    }
+
+    private func namedApp(_ app: TvApp, label: String?) -> TvApp {
+        let name = AppNames.displayName(package: app.packageName, label: label)
+        if name == app.name { return app }
+        return TvApp(
+            id: app.id,
+            name: name,
+            packageName: app.packageName,
+            favourite: app.favourite,
+            uri: app.uri,
+            iconURL: app.iconURL
+        )
     }
 
     public func launch(_ app: TvApp) -> ActionReport {

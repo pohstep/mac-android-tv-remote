@@ -116,8 +116,8 @@ public struct AdbClient {
         try run(AdbCommands.screencapFile(serial: serial, remotePath: remotePath), timeout: 30)
     }
 
-    public func pullFile(remotePath: String, localPath: String, serial: String) throws -> CommandResult {
-        try run(AdbCommands.pull(serial: serial, remotePath: remotePath, localPath: localPath), timeout: 60)
+    public func pullFile(remotePath: String, localPath: String, serial: String, timeout: TimeInterval = 60) throws -> CommandResult {
+        try run(AdbCommands.pull(serial: serial, remotePath: remotePath, localPath: localPath), timeout: timeout)
     }
 
     public func removeRemote(_ remotePath: String, serial: String) throws -> CommandResult {
