@@ -8,7 +8,7 @@ Zapbar was called Mac Android TV Remote up to v1.0.1. Same project, new name.
 
 ## Install
 
-1. Download `Zapbar-1.2.0.zip` (or `Zapbar-1.2.0.dmg`) from the [latest release](https://github.com/pohstep/mac-android-tv-remote/releases/latest).
+1. Download `Zapbar-1.2.0.zip` from the [latest release](https://github.com/pohstep/mac-android-tv-remote/releases/latest).
 2. Move **Zapbar** to Applications and open it. It is not signed with an Apple developer account, so macOS asks first. See [First launch](#first-launch-unsigned-app).
 3. Follow the setup window, or use **Try demo TV** to look around without a TV.
 
