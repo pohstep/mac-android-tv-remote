@@ -28,6 +28,9 @@ final class AppModel: ObservableObject {
     @Published var typeClearToken = 0
     private var typeHintItem: DispatchWorkItem?
     @Published var powerBusy = false
+    @Published var powerLine = ""
+    @Published var powerLog = ""
+    private var powerGeneration = 0
     @Published var loginItem = LoginItemMapping.present(.notRegistered)
     @Published var jobLine = ""
     @Published var jobRaw = ""
@@ -259,6 +262,7 @@ final class AppModel: ObservableObject {
         if shouldReadApps {
             appsLoading = true
         }
+        let generation = powerGeneration
         DispatchQueue.global(qos: .utility).async { [weak self] in
             guard let self else { return }
             let status = self.session.refresh()
@@ -267,6 +271,11 @@ final class AppModel: ObservableObject {
             DispatchQueue.main.async {
                 if self.demoOn {
                     self.refreshInFlight = false
+                    return
+                }
+                if generation != self.powerGeneration {
+                    self.refreshInFlight = false
+                    self.schedule()
                     return
                 }
                 self.status = status
@@ -426,12 +435,40 @@ final class AppModel: ObservableObject {
         run { $0.launch(app) }
     }
 
+    var powerButton: PowerButtonModel {
+        let waiting: Bool
+        if picture.power == .on || picture.power == .off {
+            waiting = false
+        } else if case .connecting = status {
+            waiting = true
+        } else {
+            waiting = refreshInFlight
+        }
+        return PowerButtonModel.make(
+            power: picture.power,
+            busy: powerBusy,
+            supported: settings.brand != .xiaomi,
+            checking: waiting && !demoOn
+        )
+    }
+
+    func pressPowerButton() {
+        let button = powerButton
+        guard button.enabled else { return }
+        switch button.action {
+        case .turnOn:
+            wake()
+        case .turnOff:
+            sleep()
+        }
+    }
+
     func wake() {
         if demoOn {
             demoAct { $0.pressPower() }
             return
         }
-        beginPower { $0.pressPower() }
+        beginPower(turningOn: true) { $0.pressPower() }
     }
 
     func sleep() {
@@ -439,28 +476,41 @@ final class AppModel: ObservableObject {
             demoAct { $0.pressSleep() }
             return
         }
-        beginPower { $0.pressSleep() }
+        beginPower(turningOn: false) { $0.pressSleep() }
     }
 
-    private func beginPower(_ work: @escaping (RemoteSession) -> ActionReport) {
+    private func beginPower(turningOn: Bool, _ work: @escaping (RemoteSession) -> ActionReport) {
         guard !powerBusy else { return }
+        guard settings.brand != .xiaomi else {
+            banner = PowerButtonModel.unsupportedLabel
+            bannerIsError = true
+            return
+        }
         powerBusy = true
+        powerGeneration += 1
+        powerLine = turningOn ? PowerButtonModel.turningOn : PowerButtonModel.turningOff
         banner = ""
         bannerIsError = false
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self else { return }
             let report = work(self.session)
-            let learned = self.session.settings
+            let learned = self.session.settingsSnapshot()
             DispatchQueue.main.async {
+                self.powerGeneration += 1
                 self.powerBusy = false
+                self.powerLine = ""
                 if learned.macAddress != self.settings.macAddress || learned.wolEnabled != self.settings.wolEnabled {
                     self.settings.macAddress = learned.macAddress
                     self.settings.wolEnabled = learned.wolEnabled
                     self.pushSettings()
                 }
                 self.picture = self.session.currentPicture()
-                if report.isError && !report.title.isEmpty {
-                    self.banner = report.detail.isEmpty ? report.title : "\(report.title). \(report.detail)"
+                self.notePower(report)
+                if report.title == PowerButtonModel.unsupportedLabel {
+                    self.banner = PowerButtonModel.unsupportedLabel
+                    self.bannerIsError = true
+                } else if report.isError {
+                    self.banner = PowerActions.didNotRespond
                     self.bannerIsError = true
                 } else {
                     self.banner = ""
@@ -470,6 +520,16 @@ final class AppModel: ObservableObject {
                 self.onChromeChanged?()
             }
         }
+    }
+
+    private func notePower(_ report: ActionReport) {
+        let technical = [report.title, report.detail]
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
+        guard !technical.isEmpty else { return }
+        powerLog = powerLog.isEmpty ? technical : powerLog + "\n\n" + technical
+        NSLog("Zapbar power: %@", technical)
     }
 
     func selectHdmi(_ port: Int) {

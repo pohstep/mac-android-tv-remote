@@ -80,6 +80,10 @@ public final class RemoteSession {
         lock.critical { preSharedKey = key }
     }
 
+    public func settingsSnapshot() -> Settings {
+        lock.critical { settings }
+    }
+
     public func currentPicture() -> TvPicture {
         lock.critical { picture }
     }
@@ -630,10 +634,10 @@ public final class RemoteSession {
         return result
     }
 
-    /// Turn on: adb wake, then Sony, then a magic packet. One fallback only. The button is usable when this returns.
+    /// Turn on walks every method: wake key, Sony, then a packet on port 9 and port 7.
     public func pressPower() -> ActionReport {
         if lock.critical({ settings.brand }) == .xiaomi {
-            return XiaomiTVBackend().power(on: true, context: makeContext(allowSony: false))
+            return ActionReport(title: PowerButtonModel.unsupportedLabel, detail: "xiaomi", isError: true)
         }
         learnMacIfMissing()
         let attempt = PowerActions.turnOn(transport: self, sleep: powerSleep, now: powerNow)
@@ -643,7 +647,7 @@ public final class RemoteSession {
 
     public func pressSleep() -> ActionReport {
         if lock.critical({ settings.brand }) == .xiaomi {
-            return XiaomiTVBackend().power(on: false, context: makeContext(allowSony: false))
+            return ActionReport(title: PowerButtonModel.unsupportedLabel, detail: "xiaomi", isError: true)
         }
         let attempt = PowerActions.turnOff(transport: self, sleep: powerSleep, now: powerNow)
         lock.critical { picture.power = attempt.power }
@@ -677,8 +681,8 @@ public final class RemoteSession {
         }
     }
 
-    private func sendWakePacket() -> Bool {
-        let snapshot = lock.critical { settings }
+    private func sendWakePacket(port: UInt16) -> Bool {
+        let snapshot = settingsSnapshot()
         let mac = snapshot.macAddress.trimmingCharacters(in: .whitespacesAndNewlines)
         guard MACAddress.bytes(mac) != nil else { return false }
         let broadcast = MacSources.subnetBroadcast(host: snapshot.host, configured: snapshot.broadcastAddress)
@@ -687,11 +691,9 @@ public final class RemoteSession {
             targets.append(snapshot.host)
         }
         var sent = false
-        for port: UInt16 in [9, 7] {
-            for host in targets {
-                if (try? wol.send(mac: mac, broadcastHost: host, port: port)) != nil {
-                    sent = true
-                }
+        for host in targets {
+            if (try? wol.send(mac: mac, broadcastHost: host, port: port)) != nil {
+                sent = true
             }
         }
         return sent
@@ -1032,8 +1034,8 @@ extension RemoteSession: PowerTransport {
             return setSonyPower(on: true)
         case .sonyOff:
             return setSonyPower(on: false)
-        case .wakeOnLan:
-            return sendWakePacket()
+        case .wakeOnLan(let port):
+            return sendWakePacket(port: port)
         }
     }
 }

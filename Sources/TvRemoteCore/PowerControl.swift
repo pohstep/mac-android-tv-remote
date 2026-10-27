@@ -82,9 +82,63 @@ public enum MacSources {
 public enum PowerStep: Equatable {
     case adbWake
     case sonyOn
-    case wakeOnLan
+    case wakeOnLan(port: UInt16)
     case adbSleep
     case sonyOff
+}
+
+public enum PowerPress: Equatable {
+    case turnOn
+    case turnOff
+}
+
+/// The one power control. The panel, the menu, and Settings all use this label.
+public struct PowerButtonModel: Equatable {
+    public var label: String
+    public var enabled: Bool
+    public var action: PowerPress
+
+    public static let checkingLabel = "Checking…"
+    public static let turnOnLabel = "Turn on"
+    public static let turnOffLabel = "Turn off"
+    public static let unsupportedLabel = "Power isn't supported on this TV."
+    public static let turningOn = "Turning on…"
+    public static let turningOff = "Turning off…"
+
+    /// Every sentence this control shows. Method names stay out of these lines.
+    public static let userFacingLines = [
+        checkingLabel,
+        turnOnLabel,
+        turnOffLabel,
+        unsupportedLabel,
+        turningOn,
+        turningOff,
+        PowerActions.didNotRespond
+    ]
+
+    public init(label: String, enabled: Bool, action: PowerPress) {
+        self.label = label
+        self.enabled = enabled
+        self.action = action
+    }
+
+    public var actions: [PowerPress] { [action] }
+
+    /// Unknown uses Turn on, the one label that cannot switch a live TV off. Checking… is only while a reading is still in flight.
+    public static func make(power: PowerReading, busy: Bool, supported: Bool, checking: Bool = false) -> PowerButtonModel {
+        if !supported {
+            return PowerButtonModel(label: unsupportedLabel, enabled: false, action: .turnOn)
+        }
+        if checking && power != .on && power != .off {
+            return PowerButtonModel(label: checkingLabel, enabled: false, action: .turnOn)
+        }
+        switch power {
+        case .on:
+            return PowerButtonModel(label: turnOffLabel, enabled: !busy, action: .turnOff)
+        case .off, .unknown, .reachableOnly:
+            return PowerButtonModel(label: turnOnLabel, enabled: !busy, action: .turnOn)
+        }
+    }
 }
 
 public struct PowerAttempt: Equatable {
@@ -129,7 +183,10 @@ public enum PowerActions {
         var steps: [PowerStep] = []
         if transport.adbCanPressPower { steps.append(.adbWake) }
         if transport.sonyCanPressPower { steps.append(.sonyOn) }
-        if transport.canWakeOnLan { steps.append(.wakeOnLan) }
+        if transport.canWakeOnLan {
+            steps.append(.wakeOnLan(port: 9))
+            steps.append(.wakeOnLan(port: 7))
+        }
         return attempt(steps: steps, want: .on, transport: transport, sleep: sleep, now: now)
     }
 
@@ -151,7 +208,7 @@ public enum PowerActions {
         sleep: (TimeInterval) -> Void,
         now: () -> Date
     ) -> PowerAttempt {
-        guard let first = steps.first else {
+        guard !steps.isEmpty else {
             let detail = want == .on
                 ? "Wake needs a debugging connection, Sony IP, or a MAC address for Wake-on-LAN."
                 : "Sleep needs a live adb connection. Wake-on-LAN can only turn the TV on."
@@ -162,33 +219,43 @@ public enum PowerActions {
                 buttonEnabled: true
             )
         }
-        var tried: [PowerStep] = [first]
-        _ = transport.run(first)
-        var power = confirm(want: want, transport: transport, sleep: sleep, now: now)
-        if power == want {
-            return PowerAttempt(
-                report: ActionReport(title: want == .on ? "TV is on" : "TV is off", detail: label(first), isError: false),
-                power: power,
-                tried: tried,
-                buttonEnabled: true
-            )
-        }
-        if steps.count > 1 {
-            let next = steps[1]
-            tried.append(next)
-            _ = transport.run(next)
+        var tried: [PowerStep] = []
+        var power: PowerReading = .unknown
+        for step in steps {
+            tried.append(step)
+            _ = transport.run(step)
             power = confirm(want: want, transport: transport, sleep: sleep, now: now)
-            if power == want {
-                return PowerAttempt(
-                    report: ActionReport(title: want == .on ? "TV is on" : "TV is off", detail: label(next), isError: false),
-                    power: power,
-                    tried: tried,
-                    buttonEnabled: true
-                )
+            if let done = finished(want: want, power: power, step: step, tried: tried) {
+                return done
             }
         }
         return PowerAttempt(
-            report: ActionReport(title: didNotRespond, detail: "", isError: true),
+            report: ActionReport(title: didNotRespond, detail: tried.map(label).joined(separator: ", "), isError: true),
+            power: power,
+            tried: tried,
+            buttonEnabled: true
+        )
+    }
+
+    private static func finished(
+        want: PowerReading,
+        power: PowerReading,
+        step: PowerStep,
+        tried: [PowerStep]
+    ) -> PowerAttempt? {
+        let title: String
+        switch (want, power) {
+        case (.on, .on):
+            title = "Turned on."
+        case (.off, .off):
+            title = "Turned off."
+        case (.off, .unknown):
+            title = "Turned off. The TV stopped answering."
+        default:
+            return nil
+        }
+        return PowerAttempt(
+            report: ActionReport(title: title, detail: label(step), isError: false),
             power: power,
             tried: tried,
             buttonEnabled: true
@@ -205,6 +272,7 @@ public enum PowerActions {
         for _ in 0..<8 {
             let reading = transport.readPower()
             if reading == want { return reading }
+            if want == .off && reading == .unknown { return reading }
             let clock = now()
             if clock >= deadline { return reading }
             let slice = min(1, deadline.timeIntervalSince(clock))
@@ -220,8 +288,8 @@ public enum PowerActions {
             return "adb wake"
         case .sonyOn:
             return "Sony IP"
-        case .wakeOnLan:
-            return "Wake-on-LAN"
+        case .wakeOnLan(let port):
+            return "Wake-on-LAN port \(port)"
         case .adbSleep:
             return "adb sleep"
         case .sonyOff:

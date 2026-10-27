@@ -284,7 +284,7 @@ final class SessionTests: XCTestCase {
         _ = session.refresh()
         armFastPower(session)
         let wakeReport = session.pressPower()
-        XCTAssertEqual(wakeReport.title, "TV is on")
+        XCTAssertEqual(wakeReport.title, "Turned on.")
         XCTAssertEqual(wakeReport.detail, "adb wake")
         XCTAssertTrue(fake.calls.contains { $0.arguments.contains("KEYCODE_WAKEUP") })
         XCTAssertTrue(wake.sent.isEmpty)

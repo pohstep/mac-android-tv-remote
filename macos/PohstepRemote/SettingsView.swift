@@ -7,7 +7,7 @@ struct SettingsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                Text("The address is an IP or a hostname. Wake-on-LAN only travels a local network, or a subnet that forwards broadcasts.")
+                Text("The address is an IP or a hostname.")
                     .font(.system(size: 12))
                     .foregroundColor(Palette.muted)
                     .fixedSize(horizontal: false, vertical: true)
@@ -79,16 +79,6 @@ struct SettingsView: View {
                     Text(model.pskSaved ? "A pre-shared key is saved in the Keychain." : "No pre-shared key. The remote uses adb only.")
                         .font(.system(size: 11))
                         .foregroundColor(Palette.muted)
-                }
-
-                group("Wake on LAN") {
-                    Toggle("Send a magic packet when the TV doesn't answer adb", isOn: wolBinding)
-                    field("MAC address", text: macBinding, prompt: "AA:BB:CC:DD:EE:FF")
-                    field("Broadcast", text: broadcastBinding, prompt: "255.255.255.255")
-                    Text("When this switch is on, Turn on sends this magic packet after the wake key and Sony, on ports 9 and 7. Zapbar fills the MAC in when it can read it, and turns the switch on. Turn off still asks for a second click.")
-                        .font(.system(size: 11))
-                        .foregroundColor(Palette.muted)
-                        .fixedSize(horizontal: false, vertical: true)
                 }
 
                 group("Launch at login") {
@@ -165,18 +155,6 @@ struct SettingsView: View {
         Binding(get: { model.settings.adbPath }, set: { value in model.update { $0.adbPath = value } })
     }
     #endif
-
-    private var wolBinding: Binding<Bool> {
-        Binding(get: { model.settings.wolEnabled }, set: { value in model.update { $0.wolEnabled = value } })
-    }
-
-    private var macBinding: Binding<String> {
-        Binding(get: { model.settings.macAddress }, set: { value in model.update { $0.macAddress = value } })
-    }
-
-    private var broadcastBinding: Binding<String> {
-        Binding(get: { model.settings.broadcastAddress }, set: { value in model.update { $0.broadcastAddress = value } })
-    }
 
     private func group<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 8) {

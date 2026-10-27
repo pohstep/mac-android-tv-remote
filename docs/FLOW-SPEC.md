@@ -8,7 +8,7 @@ No dead end. Each action shows one calm line (installed, or why it failed) and a
 
 Blocks send text, file, screenshot, and power steps that need the debugging link.
 
-No address: "No TV address yet" → **Set up a new TV**. adb missing: Homebrew hint, or "Reinstall Zapbar" in the sandbox → **Check connection**. Helper failed: quit and reopen. Wrong address or debugging off: "The TV refused the connection… check the address." Unreachable: on, same network, debugging on → **Retry**. Not allowed yet: accept the prompt on the TV; Zapbar retries about 12 seconds. Offline or booting: "may be asleep or still booting" → **Retry** or **Turn on**. Mid-send silence: "The TV stopped answering" → do it again. No saved TV: setup only. Saved TV that does not answer: remote greyed out, **Retry**, **Turn on with Wake-on-LAN**. Wrong IP versus asleep needs a real TV.
+No address: "No TV address yet" → **Set up a new TV**. adb missing: Homebrew hint, or "Reinstall Zapbar" in the sandbox → **Check connection**. Helper failed: quit and reopen. Wrong address or debugging off: "The TV refused the connection… check the address." Unreachable: on, same network, debugging on → **Retry**. Not allowed yet: accept the prompt on the TV; Zapbar retries about 12 seconds. Offline or booting: "may be asleep or still booting" → **Retry** or the one power button. Mid-send silence: "The TV stopped answering" → do it again. No saved TV: setup only. Saved TV that does not answer: remote greyed out, **Retry**, and the same power button. Wrong IP versus asleep needs a real TV.
 
 ## 1. Send text
 
@@ -32,7 +32,11 @@ Zapbar installs .apk files only. There is no send-to-Downloads and no image, vid
 
 The panel does not treat open debugging ports as on. If adb is connected, the TV's own wake line wins: Awake = on, Asleep or Dozing = off. If that line is missing and a Sony key is saved, Sony active = on and standby = off. If neither answers, the state is unknown. Unknown is never shown as on.
 
-Asleep or unknown: **Turn on**. Awake: **Turn off** (a second click still confirms). Turn on tries the adb wake key, then Sony power-on if a key is saved, then a magic packet. The MAC is learned from the neighbour table, the TV's network address, or saved on that TV. The packet goes to ports 9 and 7 on the subnet broadcast. Turn off tries the sleep key, then Sony power-off. After a press, Zapbar looks for about 6 seconds. If nothing changed, it tries the next method once. If it still did not change, the line is "TV didn't respond — try again" and the button works again. It does not stay disabled or mislabeled. While the panel is open, power is rechecked every 3–5 seconds, and again right after a press. The ladder and the asleep-but-connected case are tested with a stand-in. Jim's asleep Sony, the wake key, and a real magic packet need his TV.
+There is one power button. Awake says **Turn off**. Asleep says **Turn on**. While a reading is still coming in, the button is disabled and says **Checking…**. If the reading stays unknown, the button says **Turn on**, which cannot switch a live set off. A Xiaomi set shows "Power isn't supported on this TV." and the button does not run. There is no second button, no second click, and no separate packet control in the panel, the menu, or Settings.
+
+The progress line says only "Turning on…" or "Turning off…". If it fails, the line is "TV didn't respond — try again" and the same button is usable again. Which method ran, and how long it waited, is written to the log only.
+
+Behind Turn on, Zapbar tries every method and checks for about 6 seconds after each: the wake key, Sony power-on when a key is saved, then a packet on port 9, then port 7. The address is learned from the neighbour table or the TV and stored on that TV. Turn off tries the sleep key, then Sony. If the set drops off the network after the sleep key, that counts as off ("Turned off." or "Turned off. The TV stopped answering.") and the next method does not run. A refresh that started before the press finished does not overwrite the result. While the panel is open, power is rechecked every 3–5 seconds, and again right after a press. The ladder, the single button, and the asleep-but-connected case are tested with a stand-in. Jim's asleep Sony and a real packet need his TV.
 
 ## 5. Launch at login
 

@@ -9,7 +9,6 @@ struct RemotePanel: View {
     @State private var volumeDraft: Double = 0
     @State private var volumeIsLive = false
     @State private var inputOpen = false
-    @State private var powerArmed = false
     @State private var typeDraft = ""
     @State private var dropTargeted = false
     @FocusState private var typeFocused: Bool
@@ -151,7 +150,7 @@ struct RemotePanel: View {
 
     private var offlineChrome: some View {
         VStack(alignment: .leading, spacing: GlassMetrics.sectionGap) {
-            header(status: offlineStatus, dot: Palette.dotOffline, showsPower: false)
+            header(status: offlineStatus, dot: Palette.dotOffline, showsPower: true)
             failureLine
             VStack(spacing: 8) {
                 Button(action: { model.refreshNow() }) {
@@ -161,19 +160,6 @@ struct RemotePanel: View {
                     }
                 }
                 .buttonStyle(FolioPrimaryStyle(expands: true))
-                Button(action: { model.wake() }) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "power")
-                            .font(.system(size: 13))
-                        Text("Turn on with Wake-on-LAN")
-                            .font(.system(size: 12))
-                            .underline()
-                    }
-                    .foregroundColor(secondaryInk)
-                    .frame(height: 28)
-                }
-                .buttonStyle(.plain)
-                .frame(maxWidth: .infinity)
             }
             remoteBody
                 .opacity(0.45)
@@ -564,39 +550,31 @@ struct RemotePanel: View {
         }
     }
 
-    @ViewBuilder
     private var powerControl: some View {
-        if showsWake {
-            Chip(width: 88, height: GlassMetrics.power, corner: 12, prominent: true, action: { model.wake() }) {
-                Text("Turn on")
-                    .font(.system(size: 13, weight: .semibold))
-            }
-            .disabled(model.powerBusy)
-            .accessibilityLabel("Turn on")
-        } else {
-            // Two clicks within 2 s: the first arms (red), the second turns the TV off.
-            HStack(spacing: 6) {
-                if powerArmed {
-                    Text("Click again to turn off")
-                        .font(.system(size: 11))
-                        .foregroundColor(Palette.text)
-                }
-                Chip(width: GlassMetrics.power, height: GlassMetrics.power, corner: 16, action: {
-                    if powerArmed {
-                        powerArmed = false
-                        model.sleep()
-                    } else {
-                        powerArmed = true
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { powerArmed = false }
-                    }
+        let button = model.powerButton
+        VStack(alignment: .trailing, spacing: 4) {
+            if button.label == PowerButtonModel.unsupportedLabel {
+                Text(button.label)
+                    .font(.system(size: 11))
+                    .foregroundColor(tertiaryInk)
+                    .multilineTextAlignment(.trailing)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityLabel(button.label)
+            } else {
+                Chip(width: 96, height: GlassMetrics.power, corner: 12, prominent: button.action == .turnOn, action: {
+                    model.pressPowerButton()
                 }) {
-                    Image(systemName: "power")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(powerArmed ? .red : Palette.text)
+                    Text(button.label)
+                        .font(.system(size: 13, weight: .semibold))
+                        .lineLimit(1)
                 }
-                .background(Circle().fill(powerArmed ? Color.red.opacity(0.35) : Color.clear))
-                .disabled(model.powerBusy)
-                .accessibilityLabel(powerArmed ? "Click again to turn off" : "Turn off")
+                .disabled(!button.enabled)
+                .accessibilityLabel(button.label)
+            }
+            if !model.powerLine.isEmpty {
+                Text(model.powerLine)
+                    .font(.system(size: 11))
+                    .foregroundColor(Palette.text)
             }
         }
     }
@@ -1125,8 +1103,6 @@ struct RemotePanel: View {
     private var tvIsOn: Bool {
         PowerChrome.showsOn(model.picture.power)
     }
-
-    private var showsWake: Bool { !tvIsOn }
 
     private var appName: String? {
         guard let package = model.picture.foregroundPackage else { return nil }

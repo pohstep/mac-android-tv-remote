@@ -96,10 +96,10 @@ final class FlowTests: XCTestCase {
         transport.adbCanPressPower = true
         transport.sonyCanPressPower = true
         transport.canWakeOnLan = true
-        transport.readings = Array(repeating: .off, count: 20)
+        transport.readings = Array(repeating: .off, count: 40)
         let clock = FlowClock()
         let failed = PowerActions.turnOn(transport: transport, sleep: clock.sleep, now: clock.now)
-        XCTAssertEqual(failed.tried, [.adbWake, .sonyOn])
+        XCTAssertEqual(failed.tried, [.adbWake, .sonyOn, .wakeOnLan(port: 9), .wakeOnLan(port: 7)])
         XCTAssertEqual(failed.report.title, PowerActions.didNotRespond)
         XCTAssertTrue(failed.report.isError)
         XCTAssertTrue(failed.buttonEnabled)
@@ -124,17 +124,63 @@ final class FlowTests: XCTestCase {
 
         let off = ScriptedPower()
         off.adbCanPressPower = true
+        off.sonyCanPressPower = true
         off.readings = [.on, .off]
         let slept = PowerActions.turnOff(transport: off, sleep: clock.sleep, now: clock.now)
         XCTAssertEqual(slept.tried, [.adbSleep])
         XCTAssertEqual(slept.power, .off)
+        XCTAssertEqual(slept.report.title, "Turned off.")
         XCTAssertFalse(slept.report.isError)
+
+        let dropped = ScriptedPower()
+        dropped.adbCanPressPower = true
+        dropped.sonyCanPressPower = true
+        dropped.readings = [.unknown]
+        let silent = PowerActions.turnOff(transport: dropped, sleep: clock.sleep, now: clock.now)
+        XCTAssertEqual(silent.tried, [.adbSleep])
+        XCTAssertEqual(silent.report.title, "Turned off. The TV stopped answering.")
+        XCTAssertFalse(silent.report.isError)
 
         let none = ScriptedPower()
         let missing = PowerActions.turnOn(transport: none, sleep: clock.sleep, now: clock.now)
         XCTAssertTrue(missing.tried.isEmpty)
         XCTAssertTrue(missing.report.detail.contains("Wake-on-LAN"))
         XCTAssertTrue(missing.buttonEnabled)
+    }
+
+    func testOnePowerButtonAndPlainWords() {
+        let samples: [(PowerReading, Bool, Bool)] = [
+            (.on, false, true),
+            (.off, false, true),
+            (.unknown, false, true),
+            (.reachableOnly, false, true),
+            (.off, true, true),
+            (.unknown, false, false)
+        ]
+        for sample in samples {
+            let button = PowerButtonModel.make(power: sample.0, busy: sample.1, supported: sample.2)
+            XCTAssertEqual(button.actions.count, 1, "\(sample)")
+        }
+        XCTAssertEqual(PowerButtonModel.make(power: .on, busy: false, supported: true).label, "Turn off")
+        XCTAssertEqual(PowerButtonModel.make(power: .off, busy: false, supported: true).label, "Turn on")
+        let checking = PowerButtonModel.make(power: .unknown, busy: false, supported: true, checking: true)
+        XCTAssertEqual(checking.label, "Checking…")
+        XCTAssertFalse(checking.enabled)
+        let safest = PowerButtonModel.make(power: .unknown, busy: false, supported: true, checking: false)
+        XCTAssertEqual(safest.label, "Turn on")
+        XCTAssertTrue(safest.enabled)
+        XCTAssertEqual(safest.actions.count, 1)
+        let unsupported = PowerButtonModel.make(power: .unknown, busy: false, supported: false)
+        XCTAssertEqual(unsupported.label, PowerButtonModel.unsupportedLabel)
+        XCTAssertFalse(unsupported.enabled)
+        XCTAssertEqual(unsupported.actions.count, 1)
+        let banned = ["wake", "magic", "packet", "sony", "adb", "wake-on-lan"]
+        for line in PowerButtonModel.userFacingLines {
+            let lower = line.lowercased()
+            for word in banned {
+                XCTAssertFalse(lower.contains(word), "\(line) contains \(word)")
+            }
+        }
     }
 
     func testConnectedAsleepPictureIsOff() {

@@ -344,9 +344,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             menu.addItem(toggle)
         }
 
-        let wake = NSMenuItem(title: "Turn on", action: #selector(wakeFromMenu), keyEquivalent: "")
-        wake.target = self
-        menu.addItem(wake)
+        let power = NSMenuItem(title: model.powerButton.label, action: #selector(powerFromMenu), keyEquivalent: "")
+        power.target = self
+        power.isEnabled = model.powerButton.enabled
+        menu.addItem(power)
 
         if model.settings.devices.count > 1 {
             let tvs = NSMenuItem(title: "TVs", action: nil, keyEquivalent: "")
@@ -392,7 +393,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    @objc private func wakeFromMenu() { model.wake() }
+    @objc private func powerFromMenu() { model.pressPowerButton() }
 
     @objc private func wizardFromMenu() { model.showWizard() }
 
