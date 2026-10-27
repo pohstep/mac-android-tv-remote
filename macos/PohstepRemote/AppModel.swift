@@ -26,6 +26,7 @@ final class AppModel: ObservableObject {
     @Published var typeBusy = false
     @Published var typeClearToken = 0
     @Published var powerBusy = false
+    @Published var loginItem = LoginItemMapping.present(.notRegistered)
     @Published var jobLine = ""
     @Published var jobRaw = ""
     @Published var jobIsError = false
@@ -184,6 +185,7 @@ final class AppModel: ObservableObject {
     }
 
     func start() {
+        refreshLoginItem()
         refreshNow()
     }
 
@@ -487,6 +489,24 @@ final class AppModel: ObservableObject {
         launch(TvApp(id: "settings", name: "Settings", packageName: "com.android.tv.settings"))
     }
 
+    func refreshLoginItem() {
+        loginItem = LoginItemMapping.present(LoginItemBridge.current())
+    }
+
+    func setLoginItem(_ on: Bool) {
+        do {
+            try LoginItemBridge.setEnabled(on)
+        } catch {
+            banner = "Zapbar couldn't change the login item."
+            bannerIsError = true
+        }
+        refreshLoginItem()
+    }
+
+    func openLoginItems() {
+        LoginItemBridge.openSystemSettings()
+    }
+
     func showSettings() {
         if settingsWindow == nil {
             let hosting = NSHostingView(rootView: SettingsView(model: self))
@@ -510,6 +530,7 @@ final class AppModel: ObservableObject {
         settingsWindow?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         setSettingsKey(true)
+        refreshLoginItem()
     }
 
     func settingsWindowClosed() {

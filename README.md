@@ -35,6 +35,7 @@ Zapbar was called Mac Android TV Remote up to v1.0.1. Same project, new name.
 - **Try demo TV** opens a connected panel with no TV on the network. It is on the find step when nothing is found, and in Settings. Leave demo returns to a saved TV. Demo mode is not saved.
 - **Screenshot** copies the TV picture to the clipboard or saves it. **Save…** starts in Desktop, or Pictures if Desktop is not there, with the name `Zapbar Screenshot YYYY-MM-DD at HH.mm.ss.png`. The lines are "Saved" and "Couldn't save". A black picture is kept, and the panel says the TV may block screenshots of protected video.
 - **Install an app** by dropping an .apk on the panel or the menu bar icon, or with **Choose .apk…**. Other files are refused. The panel shows Installing, then Installed or the reason it failed, and a log you can open and copy. Filenames can contain spaces.
+- **Launch at login** is a switch in Settings. It is on only when macOS says the login item is enabled. If macOS needs approval, the switch stays off and **Open Login Items** is offered.
 - **Keyboard as remote** in the non-sandbox build: `⌃⌥K` toggles it, `⌃⌥⌘K` turns it off. The sandboxed build hides this. It needs Accessibility, which the sandbox does not grant.
 
 Clean-up with undo is built behind an Advanced section and is excluded from the release build until Jim says go. `scripts/build-local.sh` leaves `ZAPBAR_ADVANCED` off, so the release app has no clean-up code. `scripts/build-dev.sh` turns it on. `swift test` still covers it.

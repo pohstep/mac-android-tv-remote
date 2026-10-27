@@ -85,10 +85,26 @@ struct SettingsView: View {
                     Toggle("Send a magic packet when the TV doesn't answer adb", isOn: wolBinding)
                     field("MAC address", text: macBinding, prompt: "AA:BB:CC:DD:EE:FF")
                     field("Broadcast", text: broadcastBinding, prompt: "255.255.255.255")
-                    Text("Turn on tries the wake key, then Sony, then this magic packet on ports 9 and 7. Zapbar fills the MAC in when it can read it. Turn off is the power button, and it asks for a second click.")
+                    Text("When this switch is on, Turn on sends this magic packet after the wake key and Sony, on ports 9 and 7. Zapbar fills the MAC in when it can read it, and turns the switch on. Turn off still asks for a second click.")
                         .font(.system(size: 11))
                         .foregroundColor(Palette.muted)
                         .fixedSize(horizontal: false, vertical: true)
+                }
+
+                group("Launch at login") {
+                    Toggle("Launch at login", isOn: Binding(
+                        get: { model.loginItem.isOn },
+                        set: { model.setLoginItem($0) }
+                    ))
+                    if !model.loginItem.message.isEmpty {
+                        Text(model.loginItem.message)
+                            .font(.system(size: 11))
+                            .foregroundColor(Palette.muted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    if model.loginItem.showsOpenSettings {
+                        Button("Open Login Items") { model.openLoginItems() }
+                    }
                 }
 
                 group("Apps") {

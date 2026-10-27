@@ -31,6 +31,19 @@ final class FlowTests: XCTestCase {
         XCTAssertEqual(ScreenshotSave.startDirectory(desktop: nil, pictures: pictures), pictures)
     }
 
+    func testLoginItemStatusWords() {
+        XCTAssertEqual(LoginItemMapping.present(.enabled), LoginItemPresentation(isOn: true, message: "", showsOpenSettings: false))
+        let approval = LoginItemMapping.present(.requiresApproval)
+        XCTAssertFalse(approval.isOn)
+        XCTAssertTrue(approval.showsOpenSettings)
+        XCTAssertEqual(approval.message, "macOS needs approval before Zapbar can open at login.")
+        let missing = LoginItemMapping.present(.notFound)
+        XCTAssertFalse(missing.isOn)
+        XCTAssertFalse(missing.showsOpenSettings)
+        XCTAssertEqual(missing.message, "Zapbar isn't set to open at login. Turn the switch on again.")
+        XCTAssertEqual(LoginItemMapping.present(.notRegistered), LoginItemPresentation(isOn: false, message: "", showsOpenSettings: false))
+    }
+
     func testPowerPollIsBetweenThreeAndFiveSeconds() {
         XCTAssertGreaterThanOrEqual(RefreshCadence.whileOpen, 3)
         XCTAssertLessThanOrEqual(RefreshCadence.whileOpen, 5)
