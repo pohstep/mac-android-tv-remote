@@ -78,15 +78,7 @@ You can always type the TV address instead of waiting for discovery. **Try demo 
 
 ## First launch (unsigned app)
 
-Zapbar is ad-hoc signed (not notarized), so Gatekeeper blocks it the first time with a message like *“Apple cannot check it for malicious software.”* Allow it once (same pattern as other unsigned Mac apps):
-
-1. **Right-click → Open** (macOS 13 / 14): in Finder, right-click **Zapbar** → **Open** → **Open** again in the dialog.
-2. **Open Anyway** (macOS 15+): try to open it, then **System Settings → Privacy & Security** → **Open Anyway**.
-3. **Or clear quarantine in Terminal:**
-
-  ```sh
-  xattr -dr com.apple.quarantine "/Applications/Zapbar.app"
-  ```
+If macOS says it can't check Zapbar for malicious software: right-click Zapbar and choose Open, then Open. Or open System Settings > Privacy & Security, scroll to Security, and click Open Anyway next to Zapbar.
 
 ## Build from source
 
