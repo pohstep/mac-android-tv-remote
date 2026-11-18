@@ -43,6 +43,8 @@ final class AppModel: ObservableObject {
     @Published var screenshotPNG: Data?
     @Published var demoOn = false
     @Published var demoNote = ""
+    @Published var paywall: ProFeature?
+    let purchases = ProStore()
     #if ZAPBAR_ADVANCED
     @Published var advancedExpanded = false
     @Published var cleanupEnabled = false
@@ -198,7 +200,74 @@ final class AppModel: ObservableObject {
         refreshNow()
     }
 
+    var proAccess: ProAccess {
+        ProAccess(purchased: purchases.unlocked, preview: demoOn)
+    }
+
+    func allows(_ feature: ProFeature) -> Bool {
+        ProGate.allows(feature, access: proAccess)
+    }
+
+    func require(_ feature: ProFeature) -> Bool {
+        if allows(feature) { return true }
+        paywall = feature
+        return false
+    }
+
+    func buyPro() {
+        Task { @MainActor in
+            await purchases.purchase()
+            if purchases.unlocked { paywall = nil }
+        }
+    }
+
+    func restorePro() {
+        Task { @MainActor in
+            await purchases.restore()
+            if purchases.unlocked { paywall = nil }
+        }
+    }
+
+    func sendClipboard() {
+        guard require(.sendClipboard) else { return }
+        let text = NSPasteboard.general.string(forType: .string) ?? ""
+        guard !text.isEmpty else { return }
+        _ = deliver(.send(.text(text)))
+    }
+
+    func deliverPanel(_ chord: KeyChord, textFieldFocused: Bool) -> Bool {
+        guard allows(.panelKeyboard) else { return false }
+        switch KeyMapping.panelRemote(for: chord, textFieldFocused: textFieldFocused) {
+        case .send(let action):
+            _ = deliver(.send(action))
+            return true
+        case .ignore, .passthrough, .toggleKeyboardMode:
+            return false
+        }
+    }
+
+    func globalHotkey(_ action: GlobalHotkeyAction) {
+        switch action {
+        case .openPanel:
+            onOpenPanel?()
+        case .power:
+            pressPowerButton()
+        case .volumeUp:
+            guard require(.globalHotkeys) else { return }
+            _ = deliver(.send(.key(.volumeUp)))
+        case .volumeDown:
+            guard require(.globalHotkeys) else { return }
+            _ = deliver(.send(.key(.volumeDown)))
+        case .playPause:
+            guard require(.globalHotkeys) else { return }
+            _ = deliver(.send(.key(.mediaPlayPause)))
+        case .sendClipboard:
+            sendClipboard()
+        }
+    }
+
     func start() {
+        purchases.start()
         refreshLoginItem()
         if !settings.devices.isEmpty {
             status = .connecting(serial: settings.host)
@@ -777,6 +846,7 @@ final class AppModel: ObservableObject {
     }
 
     func installApk(at path: String) {
+        guard demoOn || require(.apkInstall) else { return }
         if demoOn {
             runJob("Installing…", cancellable: false) { [weak self] _ in
                 self?.demo.installApk(at: path) ?? JobReport(sentence: "Cancelled.", raw: "", isError: true)
@@ -787,6 +857,7 @@ final class AppModel: ObservableObject {
     }
 
     func takeScreenshot() {
+        guard demoOn || require(.screenshot) else { return }
         jobKind = .screenshot
         installLog = ""
         showInstallLog = false
@@ -1065,7 +1136,16 @@ final class AppModel: ObservableObject {
     }
 
     func showWizard() {
-        wizard = SetupWizard()
+        presentWizard(.codePair)
+    }
+
+    func showAdvancedWizard() {
+        guard settings.advancedOptIn else { return }
+        presentWizard(.advanced)
+    }
+
+    private func presentWizard(_ entry: WizardEntry) {
+        wizard = SetupWizard(entry: entry)
         discovered = []
         pendingKey = ""
         if wizardWindow == nil {
@@ -1116,6 +1196,8 @@ final class AppModel: ObservableObject {
             runSonyTest(host: host, port: port, psk: psk)
         case .testXiaomi(let host, let port):
             runXiaomiTest(host: host, port: port)
+        case .pairScreenCode(let host, let code):
+            runScreenCode(host: host, code: code)
         case .save(let device):
             remember(device)
         }
@@ -1296,7 +1378,60 @@ final class AppModel: ObservableObject {
         }
     }
 
+    private func runScreenCode(host: String, code: String) {
+        #if canImport(Network) && canImport(Security)
+        let queue = DispatchQueue(label: "app.pohstep.remote.pair")
+        guard let identity = try? AtvCert.generate(commonName: "Zapbar") else {
+            sendWizard(.screenCodeRejected("That code didn't match. Try again."))
+            return
+        }
+        AtvLink.pair(host: host, code: code, identity: identity, queue: queue) { [weak self] result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let leaf):
+                    AtvLink.openCommands(host: host, identity: identity, pin: leaf, queue: queue) { _ in }
+                    self?.sendWizard(.screenCodeAccepted)
+                case .failure:
+                    self?.sendWizard(.screenCodeRejected("That code didn't match. Try again."))
+                }
+            }
+        }
+        #else
+        _ = host
+        _ = code
+        sendWizard(.screenCodeRejected("That code didn't match. Try again."))
+        #endif
+    }
+
+    func guardedAppAction(package: String, kind: AppActionKind) -> String? {
+        guard require(.appManagement) else { return nil }
+        let data = NeverTouchGuard.bundledData() ?? Data()
+        let list = NeverTouchGuard.load(data)
+        let command: String?
+        switch kind {
+        case .uninstall:
+            command = AdbAppCommand.uninstall(package, guardList: list)
+        case .forceStop:
+            command = AdbAppCommand.forceStop(package, guardList: list)
+        }
+        if command == nil {
+            banner = "That app stays on the TV."
+            bannerIsError = true
+            return nil
+        }
+        if demoOn {
+            banner = kind == .uninstall ? "Removed." : "Stopped."
+            bannerIsError = false
+        }
+        return command
+    }
+
     private func remember(_ device: StoredTV) {
+        let known = settings.devices.contains { $0.id == device.id || ($0.host == device.host && $0.brand == device.brand) }
+        if !known && !settings.devices.isEmpty && !allows(.severalTVs) {
+            paywall = .severalTVs
+            return
+        }
         var switcher = DeviceSwitcher(devices: settings.devices, activeID: settings.activeDeviceID)
         switcher.remember(device, seenAt: Date())
         settings.devices = switcher.devices

@@ -310,6 +310,10 @@ struct RemotePanel: View {
             #if ZAPBAR_ADVANCED
             AdvancedCleanupSection(model: model)
             #endif
+            if !model.allows(.panelKeyboard) {
+                Button("Keyboard") { _ = model.require(.panelKeyboard) }
+                    .font(.system(size: 12))
+            }
             if model.allowsKeyboardCapture {
                 keyboard
             }

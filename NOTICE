@@ -1,0 +1,12 @@
+Zapbar protocol notes
+
+The Android TV Remote v2 pairing and command messages follow the behavior of
+androidtvremote2 (https://github.com/tronikos/androidtvremote2), Apache License 2.0.
+The Swift in this repository was written for Zapbar. That project is not copied in.
+
+The ADB connection, AUTH signature (RSA_sign with SHA-1, PKCS#1 v1.5), public key
+layout, and sync stream follow the Android Open Source Project adb sources
+(https://android.googlesource.com/platform/packages/modules/adb/), Apache License 2.0.
+The Swift in this repository was written for Zapbar. Those C++ sources are not copied in.
+
+Apache License 2.0: https://www.apache.org/licenses/LICENSE-2.0

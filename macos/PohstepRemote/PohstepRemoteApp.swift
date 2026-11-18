@@ -105,11 +105,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var menuPowerItem: NSMenuItem?
 
     func applicationWillTerminate(_ notification: Notification) {
-        // The normal build uses the user's adb server on 5037. Quitting must not stop it.
-        // The sandboxed build started its own server on the private port, so it stops that one.
-        #if SANDBOX_BUILD
-        model.stopAdbServer()
-        #endif
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -462,6 +457,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         add.target = self
         menu.addItem(add)
 
+        let clipboard = NSMenuItem(title: "Send clipboard", action: #selector(sendClipboardFromMenu), keyEquivalent: "")
+        clipboard.target = self
+        menu.addItem(clipboard)
         let settings = NSMenuItem(title: "Settings…", action: #selector(settingsFromMenu), keyEquivalent: "")
         settings.target = self
         menu.addItem(settings)
@@ -537,6 +535,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func powerFromMenu() { model.pressPowerButton() }
+
+    @objc private func sendClipboardFromMenu() { model.sendClipboard() }
 
     @objc private func wizardFromMenu() { model.showWizard() }
 

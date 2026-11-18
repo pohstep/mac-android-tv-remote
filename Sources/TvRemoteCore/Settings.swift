@@ -90,6 +90,8 @@ public struct Settings: Codable, Equatable {
     public var brand: TvBrand
     /// When false, a Sony TV stays on IP control and does not open network debugging.
     public var useDebugging: Bool
+    public var hotkeys: GlobalHotkeys
+    public var advancedOptIn: Bool
 
     public init(
         host: String,
@@ -103,7 +105,9 @@ public struct Settings: Codable, Equatable {
         devices: [StoredTV] = [],
         activeDeviceID: String = "",
         brand: TvBrand = .sony,
-        useDebugging: Bool = true
+        useDebugging: Bool = true,
+        hotkeys: GlobalHotkeys = .factory,
+        advancedOptIn: Bool = false
     ) {
         self.host = host
         self.port = port
@@ -117,6 +121,8 @@ public struct Settings: Codable, Equatable {
         self.activeDeviceID = activeDeviceID
         self.brand = brand
         self.useDebugging = useDebugging
+        self.hotkeys = hotkeys
+        self.advancedOptIn = advancedOptIn
     }
 
     public static func factoryDefaults() -> Settings {
@@ -157,7 +163,7 @@ public struct Settings: Codable, Equatable {
 
     private enum CodingKeys: String, CodingKey {
         case host, port, adbPath, macAddress, broadcastAddress, apps, keyboardMode, sonyPort
-        case devices, activeDeviceID, brand, useDebugging
+        case devices, activeDeviceID, brand, useDebugging, hotkeys, advancedOptIn
     }
 
     public init(from decoder: Decoder) throws {
@@ -183,6 +189,8 @@ public struct Settings: Codable, Equatable {
         }
         brand = try container.decodeIfPresent(TvBrand.self, forKey: .brand) ?? devices.first?.brand ?? .sony
         useDebugging = try container.decodeIfPresent(Bool.self, forKey: .useDebugging) ?? devices.first?.useDebugging ?? true
+        hotkeys = try container.decodeIfPresent(GlobalHotkeys.self, forKey: .hotkeys) ?? .factory
+        advancedOptIn = try container.decodeIfPresent(Bool.self, forKey: .advancedOptIn) ?? false
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -199,6 +207,8 @@ public struct Settings: Codable, Equatable {
         try container.encode(activeDeviceID, forKey: .activeDeviceID)
         try container.encode(brand, forKey: .brand)
         try container.encode(useDebugging, forKey: .useDebugging)
+        try container.encode(hotkeys, forKey: .hotkeys)
+        try container.encode(advancedOptIn, forKey: .advancedOptIn)
     }
 
     public static func applicationSupportURL(homeDirectory: String = NSHomeDirectory()) -> URL {

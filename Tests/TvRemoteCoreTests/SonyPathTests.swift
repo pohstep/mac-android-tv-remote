@@ -272,7 +272,7 @@ final class SonyPathTests: XCTestCase {
         settings.port = 5555
         settings.sonyPort = port
         settings.adbPath = adbURL.path
-        let session = RemoteSession(settings: settings, runner: ShellRunner(), http: URLSessionHttp())
+        let session = RemoteSession(settings: settings, runner: TestProcessRunner(), http: URLSessionHttp())
         session.setPreSharedKey(secret)
         let status = session.refresh()
         guard case .connected = status else {

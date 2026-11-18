@@ -175,6 +175,39 @@ public enum KeyMapping {
             return .passthrough
         }
     }
+
+    public static func panelRemote(for chord: KeyChord, textFieldFocused: Bool) -> KeyEffect {
+        if textFieldFocused { return .passthrough }
+        if chord.modifiers.contains(.command) {
+            switch chord.key {
+            case .arrowUp:
+                return .send(.key(.volumeUp))
+            case .arrowDown:
+                return .send(.key(.volumeDown))
+            case .arrowLeft, .arrowRight, .returnKey, .keypadEnter, .esc, .delete, .forwardDelete, .home, .f1, .space, .ansi(_), .mediaPlayPause, .volumeUp, .volumeDown, .mute, .other:
+                return .passthrough
+            }
+        }
+        if !chord.modifiers.isEmpty { return .passthrough }
+        switch chord.key {
+        case .arrowUp:
+            return .send(.key(.dpadUp))
+        case .arrowDown:
+            return .send(.key(.dpadDown))
+        case .arrowLeft:
+            return .send(.key(.dpadLeft))
+        case .arrowRight:
+            return .send(.key(.dpadRight))
+        case .returnKey, .keypadEnter:
+            return .send(.key(.dpadCenter))
+        case .esc:
+            return .send(.key(.back))
+        case .space:
+            return .send(.key(.mediaPlayPause))
+        case .delete, .forwardDelete, .home, .f1, .ansi(_), .mediaPlayPause, .volumeUp, .volumeDown, .mute, .other:
+            return .passthrough
+        }
+    }
 }
 
 /// Hardware key codes shared by macOS event taps. Mapped here so the table is tested on Linux.

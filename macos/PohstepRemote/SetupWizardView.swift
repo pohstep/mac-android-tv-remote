@@ -21,10 +21,10 @@ struct SetupWizardView: View {
 
     private var wizardStack: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Step \(progressIndex + 1) of 5")
+            Text("Step \(model.wizard.progressIndex + 1) of \(model.wizard.progressTotal)")
                 .font(.system(size: 11.5))
                 .foregroundColor(Palette.text)
-            WizardProgress(index: progressIndex)
+            WizardProgress(index: model.wizard.progressIndex, total: model.wizard.progressTotal)
             if showsPicture {
                 WizardPicture(symbol: pictureSymbol)
             }
@@ -73,27 +73,11 @@ struct SetupWizardView: View {
         }
     }
 
-    /// Five slices of one gradient: brand, find, connect, save, done. No skip control on the bar.
-    private var progressIndex: Int {
-        switch model.wizard.phase {
-        case .pickBrand:
-            return 0
-        case .find, .manual:
-            return 1
-        case .sonyTyping, .debugging, .pair, .allow, .sonyKey, .xiaomiCheck:
-            return 2
-        case .remember:
-            return 3
-        case .done:
-            return 4
-        }
-    }
-
     private var showsPicture: Bool {
         switch model.wizard.phase {
-        case .debugging, .pair, .allow, .sonyKey, .xiaomiCheck:
+        case .debugging, .pair, .allow, .sonyKey, .xiaomiCheck, .screenCode:
             return true
-        case .pickBrand, .find, .manual, .sonyTyping, .remember, .done:
+        case .pickBrand, .find, .manual, .sonyTyping, .remember, .done, .advancedOffer:
             return false
         }
     }
@@ -104,11 +88,11 @@ struct SetupWizardView: View {
             return "tv"
         case .find, .manual:
             return "dot.radiowaves.left.and.right"
-        case .sonyTyping, .debugging, .pair, .allow:
+        case .sonyTyping, .debugging, .pair, .allow, .screenCode:
             return "checkmark.shield"
         case .sonyKey:
             return "lock"
-        case .xiaomiCheck:
+        case .xiaomiCheck, .advancedOffer:
             return "tv"
         case .remember, .done:
             return "square.and.arrow.down"
@@ -118,7 +102,7 @@ struct SetupWizardView: View {
     private var title: String {
         switch model.wizard.phase {
         case .pickBrand: return "Which TV is this?"
-        case .find: return "Find the TV"
+        case .find: return model.wizard.entry == .codePair ? "Looking for TVs…" : "Find the TV"
         case .manual: return "Enter an address"
         case .sonyTyping: return "Typing"
         case .debugging: return "Connect this Mac"
@@ -127,7 +111,9 @@ struct SetupWizardView: View {
         case .sonyKey: return "Control key"
         case .xiaomiCheck: return "Check this TV"
         case .remember: return "Save this TV"
-        case .done: return "Saved"
+        case .done: return model.wizard.entry == .codePair ? "Connected." : "Saved"
+        case .screenCode: return "Type the code on your TV screen"
+        case .advancedOffer: return "Another setup"
         }
     }
 
@@ -218,6 +204,15 @@ struct SetupWizardView: View {
         case .done:
             Button("Close") { model.closeWizard() }
                 .buttonStyle(FolioPrimaryStyle(wizard: true))
+        case .screenCode:
+            TextField("Code", text: $pairCode)
+                .folioFieldChrome(focused: false)
+            Button("Continue") { model.sendWizard(.submitScreenCode(pairCode)) }
+                .buttonStyle(FolioPrimaryStyle(wizard: true))
+            Button("This TV needs another setup") { model.sendWizard(.chooseAdvanced) }
+        case .advancedOffer:
+            Button("Open Settings") { model.showSettings() }
+                .buttonStyle(FolioPrimaryStyle(wizard: true))
         }
     }
 }
@@ -225,15 +220,16 @@ struct SetupWizardView: View {
 /// Five segments cut from one diagonal gradient. Empty segments stay white at 22%.
 private struct WizardProgress: View {
     var index: Int
+    var total: Int
 
     var body: some View {
         GeometryReader { proxy in
             let gap: CGFloat = 3
-            let count: CGFloat = 5
+            let count = CGFloat(max(total, 1))
             let segment = max((proxy.size.width - gap * (count - 1)) / count, 1)
             ZStack(alignment: .leading) {
                 HStack(spacing: gap) {
-                    ForEach(0..<5, id: \.self) { _ in
+                    ForEach(0..<max(total, 1), id: \.self) { _ in
                         Capsule()
                             .fill(Color.white.opacity(0.22))
                             .frame(height: 3)
@@ -243,7 +239,7 @@ private struct WizardProgress: View {
                     .frame(width: proxy.size.width, height: 3)
                     .mask(
                         HStack(spacing: gap) {
-                            ForEach(0..<5, id: \.self) { slot in
+                            ForEach(0..<max(total, 1), id: \.self) { slot in
                                 Capsule()
                                     .frame(width: segment, height: 3)
                                     .opacity(slot <= index ? 1 : 0)
@@ -254,7 +250,7 @@ private struct WizardProgress: View {
             }
         }
         .frame(height: 3)
-        .accessibilityLabel("Setup step \(index + 1) of 5")
+        .accessibilityLabel("Setup step \(index + 1) of \(total)")
     }
 }
 

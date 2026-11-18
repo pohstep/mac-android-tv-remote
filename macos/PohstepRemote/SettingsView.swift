@@ -22,9 +22,6 @@ struct SettingsView: View {
                         HStack {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(device.name)
-                                Text(device.host)
-                                    .font(.system(size: 11))
-                                    .foregroundColor(Palette.muted)
                             }
                             Spacer()
                             if device.id == model.settings.activeDeviceID {
@@ -45,10 +42,6 @@ struct SettingsView: View {
                 group("TV") {
                     field("Address", text: hostBinding, prompt: "192.168.1.20 or a name")
                         .onSubmit { model.commitAddress(); model.refreshNow() }
-                    field("adb port", text: portBinding, prompt: "5555")
-                    #if !SANDBOX_BUILD
-                    field("adb path", text: adbBinding, prompt: "Leave blank to use the built-in helper")
-                    #endif
                     Button("Check connection") {
                         model.commitAddress()
                         model.refreshNow()
@@ -79,6 +72,43 @@ struct SettingsView: View {
                     Text(model.pskSaved ? "A control key is saved." : "No control key yet. The remote still uses the TV connection.")
                         .font(.system(size: 11))
                         .foregroundColor(Palette.muted)
+                }
+
+                group("Zapbar Pro") {
+                    Text(model.purchases.unlocked ? "Zapbar Pro is on this Mac." : "Zapbar Pro is $\(ProProduct.displayPrice).")
+                        .font(.system(size: 12))
+                        .foregroundColor(Palette.muted)
+                    Button("Restore Purchase") { model.restorePro() }
+                    if !model.purchases.unlocked {
+                        Button("Unlock") { model.buyPro() }
+                            .buttonStyle(FolioPrimaryStyle())
+                    }
+                }
+
+                group("Shortcuts") {
+                    Text("Open the panel with \(model.settings.hotkeys.openPanel.display).")
+                        .font(.system(size: 12))
+                    Text("Power \(model.settings.hotkeys.power.display), volume \(model.settings.hotkeys.volumeUp.display) \(model.settings.hotkeys.volumeDown.display), play \(model.settings.hotkeys.playPause.display), send clipboard \(model.settings.hotkeys.sendClipboard.display).")
+                        .font(.system(size: 12))
+                        .foregroundColor(Palette.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                group("Advanced") {
+                    Toggle("Advanced", isOn: Binding(
+                        get: { model.settings.advancedOptIn },
+                        set: { on in
+                            model.update { $0.advancedOptIn = on }
+                        }
+                    ))
+                    Text("Turn this on only if the code on the TV does not connect. Then set the TV to allow this Mac.")
+                        .font(.system(size: 11))
+                        .foregroundColor(Palette.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if model.settings.advancedOptIn {
+                        Button("Set up Advanced") { model.showAdvancedWizard() }
+                            .buttonStyle(FolioPrimaryStyle())
+                    }
                 }
 
                 group("Launch at login") {
@@ -149,12 +179,6 @@ struct SettingsView: View {
             }
         )
     }
-
-    #if !SANDBOX_BUILD
-    private var adbBinding: Binding<String> {
-        Binding(get: { model.settings.adbPath }, set: { value in model.update { $0.adbPath = value } })
-    }
-    #endif
 
     private func group<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 8) {

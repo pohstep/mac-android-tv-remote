@@ -100,6 +100,10 @@ public struct DiscoveredTV: Equatable {
         return DiscoveryCards.baseTitle(self)
     }
 
+    public var offersCodePair: Bool {
+        DiscoveryService.normalize(source) == DiscoveryService.androidTvRemoteType
+    }
+
     /// Find-step card. Brand and the word TV, never an address or a serial.
     public var listTitle: String {
         if !cardTitle.isEmpty { return cardTitle }

@@ -1,0 +1,36 @@
+{
+  "identifier" : "Zapbar",
+  "nonRenewingSubscriptions" : [ ],
+  "products" : [
+    {
+      "displayPrice" : "1.99",
+      "familyShareable" : true,
+      "internalID" : "zapbar-pro",
+      "localizations" : [
+        {
+          "description" : "Keyboard, clipboard, more than one TV, pictures, and app files.",
+          "displayName" : "Zapbar Pro",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "app.pohstep.remote.pro",
+      "referenceName" : "Zapbar Pro",
+      "type" : "NonConsumable"
+    }
+  ],
+  "settings" : {
+    "_failTransactionsEnabled" : false,
+    "_storeKitErrors" : [
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Load Products"
+      }
+    ]
+  },
+  "subscriptionGroups" : [ ],
+  "version" : {
+    "major" : 3,
+    "minor" : 0
+  }
+}

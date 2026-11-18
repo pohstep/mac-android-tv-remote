@@ -12,6 +12,14 @@ public enum WizardPhase: Equatable {
     case xiaomiCheck
     case remember
     case done
+    case screenCode
+    case advancedOffer
+}
+
+public enum WizardEntry: Equatable {
+    case codePair
+    case brandFirst
+    case advanced
 }
 
 public struct SetupLine: Equatable {
@@ -46,6 +54,10 @@ public enum WizardEvent: Equatable {
     case watchRetry
     case remember(name: String)
     case back
+    case submitScreenCode(String)
+    case screenCodeAccepted
+    case screenCodeRejected(String)
+    case chooseAdvanced
 }
 
 public enum TvSwitch: Equatable {
@@ -149,12 +161,26 @@ public enum WizardEffect: Equatable {
     case testSony(host: String, port: Int, psk: String)
     case testXiaomi(host: String, port: Int)
     case save(StoredTV)
+    case pairScreenCode(host: String, code: String)
 }
 
 public enum SetupCopy {
-    public static func lines(phase: WizardPhase, brand: TvBrand?, wantsTyping: Bool, debugChoices: Bool = false) -> [SetupLine] {
+    public static func lines(phase: WizardPhase, brand: TvBrand?, wantsTyping: Bool, debugChoices: Bool = false, advanced: Bool = false) -> [SetupLine] {
         _ = wantsTyping
+        if advanced && phase == .debugging {
+            return [
+                SetupLine(key: "setup.advanced.steps.1", text: "On the TV, open Settings, then Device Preferences, then About. Select Build seven times."),
+                SetupLine(key: "setup.advanced.steps.2", text: "Open Developer options and turn on network debugging."),
+                SetupLine(key: "setup.advanced.steps.3", text: "Come back here and continue. When the TV asks, choose Always, then Allow."),
+                SetupLine(key: "setup.advanced.steps.4", text: "Zapbar checks the connection."),
+                SetupLine(key: "setup.advanced.steps.5", text: "Advanced is on.")
+            ]
+        }
         switch phase {
+        case .screenCode:
+            return [SetupLine(key: "setup.code.1", text: "Type the code on your TV screen.")]
+        case .advancedOffer:
+            return [SetupLine(key: "setup.advanced.1", text: "Turn on Advanced in Settings, then try this TV again.")]
         case .debugging:
             var lines = [
                 SetupLine(key: "setup.debug.wireless.1", text: SwitchWatch(kind: .networkDebugging).instruction)
@@ -220,10 +246,17 @@ public struct SetupWizard: Equatable {
     public private(set) var name: String
     /// True only after the TV answered a connection check.
     public private(set) var verified: Bool
+    public private(set) var entry: WizardEntry
     private var stack: [WizardPhase]
 
-    public init() {
-        phase = .pickBrand
+    public init(entry: WizardEntry = .codePair) {
+        self.entry = entry
+        switch entry {
+        case .brandFirst:
+            phase = .pickBrand
+        case .codePair, .advanced:
+            phase = .find
+        }
         brand = nil
         host = ""
         port = 5555
@@ -240,6 +273,35 @@ public struct SetupWizard: Equatable {
         stack = []
     }
 
+    public var progressTotal: Int {
+        entry == .codePair ? 3 : 5
+    }
+
+    public var progressIndex: Int {
+        if entry == .codePair {
+            switch phase {
+            case .find, .manual, .pickBrand:
+                return 0
+            case .screenCode, .advancedOffer:
+                return 1
+            case .sonyTyping, .debugging, .pair, .allow, .sonyKey, .xiaomiCheck, .remember, .done:
+                return 2
+            }
+        }
+        switch phase {
+        case .pickBrand:
+            return 0
+        case .find, .manual:
+            return 1
+        case .sonyTyping, .debugging, .pair, .allow, .sonyKey, .xiaomiCheck, .screenCode, .advancedOffer:
+            return 2
+        case .remember:
+            return 3
+        case .done:
+            return 4
+        }
+    }
+
     public mutating func setAdbReady(_ ready: Bool) {
         adbReady = ready
     }
@@ -250,7 +312,7 @@ public struct SetupWizard: Equatable {
     }
 
     public func lines() -> [SetupLine] {
-        SetupCopy.lines(phase: phase, brand: brand, wantsTyping: wantsTyping, debugChoices: showsDebugChoices)
+        SetupCopy.lines(phase: phase, brand: brand, wantsTyping: wantsTyping, debugChoices: showsDebugChoices, advanced: entry == .advanced)
     }
 
     public func draft(id: String = UUID().uuidString) -> StoredTV {
@@ -315,6 +377,10 @@ public struct SetupWizard: Equatable {
             }
             if brand == .generic { controlPort = port }
             if name.isEmpty { name = host }
+            if entry == .codePair {
+                go(.screenCode)
+                return .none
+            }
             return routeAfterFound()
         case (.sonyTyping, .typing(let yes)):
             wantsTyping = yes
@@ -400,6 +466,39 @@ public struct SetupWizard: Equatable {
         case (.allow, .connectFailed(let detail)):
             message = detail
             return .none
+        case (.screenCode, .submitScreenCode(let raw)):
+            let code = raw.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+            guard code.count == 6, code.allSatisfy(\.isHexDigit) else {
+                message = "Type the code on your TV screen."
+                return .none
+            }
+            return .pairScreenCode(host: host, code: code)
+        case (.screenCode, .screenCodeAccepted):
+            verified = true
+            switchWatch = nil
+            if name.isEmpty { name = host }
+            phase = .done
+            message = "Connected."
+            var saved = draft()
+            saved.useDebugging = false
+            saved.port = 6466
+            saved.controlPort = 6466
+            return .save(saved)
+        case (.screenCode, .screenCodeRejected(let detail)):
+            message = detail.isEmpty ? "That code didn't match. Try again." : detail
+            return .none
+        case (.screenCode, .chooseAdvanced):
+            go(.advancedOffer)
+            return .none
+        case (.debugging, .continueAhead) where entry == .advanced:
+            guard !host.isEmpty else {
+                message = "Type the TV's address."
+                go(.manual)
+                return .none
+            }
+            port = legacyAdbPort ?? 5555
+            go(.allow)
+            return .connectLegacy(host: host, port: port)
         case (.remember, .remember(let chosen)):
             let trimmed = chosen.trimmingCharacters(in: .whitespacesAndNewlines)
             name = trimmed.isEmpty ? host : trimmed
@@ -439,6 +538,13 @@ public struct SetupWizard: Equatable {
     }
 
     private mutating func routeAfterFound() -> WizardEffect {
+        if entry == .codePair {
+            go(.screenCode)
+            return .none
+        }
+        if entry == .advanced {
+            return routeDebugging()
+        }
         switch brand {
         case .sony:
             switchWatch = SwitchWatch(kind: .sonyNetwork)

@@ -17,8 +17,12 @@ final class KeyboardMonitor {
         self.model = model
     }
 
+    private var panelMonitor: Any?
+
     func start() {
         installTypeHotkey()
+        installPanelMonitor()
+        installConfiguredHotkeys()
         guard model?.allowsKeyboardCapture == true else { return }
         installTapIfTrusted(prompt: false)
         if tap == nil {
@@ -154,6 +158,68 @@ final class KeyboardMonitor {
         return String(utf16CodeUnits: buffer, count: length)
     }
 
+    private func installPanelMonitor() {
+        guard panelMonitor == nil else { return }
+        panelMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self, let model = self.model else { return event }
+            guard NSApp.keyWindow is RemotePanelWindow else { return event }
+            let chord = self.chord(from: event, keyCode: Int64(event.keyCode))
+            if model.deliverPanel(chord, textFieldFocused: self.textFieldIsFirstResponder()) {
+                return nil
+            }
+            return event
+        }
+    }
+
+    private func chord(from event: NSEvent) -> KeyChord {
+        chord(from: event, keyCode: Int64(event.keyCode))
+    }
+
+    private func chord(from event: NSEvent, keyCode: Int64) -> KeyChord {
+        var modifiers = KeyModifiers()
+        if event.modifierFlags.contains(.control) { modifiers.insert(.control) }
+        if event.modifierFlags.contains(.option) { modifiers.insert(.option) }
+        if event.modifierFlags.contains(.shift) { modifiers.insert(.shift) }
+        if event.modifierFlags.contains(.command) { modifiers.insert(.command) }
+        return KeyChord(
+            key: MacVirtualKey.inputKey(for: Int(keyCode)),
+            modifiers: modifiers,
+            characters: event.characters ?? ""
+        )
+    }
+
+    static func configuredAction(id: UInt32) -> GlobalHotkeyAction? {
+        switch id {
+        case 3: return .power
+        case 4: return .volumeUp
+        case 5: return .volumeDown
+        case 6: return .playPause
+        case 7: return .sendClipboard
+        default: return nil
+        }
+    }
+
+    private func installConfiguredHotkeys() {
+        installHandlerIfNeeded()
+        let bindings: [(UInt32, BoundHotkey)] = [
+            (3, model?.settings.hotkeys.power ?? GlobalHotkeys.factory.power),
+            (4, model?.settings.hotkeys.volumeUp ?? GlobalHotkeys.factory.volumeUp),
+            (5, model?.settings.hotkeys.volumeDown ?? GlobalHotkeys.factory.volumeDown),
+            (6, model?.settings.hotkeys.playPause ?? GlobalHotkeys.factory.playPause),
+            (7, model?.settings.hotkeys.sendClipboard ?? GlobalHotkeys.factory.sendClipboard)
+        ]
+        for (identifier, binding) in bindings {
+            var hotKeyID = EventHotKeyID(signature: OSType(0x5048_524D), id: identifier)
+            var ref: EventHotKeyRef?
+            var modifiers: UInt32 = 0
+            if binding.control { modifiers |= UInt32(controlKey) }
+            if binding.option { modifiers |= UInt32(optionKey) }
+            if binding.shift { modifiers |= UInt32(shiftKey) }
+            if binding.command { modifiers |= UInt32(cmdKey) }
+            RegisterEventHotKey(UInt32(binding.keyCode), modifiers, hotKeyID, GetApplicationEventTarget(), 0, &ref)
+        }
+    }
+
     private func installTypeHotkey() {
         installHandlerIfNeeded()
         guard typeHotKey == nil else { return }
@@ -194,6 +260,8 @@ final class KeyboardMonitor {
                     monitor.model?.openTypeField()
                 } else if hotKey == 1, monitor.model?.allowsKeyboardCapture == true {
                     monitor.model?.toggleKeyboardMode()
+                } else if let action = KeyboardMonitor.configuredAction(id: hotKey) {
+                    monitor.model?.globalHotkey(action)
                 }
             }
             return noErr

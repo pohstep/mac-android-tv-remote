@@ -9,7 +9,7 @@ final class EmulatorTests: XCTestCase {
 
     override func setUpWithError() throws {
         try XCTSkipUnless(ProcessInfo.processInfo.environment["POHSTEP_EMULATOR"] == "1")
-        let runner = ShellRunner()
+        let runner = TestProcessRunner()
         adb = try XCTUnwrap(resolveAdb(runner: runner))
         let listed = try runner.run(adb, arguments: ["devices"], timeout: 15)
         serial = try XCTUnwrap(firstEmulator(in: listed.stdout))
@@ -18,7 +18,7 @@ final class EmulatorTests: XCTestCase {
     }
 
     func testKeyeventsTextAndAppLaunchOnTheEmulator() throws {
-        let runner = ShellRunner()
+        let runner = TestProcessRunner()
         let client = AdbClient(runner: runner, adbPath: adb, timeout: 45)
         try installProbe(runner: runner)
 
@@ -87,7 +87,7 @@ final class EmulatorTests: XCTestCase {
     }
 
     func testSessionConnectsToTheEmulatorLocalhostPortOnly() throws {
-        let runner = ShellRunner()
+        let runner = TestProcessRunner()
         _ = try runner.run(adb, arguments: ["-s", serial, "tcpip", "5555"], timeout: 15)
         Thread.sleep(forTimeInterval: 1.0)
         var settings = Settings.factoryDefaults()
@@ -115,7 +115,7 @@ final class EmulatorTests: XCTestCase {
     }
 
     func testConnectionRefusedOnAClosedLocalPort() throws {
-        let runner = ShellRunner()
+        let runner = TestProcessRunner()
         var settings = Settings.factoryDefaults()
         settings.host = "127.0.0.1"
         settings.port = 1
@@ -130,7 +130,7 @@ final class EmulatorTests: XCTestCase {
         XCTAssertTrue(detail.contains("brew install android-platform-tools") == false)
     }
 
-    private func resolveAdb(runner: ShellRunner) -> String? {
+    private func resolveAdb(runner: TestProcessRunner) -> String? {
         if let override = ProcessInfo.processInfo.environment["POHSTEP_ADB"], FileManager.default.isExecutableFile(atPath: override) {
             return override
         }
@@ -163,7 +163,7 @@ final class EmulatorTests: XCTestCase {
         }
     }
 
-    private func installProbe(runner: ShellRunner) throws {
+    private func installProbe(runner: TestProcessRunner) throws {
         let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
         let script = root.appendingPathComponent("emulator/build-probe.sh").path
         let built = try runner.run("/bin/bash", arguments: [script], timeout: 120)
@@ -174,12 +174,12 @@ final class EmulatorTests: XCTestCase {
     }
 
     @discardableResult
-    private func shell(_ runner: ShellRunner, _ arguments: [String]) throws -> String {
+    private func shell(_ runner: TestProcessRunner, _ arguments: [String]) throws -> String {
         let result = try runner.run(adb, arguments: ["-s", serial] + ["shell"] + arguments, timeout: 45)
         return result.combined
     }
 
-    private func waitUntilProbeFocused(_ runner: ShellRunner) throws {
+    private func waitUntilProbeFocused(_ runner: TestProcessRunner) throws {
         let deadline = Date().addingTimeInterval(25)
         var last = ""
         while Date() < deadline {
@@ -197,7 +197,7 @@ final class EmulatorTests: XCTestCase {
 
     /// The Android TV image's Latin IME rewrites injected text. Hardware keys
     /// land in the field once that IME is out of the way.
-    private func disableInputMethods(_ runner: ShellRunner) throws {
+    private func disableInputMethods(_ runner: TestProcessRunner) throws {
         let listed = try shell(runner, ["ime", "list", "-s"])
         for raw in listed.split(whereSeparator: \.isNewline) {
             let line = raw.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -206,7 +206,7 @@ final class EmulatorTests: XCTestCase {
         }
     }
 
-    private func waitForLog(_ runner: ShellRunner, needle: String) -> Bool {
+    private func waitForLog(_ runner: TestProcessRunner, needle: String) -> Bool {
         let deadline = Date().addingTimeInterval(12)
         while Date() < deadline {
             if logSnippet(runner).contains(needle) { return true }
@@ -215,12 +215,12 @@ final class EmulatorTests: XCTestCase {
         return false
     }
 
-    private func logSnippet(_ runner: ShellRunner) -> String {
+    private func logSnippet(_ runner: TestProcessRunner) -> String {
         let result = try? runner.run(adb, arguments: ["-s", serial, "logcat", "-d", "-s", "InputProbe:I"], timeout: 25)
         return result?.combined ?? ""
     }
 
-    private func launchablePackage(_ runner: ShellRunner) throws -> String {
+    private func launchablePackage(_ runner: TestProcessRunner) throws -> String {
         let listed = try shell(runner, ["pm", "list", "packages"])
         let preferred = ["com.android.tv.settings", "com.android.settings", "com.google.android.tungsten.setupwraith", "app.pohstep.inputprobe"]
         for name in preferred where listed.contains("package:\(name)") {

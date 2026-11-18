@@ -89,7 +89,7 @@ final class WakeAndSettingsTests: XCTestCase {
     }
 
     func testShellRunnerEchoAndTimeout() throws {
-        let runner = ShellRunner()
+        let runner = TestProcessRunner()
         let echoed = try runner.run("/bin/echo", arguments: ["pohstep"], timeout: 5)
         XCTAssertEqual(echoed.status, 0)
         XCTAssertEqual(echoed.stdout, "pohstep\n")

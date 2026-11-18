@@ -14,9 +14,8 @@ final class ReviewFixesTests: XCTestCase {
 
     func testSandboxCodesignUsesTheHardenedRuntime() throws {
         let script = try String(contentsOf: repoRoot().appendingPathComponent("scripts/build-local.sh"), encoding: .utf8)
-        XCTAssertTrue(script.contains(
-            #"codesign --force --options runtime --sign "$SIGN" --entitlements macos/PohstepRemote/adb-helper.entitlements"#
-        ))
+        XCTAssertFalse(script.contains("adb-helper.entitlements"))
+        XCTAssertFalse(script.contains("Contents/Helpers/adb"))
         XCTAssertTrue(script.contains(
             #"codesign --force --options runtime --sign "$SIGN" --entitlements macos/PohstepRemote/Zapbar.entitlements"#
         ))
@@ -35,12 +34,9 @@ final class ReviewFixesTests: XCTestCase {
 
     func testSandboxSettingsHidesTheAdbPathField() throws {
         let source = try String(contentsOf: repoRoot().appendingPathComponent("macos/PohstepRemote/SettingsView.swift"), encoding: .utf8)
-        XCTAssertTrue(source.contains("#if !SANDBOX_BUILD"))
-        XCTAssertTrue(source.contains("Leave blank to use the built-in helper"))
-        let sandbox = sourceWithoutBlocks(source, marker: "#if !SANDBOX_BUILD")
-        XCTAssertFalse(sandbox.contains("Homebrew"), sandbox)
-        XCTAssertFalse(sandbox.contains("adb path"), sandbox)
-        XCTAssertFalse(sandbox.contains("adbBinding"), sandbox)
+        XCTAssertFalse(source.contains("adb path"))
+        XCTAssertFalse(source.contains("built-in helper"))
+        XCTAssertTrue(source.contains("Advanced"))
     }
 
     func testReleaseAndSandboxSkipV1Migration() throws {
@@ -84,10 +80,8 @@ final class ReviewFixesTests: XCTestCase {
         let tail = source[start.lowerBound...]
         let end = tail.range(of: "\n    func ")?.lowerBound ?? tail.endIndex
         let function = String(tail[..<end])
-        XCTAssertTrue(function.contains("#if SANDBOX_BUILD"))
-        XCTAssertTrue(function.contains("model.stopAdbServer()"))
-        let normal = sourceWithoutBlocks(function, marker: "#if SANDBOX_BUILD")
-        XCTAssertFalse(normal.contains("stopAdbServer"), normal)
+        XCTAssertFalse(function.contains("stopAdbServer"), function)
+        XCTAssertFalse(function.contains("kill-server"), function)
     }
 
     func testPrivateAdbPortAndKillServer() {
@@ -112,11 +106,7 @@ final class ReviewFixesTests: XCTestCase {
             adbServerSocket: AdbLaunch.serverSocket(sandboxed: true)
         )
         session.stopAdbServer()
-        XCTAssertEqual(fake.calls.count, 1)
-        XCTAssertEqual(fake.calls[0].arguments, ["-P", "5038", "kill-server"])
-        XCTAssertEqual(fake.calls[0].timeout, 2)
-        XCTAssertEqual(fake.calls[0].environment["TMPDIR"], "/tmp/zapbar-adb")
-        XCTAssertEqual(fake.calls[0].environment["ADB_SERVER_SOCKET"], "tcp:localhost:5038")
+        XCTAssertTrue(fake.calls.isEmpty)
 
         let missing = FakeRunner()
         let absent = RemoteSession(
@@ -293,7 +283,7 @@ final class ReviewFixesTests: XCTestCase {
     }
 
     func testCancelStopsARunningProcess() {
-        let runner = ShellRunner()
+        let runner = TestProcessRunner()
         let done = DispatchSemaphore(value: 0)
         DispatchQueue.global().async {
             _ = try? runner.run("/bin/sleep", arguments: ["30"], timeout: 20)

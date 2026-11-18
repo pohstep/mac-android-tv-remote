@@ -3,7 +3,7 @@ import XCTest
 
 final class WizardTests: XCTestCase {
     func testSonySkipsDebuggingUnlessTypingIsWanted() {
-        var wizard = SetupWizard()
+        var wizard = SetupWizard(entry: .brandFirst)
         XCTAssertEqual(wizard.handle(.choose(.sony)), .none)
         XCTAssertEqual(wizard.phase, .find)
         let tv = DiscoveredTV(name: "Living Room", brand: .sony, host: "192.0.2.8", port: 5555, controlPort: 80, macAddress: "aa:bb:cc:dd:ee:ff", source: "ssdp-scalar", model: "KD-55X80L")
@@ -32,7 +32,7 @@ final class WizardTests: XCTestCase {
     }
 
     func testSonyKeyRefusalStaysOnTheKeyStep() {
-        var wizard = SetupWizard()
+        var wizard = SetupWizard(entry: .brandFirst)
         _ = wizard.handle(.choose(.sony))
         _ = wizard.handle(.pick(DiscoveredTV(name: "Set", brand: .sony, host: "192.0.2.8", port: 5555, controlPort: 80, source: "ssdp-scalar")))
         _ = wizard.handle(.testKey("nope"))
@@ -44,7 +44,7 @@ final class WizardTests: XCTestCase {
     }
 
     func testSonyTypingAsksForAPairingCode() {
-        var wizard = SetupWizard()
+        var wizard = SetupWizard(entry: .brandFirst)
         _ = wizard.handle(.choose(.sony))
         _ = wizard.handle(.pick(DiscoveredTV(name: "Set", brand: .sony, host: "192.0.2.8", port: 5555, controlPort: 80, pairingPort: 37111, source: "scan")))
         XCTAssertEqual(wizard.phase, .sonyKey)
@@ -66,7 +66,7 @@ final class WizardTests: XCTestCase {
     }
 
     func testSonyTypingUsesPort5555WhenItIsOpen() {
-        var wizard = SetupWizard()
+        var wizard = SetupWizard(entry: .brandFirst)
         _ = wizard.handle(.choose(.sony))
         let tv = DiscoveredTV(name: "Set", brand: .sony, host: "192.0.2.8", port: 5555, controlPort: 80, source: "ssdp-scalar", legacyAdbPort: 5555)
         _ = wizard.handle(.pick(tv))
@@ -77,7 +77,7 @@ final class WizardTests: XCTestCase {
     }
 
     func testSonyTypingWithoutAHelperStaysOnRemoteKeys() {
-        var wizard = SetupWizard()
+        var wizard = SetupWizard(entry: .brandFirst)
         wizard.setAdbReady(false)
         _ = wizard.handle(.choose(.sony))
         _ = wizard.handle(.pick(DiscoveredTV(name: "Set", brand: .sony, host: "192.0.2.8", port: 5555, controlPort: 80, source: "ssdp-scalar")))
@@ -89,7 +89,7 @@ final class WizardTests: XCTestCase {
     }
 
     func testSonyWithoutAKnownDebugPortStillShowsTheDebuggingSteps() {
-        var wizard = SetupWizard()
+        var wizard = SetupWizard(entry: .brandFirst)
         _ = wizard.handle(.choose(.sony))
         _ = wizard.handle(.pick(DiscoveredTV(name: "Set", brand: .sony, host: "192.0.2.8", port: 5555, controlPort: 80, source: "ssdp-scalar")))
         _ = wizard.handle(.continueAhead)
@@ -100,7 +100,7 @@ final class WizardTests: XCTestCase {
     }
 
     func testOtherTelevisionOffersWirelessPairingAndPort5555() {
-        var wizard = SetupWizard()
+        var wizard = SetupWizard(entry: .brandFirst)
         _ = wizard.handle(.choose(.generic))
         _ = wizard.handle(.pick(DiscoveredTV(name: "Other", brand: .generic, host: "192.0.2.10", port: 43210, controlPort: 43210, source: "bonjour")))
         XCTAssertEqual(wizard.phase, .debugging)
@@ -112,7 +112,7 @@ final class WizardTests: XCTestCase {
         XCTAssertEqual(wizard.handle(.allowAccepted), .none)
         XCTAssertEqual(wizard.phase, .remember)
 
-        var wireless = SetupWizard()
+        var wireless = SetupWizard(entry: .brandFirst)
         _ = wireless.handle(.choose(.generic))
         _ = wireless.handle(.wantManual)
         XCTAssertEqual(wireless.phase, .manual)
@@ -131,7 +131,7 @@ final class WizardTests: XCTestCase {
     }
 
     func testXiaomiChecksThenRemembers() {
-        var wizard = SetupWizard()
+        var wizard = SetupWizard(entry: .brandFirst)
         _ = wizard.handle(.choose(.xiaomi))
         let effect = wizard.handle(.pick(DiscoveredTV(name: "Den", brand: .xiaomi, host: "192.0.2.40", port: 6095, controlPort: 6095, source: "ssdp-xiaomi")))
         XCTAssertEqual(effect, .testXiaomi(host: "192.0.2.40", port: 6095))
@@ -149,7 +149,7 @@ final class WizardTests: XCTestCase {
     }
 
     func testXiaomiCanBeSavedWhenTheCheckFails() {
-        var wizard = SetupWizard()
+        var wizard = SetupWizard(entry: .brandFirst)
         _ = wizard.handle(.choose(.xiaomi))
         _ = wizard.handle(.wantManual)
         _ = wizard.handle(.submitManual(host: "192.0.2.40", port: nil))
@@ -161,7 +161,7 @@ final class WizardTests: XCTestCase {
     }
 
     func testLegacyDebuggingSkipsTheChoiceScreen() {
-        var wizard = SetupWizard()
+        var wizard = SetupWizard(entry: .brandFirst)
         _ = wizard.handle(.choose(.generic))
         let effect = wizard.handle(.pick(DiscoveredTV(
             name: "Den",
@@ -177,7 +177,7 @@ final class WizardTests: XCTestCase {
     }
 
     func testPairingAdvertisementOpensTheCodeScreen() {
-        var wizard = SetupWizard()
+        var wizard = SetupWizard(entry: .brandFirst)
         _ = wizard.handle(.choose(.generic))
         XCTAssertEqual(wizard.handle(.pick(DiscoveredTV(
             name: "Other",
@@ -193,7 +193,7 @@ final class WizardTests: XCTestCase {
     }
 
     func testBackWalksTheStack() {
-        var wizard = SetupWizard()
+        var wizard = SetupWizard(entry: .brandFirst)
         _ = wizard.handle(.choose(.sony))
         _ = wizard.handle(.wantManual)
         XCTAssertEqual(wizard.phase, .manual)
@@ -218,7 +218,7 @@ final class WizardTests: XCTestCase {
     }
 
     func testSonySwitchWaitsDetectsThenTimesOut() {
-        var wizard = SetupWizard()
+        var wizard = SetupWizard(entry: .brandFirst)
         _ = wizard.handle(.choose(.sony))
         _ = wizard.handle(.pick(DiscoveredTV(name: "Living Room", brand: .sony, host: "192.0.2.8", port: 5555, controlPort: 80, source: "ssdp-scalar")))
         XCTAssertEqual(wizard.switchWatch?.kind, .sonyNetwork)
@@ -231,7 +231,7 @@ final class WizardTests: XCTestCase {
         XCTAssertEqual(wizard.phase, .sonyKey)
         XCTAssertEqual(wizard.message, WizardCopy.networkOn)
 
-        var slow = SetupWizard()
+        var slow = SetupWizard(entry: .brandFirst)
         _ = slow.handle(.choose(.sony))
         _ = slow.handle(.pick(DiscoveredTV(name: "Living Room", brand: .sony, host: "192.0.2.8", port: 5555, controlPort: 80, source: "ssdp-scalar")))
         XCTAssertEqual(slow.handle(.watch(answered: false, elapsed: SwitchWatch.limit, legacyPort: nil)), .none)
@@ -244,7 +244,7 @@ final class WizardTests: XCTestCase {
     }
 
     func testDebuggingSwitchDetectsAndTimesOut() {
-        var wizard = SetupWizard()
+        var wizard = SetupWizard(entry: .brandFirst)
         _ = wizard.handle(.choose(.generic))
         _ = wizard.handle(.pick(DiscoveredTV(name: "Other", brand: .generic, host: "192.0.2.10", port: 43210, controlPort: 43210, source: "bonjour")))
         XCTAssertEqual(wizard.phase, .debugging)
@@ -256,7 +256,7 @@ final class WizardTests: XCTestCase {
         XCTAssertEqual(wizard.phase, .allow)
         XCTAssertNil(wizard.switchWatch)
 
-        var slow = SetupWizard()
+        var slow = SetupWizard(entry: .brandFirst)
         _ = slow.handle(.choose(.generic))
         _ = slow.handle(.pick(DiscoveredTV(name: "Other", brand: .generic, host: "192.0.2.10", port: 43210, controlPort: 43210, source: "bonjour")))
         XCTAssertEqual(slow.handle(.watch(answered: false, elapsed: SwitchWatch.limit, legacyPort: nil)), .none)
@@ -276,7 +276,7 @@ final class WizardTests: XCTestCase {
     }
 
     func testFinishSaysConnectedToTheTV() {
-        var wizard = SetupWizard()
+        var wizard = SetupWizard(entry: .brandFirst)
         _ = wizard.handle(.choose(.sony))
         _ = wizard.handle(.pick(DiscoveredTV(name: "Living Room", brand: .sony, host: "192.0.2.8", port: 5555, controlPort: 80, source: "ssdp-scalar")))
         XCTAssertEqual(wizard.handle(.testSucceeded), .none)
@@ -290,7 +290,7 @@ final class WizardTests: XCTestCase {
     }
 
     func testFinishSaysSavedWhenTheKeyIsSkipped() {
-        var wizard = SetupWizard()
+        var wizard = SetupWizard(entry: .brandFirst)
         _ = wizard.handle(.choose(.sony))
         _ = wizard.handle(.pick(DiscoveredTV(name: "Living Room", brand: .sony, host: "192.0.2.8", port: 5555, controlPort: 80, source: "ssdp-scalar")))
         _ = wizard.handle(.continueAhead)
@@ -304,7 +304,7 @@ final class WizardTests: XCTestCase {
     }
 
     func testFinishSaysSavedWhenXiaomiDidNotAnswer() {
-        var wizard = SetupWizard()
+        var wizard = SetupWizard(entry: .brandFirst)
         _ = wizard.handle(.choose(.xiaomi))
         _ = wizard.handle(.pick(DiscoveredTV(name: "Den", brand: .xiaomi, host: "192.0.2.40", port: 6095, controlPort: 6095, source: "ssdp-xiaomi")))
         XCTAssertEqual(wizard.handle(.testFailed(WizardCopy.xiaomiUnanswered)), .none)
@@ -317,7 +317,7 @@ final class WizardTests: XCTestCase {
     }
 
     func testVerifiedClearsWhenASecondSetIsPicked() {
-        var wizard = SetupWizard()
+        var wizard = SetupWizard(entry: .brandFirst)
         _ = wizard.handle(.choose(.sony))
         _ = wizard.handle(.pick(DiscoveredTV(name: "Living Room", brand: .sony, host: "192.0.2.8", port: 5555, controlPort: 80, source: "sony-scan")))
         XCTAssertEqual(wizard.handle(.testSucceeded), .none)
@@ -382,7 +382,7 @@ final class WizardTests: XCTestCase {
         texts.append("Typing needs the built-in helper, and this copy does not have it. Remote keys still work.")
         texts.append("Accept the prompt on the TV.")
         texts.append("Checking the key…")
-        let phases: [WizardPhase] = [.pickBrand, .find, .manual, .sonyTyping, .debugging, .pair, .allow, .sonyKey, .xiaomiCheck, .remember, .done]
+        let phases: [WizardPhase] = [.pickBrand, .find, .manual, .sonyTyping, .debugging, .pair, .allow, .sonyKey, .xiaomiCheck, .remember, .done, .screenCode, .advancedOffer]
         let brands: [TvBrand?] = [nil, .sony, .generic, .xiaomi]
         for phase in phases {
             for brand in brands {
@@ -399,7 +399,7 @@ final class WizardTests: XCTestCase {
     }
 
     func testSetupCopyDoesNotNameTheForbiddenBrands() {
-        let phases: [WizardPhase] = [.pickBrand, .find, .manual, .sonyTyping, .debugging, .pair, .allow, .sonyKey, .xiaomiCheck, .remember, .done]
+        let phases: [WizardPhase] = [.pickBrand, .find, .manual, .sonyTyping, .debugging, .pair, .allow, .sonyKey, .xiaomiCheck, .remember, .done, .screenCode, .advancedOffer]
         let brands: [TvBrand?] = [nil, .sony, .generic, .xiaomi]
         for phase in phases {
             for brand in brands {
@@ -418,7 +418,7 @@ final class WizardTests: XCTestCase {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
         let script = root.appendingPathComponent("scripts/check-copy.sh").path
-        let result = try ShellRunner().run("/bin/sh", arguments: [script], timeout: 30)
+        let result = try TestProcessRunner().run("/bin/sh", arguments: [script], timeout: 30)
         XCTAssertEqual(result.status, 0, result.stdout + result.stderr)
     }
 
@@ -445,11 +445,11 @@ final class WizardTests: XCTestCase {
             try probe.write(to: url, atomically: true, encoding: .utf8)
         }
         let script = root.appendingPathComponent("scripts/check-copy.sh").path
-        let skipped = try ShellRunner().run("/bin/sh", arguments: [script], timeout: 30)
+        let skipped = try TestProcessRunner().run("/bin/sh", arguments: [script], timeout: 30)
         XCTAssertEqual(skipped.status, 0, skipped.stdout + skipped.stderr)
 
         try probe.write(to: hit, atomically: true, encoding: .utf8)
-        let caught = try ShellRunner().run("/bin/sh", arguments: [script], timeout: 30)
+        let caught = try TestProcessRunner().run("/bin/sh", arguments: [script], timeout: 30)
         XCTAssertNotEqual(caught.status, 0)
         XCTAssertTrue(caught.stdout.contains("zapbar-copy-probe.txt"), caught.stdout)
     }

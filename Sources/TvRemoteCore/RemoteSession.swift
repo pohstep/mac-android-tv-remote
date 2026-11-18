@@ -562,10 +562,7 @@ public final class RemoteSession {
     }
 
     /// Stops the adb server for this app. Waits at most `AdbLaunch.quitWait`, then returns.
-    public func stopAdbServer() {
-        guard let path = resolvedAdbPath() else { return }
-        makeClient(path: path).killServer()
-    }
+    public func stopAdbServer() {}
 
     /// Terminates the adb process for the current install or push. The job removes a partial remote file.
     public func cancelTransfer() {
