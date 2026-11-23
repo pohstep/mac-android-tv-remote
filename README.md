@@ -130,7 +130,7 @@ The host is signed with `macos/PohstepRemote/Zapbar.entitlements` (`app-sandbox`
 
 See [docs/adb-notice.md](docs/adb-notice.md) for the Apache-2.0 notice.
 
-CI: `.github/workflows/build.yml` runs on a macOS runner. The job downloads platform-tools, then runs `SANDBOX=1 NO_INSTALL=1 ARCH=universal scripts/build-local.sh` (the same sandboxed bundle as the 1.2.0 zip). It checks `lipo -archs` for arm64 and x86_64, and writes `Zapbar-<version>.zip` plus a SHA-256 file. Pushing a `v*` tag publishes those two files on that GitHub release. `docs/ci/build.yml.example` is a copy of the same workflow. The build script still does not download `adb`, and the app does not download it at runtime.
+CI: `.github/workflows/build.yml` runs on a macOS runner for pull requests, pushes to `main`, and pushes to `cursor/**` branches. The job downloads platform-tools, then runs `SANDBOX=1 NO_INSTALL=1 ARCH=universal scripts/build-local.sh` (the same sandboxed bundle as the 1.2.0 zip). It checks `lipo -archs` for arm64 and x86_64, and writes `Zapbar-<version>.zip` plus a SHA-256 file. Pushing a `v*` tag publishes those two files on that GitHub release. `docs/ci/build.yml.example` is a copy of the same workflow. The build script still does not download `adb`, and the app does not download it at runtime.
 
 > With ad-hoc or self-signed builds (no Apple Team ID), macOS ties keychain access to each build's hash. So after every rebuild, the keychain asks once more; click **Always Allow**.
 
