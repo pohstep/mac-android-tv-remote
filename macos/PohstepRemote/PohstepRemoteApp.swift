@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 
 enum MenuBarIcon {
@@ -11,6 +12,24 @@ enum MenuBarIcon {
         image.size = NSSize(width: side, height: side)
         image.isTemplate = true
         return image
+    }
+
+    static let connectedColors: [NSColor] = [
+        NSColor(srgbRed: 0x36 / 255, green: 0xD1 / 255, blue: 0xDC / 255, alpha: 1),
+        NSColor(srgbRed: 0x5B / 255, green: 0x5B / 255, blue: 0xF0 / 255, alpha: 1),
+        NSColor(srgbRed: 0xD9 / 255, green: 0x46 / 255, blue: 0xEF / 255, alpha: 1)
+    ]
+
+    static func image(connected: Bool) -> NSImage {
+        let mark = image()
+        guard connected, let gradient = NSGradient(colors: connectedColors) else { return mark }
+        let colored = NSImage(size: mark.size, flipped: false) { rect in
+            gradient.draw(in: rect, angle: -45)
+            mark.draw(in: rect, from: .zero, operation: .destinationIn, fraction: 1)
+            return true
+        }
+        colored.isTemplate = false
+        return colored
     }
 }
 
@@ -103,6 +122,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var globalClick: Any?
     private var localClick: Any?
     private var menuPowerItem: NSMenuItem?
+    private var statusWatch: AnyCancellable?
 
     func applicationWillTerminate(_ notification: Notification) {
         // The normal build uses the user's adb server on 5037. Quitting must not stop it.
@@ -142,6 +162,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         buildStatusItem()
         buildPanel()
         observeSettingsWindow()
+        statusWatch = model.$status
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.applyIcon() }
+        model.onHidePanel = { [weak self] in
+            self?.hidePanel()
+        }
         model.onOpenPanel = { [weak self] in
             self?.openPanel()
         }
@@ -340,7 +366,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func applyIcon() {
-        let image = MenuBarIcon.image()
+        let image = MenuBarIcon.image(connected: model.status.isConnected && !model.demoOn)
         image.accessibilityDescription = accessibilityLabel()
         statusItem.button?.image = image
         statusItem.button?.contentTintColor = nil

@@ -54,6 +54,13 @@ public struct AdbClient {
         }
     }
 
+    public func openSettings(serial: String) throws {
+        let result = try run(AdbCommands.openSettings(serial: serial))
+        if AdbOutput.outputIndicatesFailure(result.combined, status: result.status) {
+            throw RemoteError.commandFailed(result.combined.trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+    }
+
     public func inputText(_ text: String, serial: String) throws {
         let payloads = AdbText.shellPayloads(text)
         if payloads.isEmpty { return }

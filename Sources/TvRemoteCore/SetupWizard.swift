@@ -84,9 +84,9 @@ public struct SwitchWatch: Equatable {
     public var instruction: String {
         switch kind {
         case .sonyNetwork:
-            return "On the TV, open Settings, then Network. Turn on control from the network, and set a control key."
+            return "On the TV, follow the steps below. Turn on control from the network and type in a control key. Zapbar continues by itself when the TV answers."
         case .networkDebugging:
-            return "On the TV, open Settings, then System, then Developer options. Turn on Network debugging."
+            return "On the TV, follow the steps below to turn on Network debugging. Zapbar continues by itself when the TV answers."
         }
     }
 
@@ -171,7 +171,7 @@ public enum SetupCopy {
         case .sonyKey:
             return [
                 SetupLine(key: "setup.sony.ip.1", text: SwitchWatch(kind: .sonyNetwork).instruction),
-                SetupLine(key: "setup.sony.ip.2", text: "Enter that key here. It stays in the Keychain. Zapbar continues when the TV answers.")
+                SetupLine(key: "setup.sony.ip.2", text: "Then type the same key here and press Test connection. Zapbar keeps it in the Keychain.")
             ]
         case .xiaomiCheck:
             return [

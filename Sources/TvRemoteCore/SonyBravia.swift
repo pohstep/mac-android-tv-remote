@@ -43,7 +43,7 @@ public enum SonyButton: Equatable {
         case .num7: return .digit(7)
         case .num8: return .digit(8)
         case .num9: return .digit(9)
-        case .wakeup, .sleep, .power, .menu:
+        case .wakeup, .sleep, .power, .menu, .settings:
             return nil
         }
     }
@@ -315,6 +315,13 @@ public struct SonyClient {
             return []
         }
         return AppIndex.parseSony(data)
+    }
+
+    public func settingsURI(host: String, port: Int, psk: String) -> String? {
+        guard let data = call(host: host, port: port, path: "/sony/appControl", psk: psk, method: "getApplicationList", params: [], version: "1.0") else {
+            return nil
+        }
+        return AppIndex.sonySettingsURI(data)
     }
 
     public func setActiveApp(uri: String, host: String, port: Int, psk: String) -> Bool {

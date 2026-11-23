@@ -118,6 +118,7 @@ struct RemotePanel: View {
             }
             header(status: liveStatusLine, dot: liveStatusDot, showsPower: true)
             failureLine
+            settingsRow(tvSettings: true)
             remoteBody
         }
     }
@@ -157,6 +158,7 @@ struct RemotePanel: View {
                 .font(.system(size: 11.5))
                 .foregroundColor(secondaryInk)
                 .frame(maxWidth: .infinity)
+            settingsRow(tvSettings: false)
         }
     }
 
@@ -164,6 +166,7 @@ struct RemotePanel: View {
         VStack(alignment: .leading, spacing: GlassMetrics.sectionGap) {
             header(status: offlineStatus, dot: Palette.dotOffline, showsPower: true)
             failureLine
+            settingsRow(tvSettings: false)
             VStack(spacing: 8) {
                 Button(action: { model.retryReconnect() }) {
                     HStack(spacing: 7) {
@@ -203,6 +206,39 @@ struct RemotePanel: View {
                     .foregroundColor(Palette.muted)
             }
         }
+    }
+
+    private func settingsRow(tvSettings: Bool) -> some View {
+        let gap: CGFloat = 8
+        let full = GlassMetrics.panelWidth - GlassMetrics.padX * 2
+        let width = tvSettings ? (full - gap) / 2 : full
+        return HStack(spacing: gap) {
+            if tvSettings {
+                Chip(width: width, height: 34, corner: 12, action: { model.openTvSettings() }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "tv")
+                            .font(.system(size: 13))
+                        Text("TV Settings")
+                            .font(.system(size: 13, weight: .medium))
+                            .lineLimit(1)
+                    }
+                }
+                .accessibilityLabel("Open the TV's Settings")
+                .help("Opens the Settings page on the TV")
+            }
+            Chip(width: width, height: 34, corner: 12, action: { model.showSettings() }) {
+                HStack(spacing: 6) {
+                    Image(systemName: "gearshape")
+                        .font(.system(size: 13))
+                    Text("Zapbar Settings")
+                        .font(.system(size: 13, weight: .medium))
+                        .lineLimit(1)
+                }
+            }
+            .accessibilityLabel("Open Zapbar Settings and pairing")
+            .help("TVs, pairing, control key, and app options")
+        }
+        .frame(maxWidth: .infinity)
     }
 
     private func header(status: String, dot: Color, showsPower: Bool) -> some View {
@@ -246,7 +282,7 @@ struct RemotePanel: View {
     private var discoveredList: some View {
         VStack(spacing: 0) {
             ForEach(Array(model.discovered.enumerated()), id: \.offset) { index, tv in
-                Button(action: { model.sendWizard(.pick(tv)) }) {
+                Button(action: { model.quickPick(tv) }) {
                     HStack(spacing: 10) {
                         Image(systemName: "tv")
                             .font(.system(size: 15))

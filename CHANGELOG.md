@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.0 — 2026-11-24
+
+- The remote has a TV Settings button. It opens the Settings page on the TV, and a Zapbar Settings button next to it opens TVs, pairing, and the control key. Both stay visible while the TV is offline (Zapbar Settings only).
+- The menu bar mark fills with the Zapbar gradient while a TV is connected. Not connected, it stays the plain black or white mark.
+- Setup looks for TVs as soon as it opens. Click a found TV to skip the brand step.
+- Each TV step shows a picture of the menu path. A Sony set shows the Chinese labels with English beside them: control from the network with its key, and Remote start. Setup suggests a key you can copy. Network debugging, pairing, Allow, and the Mac keyboard permission each have their own steps. Build 5.
+
 ## 1.2.1 — 2026-11-23
 
 - Native Apple Silicon support. The release build is a universal binary for Apple silicon and Intel.

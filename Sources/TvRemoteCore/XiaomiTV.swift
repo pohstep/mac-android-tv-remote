@@ -25,6 +25,7 @@ public enum XiaomiKey {
         case .mediaNext: return 87
         case .mediaPrevious: return 88
         case .menu: return 82
+        case .settings: return nil
         case .sleep: return 223
         case .del: return 67
         case .forwardDel: return 112
