@@ -21,6 +21,7 @@ public enum AndroidKey: String, Equatable, CaseIterable {
     case sleep = "KEYCODE_SLEEP"
     case power = "KEYCODE_POWER"
     case menu = "KEYCODE_MENU"
+    case settings = "KEYCODE_SETTINGS"
     case hdmi1 = "KEYCODE_TV_INPUT_HDMI_1"
     case hdmi2 = "KEYCODE_TV_INPUT_HDMI_2"
     case hdmi3 = "KEYCODE_TV_INPUT_HDMI_3"
@@ -57,6 +58,7 @@ public enum AndroidKey: String, Equatable, CaseIterable {
         case .mediaNext: return 87
         case .mediaPrevious: return 88
         case .menu: return 82
+        case .settings: return 176
         case .volumeMute: return 164
         case .sleep: return 223
         case .wakeup: return 224
@@ -98,6 +100,7 @@ public enum AndroidKey: String, Equatable, CaseIterable {
         case .sleep: return "Sleep"
         case .power: return "Power"
         case .menu: return "Menu"
+        case .settings: return "TV Settings"
         case .hdmi1: return "HDMI 1"
         case .hdmi2: return "HDMI 2"
         case .hdmi3: return "HDMI 3"

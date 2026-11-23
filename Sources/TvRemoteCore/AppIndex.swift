@@ -123,6 +123,15 @@ public enum AppIndex {
         return out
     }
 
+    public static func sonySettingsURI(_ data: Data) -> String? {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let result = json["result"] as? [Any],
+              let list = result.first as? [[String: Any]] else { return nil }
+        let uris = list.compactMap { $0["uri"] as? String }
+        return uris.first { $0.hasSuffix("com.android.tv.settings.MainSettings") }
+            ?? uris.first { $0.contains("com.android.tv.settings") }
+    }
+
     /// "com.sony.dtv.<package>.<activity class>" → package.
     public static func sonyPackage(_ uri: String) -> String? {
         let prefix = "com.sony.dtv."

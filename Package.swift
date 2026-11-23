@@ -3,6 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "PohstepRemote",
+    platforms: [.macOS(.v13)],
     products: [
         .library(name: "TvRemoteCore", targets: ["TvRemoteCore"])
     ],

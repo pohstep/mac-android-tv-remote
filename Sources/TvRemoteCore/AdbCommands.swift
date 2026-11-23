@@ -89,6 +89,10 @@ public enum AdbCommands {
         ["-s", serial, "shell", "input", "text", payload]
     }
 
+    public static func openSettings(serial: String) -> [String] {
+        ["-s", serial, "shell", "am", "start", "-a", "android.settings.SETTINGS"]
+    }
+
     public static func launchLeanback(serial: String, packageName: String) -> [String] {
         [
             "-s", serial, "shell", "am", "start",

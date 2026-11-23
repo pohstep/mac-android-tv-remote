@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// Plain setup screens. The state machine in `SetupWizard` decides the step.
@@ -9,6 +10,8 @@ struct SetupWizardView: View {
     @State private var pairCode = ""
     @State private var deviceName = ""
     @State private var psk = ""
+    @State private var suggestedKey = TvSetupGuide.suggestedKey()
+    @State private var keyCopied = false
 
     var body: some View {
         ScrollView {
@@ -25,7 +28,7 @@ struct SetupWizardView: View {
                 .font(.system(size: 11.5))
                 .foregroundColor(Palette.text)
             WizardProgress(index: progressIndex)
-            if showsPicture {
+            if showsPicture && guideCards.isEmpty {
                 WizardPicture(symbol: pictureSymbol)
             }
             if model.wizard.phase == .pickBrand {
@@ -45,6 +48,12 @@ struct SetupWizardView: View {
                     .foregroundColor(Palette.muted)
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier(line.key)
+            }
+            if model.wizard.phase == .sonyKey {
+                keySuggestion
+            }
+            ForEach(guideCards, id: \.key) { card in
+                GuideCardView(card: card, number: guideCards.count > 1 ? (guideCards.firstIndex(of: card) ?? 0) + 1 : nil)
             }
             content
             Rectangle()
@@ -69,6 +78,79 @@ struct SetupWizardView: View {
             }
             if phase == .remember {
                 deviceName = model.wizard.name
+            }
+        }
+    }
+
+    private var guideCards: [GuideCard] {
+        TvSetupGuide.cards(phase: model.wizard.phase, brand: model.wizard.brand, keyboardCapture: model.allowsKeyboardCapture)
+    }
+
+    private var keySuggestion: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Need a key? Use this one on the TV and here:")
+                .font(.system(size: 12))
+                .foregroundColor(Palette.text)
+            HStack(spacing: 8) {
+                Text(suggestedKey)
+                    .font(.system(size: 20, weight: .semibold, design: .monospaced))
+                    .foregroundColor(Palette.text)
+                    .textSelection(.enabled)
+                    .accessibilityLabel("Suggested key \(suggestedKey.map(String.init).joined(separator: " "))")
+                Spacer(minLength: 8)
+                Button(keyCopied ? "Copied" : "Copy") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(suggestedKey, forType: .string)
+                    keyCopied = true
+                }
+                Button("Use this key") {
+                    psk = suggestedKey
+                }
+                .buttonStyle(FolioPrimaryStyle(wizard: true))
+                Button(action: {
+                    suggestedKey = TvSetupGuide.suggestedKey()
+                    keyCopied = false
+                }) {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .accessibilityLabel("Suggest another key")
+            }
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color.white.opacity(0.08))
+        )
+    }
+
+    private var foundOnNetwork: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Text(model.discovering ? "Looking for TVs on this network…" : (model.discovered.isEmpty ? "No TV found yet. Pick the brand below." : "Found on this network. Click your TV:"))
+                    .font(.system(size: 12))
+                    .foregroundColor(Palette.text)
+                if model.discovering {
+                    ProgressView()
+                        .controlSize(.small)
+                        .scaleEffect(0.8)
+                }
+            }
+            ForEach(Array(model.discovered.enumerated()), id: \.offset) { _, tv in
+                Button(action: { model.quickPick(tv) }) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "tv")
+                        Text(tv.listTitle)
+                        Spacer(minLength: 4)
+                        Text(tv.host)
+                            .foregroundColor(Palette.muted)
+                    }
+                }
+                .buttonStyle(FolioPrimaryStyle(wizard: true))
+            }
+            if !model.discovered.isEmpty {
+                Text("Or pick the brand:")
+                    .font(.system(size: 12))
+                    .foregroundColor(Palette.muted)
             }
         }
     }
@@ -135,6 +217,7 @@ struct SetupWizardView: View {
     private var content: some View {
         switch model.wizard.phase {
         case .pickBrand:
+            foundOnNetwork
             Button("Sony") { model.sendWizard(.choose(.sony)) }
                 .buttonStyle(FolioPrimaryStyle(wizard: true))
             Button("Xiaomi") { model.sendWizard(.choose(.xiaomi)) }
@@ -216,6 +299,9 @@ struct SetupWizardView: View {
             }
             .buttonStyle(FolioPrimaryStyle(wizard: true))
         case .done:
+            if !guideCards.isEmpty {
+                Button("Open Accessibility settings") { model.openAccessibilitySettings() }
+            }
             Button("Close") { model.closeWizard() }
                 .buttonStyle(FolioPrimaryStyle(wizard: true))
         }
@@ -283,5 +369,115 @@ private struct WizardPicture: View {
                 .strokeBorder(Color.white.opacity(0.32), lineWidth: 1)
         )
         .accessibilityHidden(true)
+    }
+}
+
+private struct GuideCardView: View {
+    var card: GuideCard
+    var number: Int?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                if let number {
+                    Text("\(number).")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(Palette.text)
+                }
+                Text(card.title)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(Palette.text)
+            }
+            Text(card.why)
+                .font(.system(size: 12))
+                .foregroundColor(Palette.muted)
+                .fixedSize(horizontal: false, vertical: true)
+            TvScreenPicture(steps: card.steps)
+            if !card.note.isEmpty {
+                Text(card.note)
+                    .font(.system(size: 11.5))
+                    .foregroundColor(Palette.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier(card.key)
+    }
+}
+
+private struct TvScreenPicture: View {
+    var steps: [GuideStep]
+
+    var body: some View {
+        VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(Array(steps.enumerated()), id: \.offset) { index, step in
+                    row(index: index, step: step, last: index == steps.count - 1)
+                }
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(Color.black.opacity(0.55))
+            )
+            .padding(6)
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Color.white.opacity(0.10))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.30), lineWidth: 1)
+            )
+            Rectangle()
+                .fill(Color.white.opacity(0.25))
+                .frame(width: 44, height: 4)
+            Capsule()
+                .fill(Color.white.opacity(0.25))
+                .frame(width: 96, height: 4)
+        }
+    }
+
+    private func row(index: Int, step: GuideStep, last: Bool) -> some View {
+        HStack(alignment: .center, spacing: 8) {
+            Text("\(index + 1)")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundColor(Palette.text)
+                .frame(width: 18, height: 18)
+                .background(Circle().fill(Color.white.opacity(0.16)))
+            Image(systemName: step.symbol)
+                .font(.system(size: 12))
+                .foregroundColor(Palette.text)
+                .frame(width: 18)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(step.label)
+                    .font(.system(size: 12.5, weight: .semibold))
+                    .foregroundColor(Palette.text)
+                if !step.english.isEmpty {
+                    Text(step.english)
+                        .font(.system(size: 10.5))
+                        .foregroundColor(Palette.muted)
+                }
+                if !step.value.isEmpty {
+                    Text("= \(step.value)")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(Palette.text)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            Spacer(minLength: 0)
+            if !last {
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundColor(Palette.muted)
+            }
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 4)
+        .background(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(last ? AnyShapeStyle(Folio.diagonal.opacity(0.55)) : AnyShapeStyle(Color.white.opacity(0.06)))
+        )
     }
 }

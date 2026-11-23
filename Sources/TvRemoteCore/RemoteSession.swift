@@ -313,6 +313,21 @@ public final class RemoteSession {
         return TvBackends.make(brand).sendKey(key, context: makeContext(allowSony: brand == .sony))
     }
 
+    public func openTvSettings() -> ActionReport {
+        if let serial = connectedSerial(), (try? client().openSettings(serial: serial)) != nil {
+            return ActionReport(title: "TV Settings", detail: scrub(serial), isError: false)
+        }
+        if lock.critical({ settings.brand }) == .sony, let target = sonyCredentials() {
+            let sony = SonyClient(http: http)
+            if let uri = sony.settingsURI(host: target.host, port: target.port, psk: target.psk),
+               sony.setActiveApp(uri: uri, host: target.host, port: target.port, psk: target.psk) {
+                noteSonySuccess()
+                return ActionReport(title: "TV Settings", detail: "Sent over Sony IP", isError: false)
+            }
+        }
+        return press(.settings)
+    }
+
     public func selectInput(uri: String) -> ActionReport {
         if let port = hdmiPort(in: uri) {
             return selectHdmi(port)

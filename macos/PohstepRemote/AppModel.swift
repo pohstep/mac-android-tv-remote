@@ -78,6 +78,7 @@ final class AppModel: ObservableObject {
     var onKeyboardModeChanged: ((Bool) -> Void)?
     var onChromeChanged: (() -> Void)?
     var onOpenPanel: (() -> Void)?
+    var onHidePanel: (() -> Void)?
     /// A file drag is over the panel. The window stays up until the drag ends.
     var onFileDrag: (() -> Void)?
     /// The file drag left the panel, or the drag ended without a drop.
@@ -451,6 +452,38 @@ final class AppModel: ObservableObject {
         run { $0.press(key) }
     }
 
+    func openTvSettings() {
+        if demoOn {
+            demoAct { $0.press(.settings) }
+            return
+        }
+        run { $0.openTvSettings() }
+    }
+
+    func openAccessibilitySettings() {
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") else { return }
+        NSWorkspace.shared.open(url)
+    }
+
+    func quickPick(_ tv: DiscoveredTV) {
+        if wizardWindow?.isVisible != true {
+            showWizard()
+        }
+        guard wizard.phase == .pickBrand else {
+            sendWizard(.pick(tv))
+            return
+        }
+        _ = wizard.handle(.choose(tv.brand))
+        sendWizard(.pick(tv))
+    }
+
+    private func bringForward(_ window: NSWindow?) {
+        onHidePanel?()
+        NSApp.activate(ignoringOtherApps: true)
+        window?.makeKeyAndOrderFront(nil)
+        window?.orderFrontRegardless()
+    }
+
     func launch(_ app: TvApp) {
         if demoOn {
             demoAct { $0.launch(app) }
@@ -572,10 +605,6 @@ final class AppModel: ObservableObject {
         run { $0.setVolume(level) }
     }
 
-    func openTvSettings() {
-        launch(TvApp(id: "settings", name: "Settings", packageName: "com.android.tv.settings"))
-    }
-
     func refreshLoginItem() {
         loginItem = LoginItemMapping.present(LoginItemBridge.current())
     }
@@ -616,8 +645,7 @@ final class AppModel: ObservableObject {
             window.center()
             settingsWindow = window
         }
-        settingsWindow?.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        bringForward(settingsWindow)
         setSettingsKey(true)
         refreshLoginItem()
     }
@@ -1087,8 +1115,8 @@ final class AppModel: ObservableObject {
             window.center()
             wizardWindow = window
         }
-        wizardWindow?.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        bringForward(wizardWindow)
+        discoverTVs()
     }
 
     func closeWizard() {
