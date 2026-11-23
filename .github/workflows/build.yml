@@ -1,0 +1,110 @@
+name: build
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ["v*"]
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch platform-tools
+        run: |
+          set -euo pipefail
+          curl -fsSL -o /tmp/platform-tools-darwin.zip https://dl.google.com/android/repository/platform-tools-latest-darwin.zip
+          rm -rf platform-tools
+          unzip -q /tmp/platform-tools-darwin.zip
+          test -x platform-tools/adb
+          test -f platform-tools/NOTICE.txt
+
+      - name: Build universal app
+        run: SANDBOX=1 NO_INSTALL=1 ARCH=universal scripts/build-local.sh
+
+      - name: Package
+        run: |
+          set -euo pipefail
+          VERSION="$(plutil -extract CFBundleShortVersionString raw dist/Zapbar.app/Contents/Info.plist)"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          if [ "${GITHUB_REF_TYPE}" = tag ]; then
+            TAG_VERSION="${GITHUB_REF_NAME#v}"
+            if [ "$VERSION" != "$TAG_VERSION" ]; then
+              echo "Info.plist version ${VERSION} does not match tag ${GITHUB_REF_NAME}" >&2
+              exit 1
+            fi
+          fi
+          ditto -c -k --keepParent dist/Zapbar.app "dist/Zapbar-${VERSION}.zip"
+          (cd dist && shasum -a 256 "Zapbar-${VERSION}.zip" > "Zapbar-${VERSION}.SHA256")
+          cat "dist/Zapbar-${VERSION}.SHA256"
+
+      - name: Verify architectures
+        run: |
+          set -euo pipefail
+          ROOT="$(mktemp -d)"
+          ditto -x -k "dist/Zapbar-${VERSION}.zip" "$ROOT"
+          BIN="$ROOT/Zapbar.app/Contents/MacOS/Zapbar"
+          ARCHS="$(lipo -archs "$BIN")"
+          echo "lipo -archs: $ARCHS"
+          file "$BIN"
+          {
+            echo "### lipo -archs"
+            echo '```'
+            echo "lipo -archs: $ARCHS"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          for need in arm64 x86_64; do
+            case " $ARCHS " in
+              *" $need "*) ;;
+              *) echo "missing $need" >&2; exit 1 ;;
+            esac
+          done
+          HELPER="$ROOT/Zapbar.app/Contents/Helpers/adb"
+          HELPER_ARCHS="$(lipo -archs "$HELPER")"
+          echo "helper lipo -archs: $HELPER_ARCHS"
+          for need in arm64 x86_64; do
+            case " $HELPER_ARCHS " in
+              *" $need "*) ;;
+              *) echo "helper missing $need" >&2; exit 1 ;;
+            esac
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Zapbar-${{ env.VERSION }}
+          path: |
+            dist/Zapbar-${{ env.VERSION }}.zip
+            dist/Zapbar-${{ env.VERSION }}.SHA256
+          if-no-files-found: error
+
+      - name: Publish GitHub release
+        if: github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          SUM="$(awk '{print $1}' "dist/Zapbar-${VERSION}.SHA256")"
+          cat > dist/release-notes.md <<EOF
+          ## Zapbar ${VERSION}
+
+          Native Apple Silicon support. This build is a universal binary and runs natively on Apple silicon and on Intel.
+
+          ### Install
+          1. Download \`Zapbar-${VERSION}.zip\`.
+          2. Move **Zapbar** to Applications and open it.
+          3. The app is ad-hoc signed. On first launch, right-click **Zapbar** and choose **Open**, or use **System Settings → Privacy & Security → Open Anyway**.
+
+          ### Checksum (SHA-256)
+          \`\`\`
+          ${SUM}  Zapbar-${VERSION}.zip
+          \`\`\`
+          Target commit: \`${GITHUB_SHA}\`
+          EOF
+          gh release create "$GITHUB_REF_NAME" \
+            "dist/Zapbar-${VERSION}.zip" \
+            "dist/Zapbar-${VERSION}.SHA256" \
+            --title "Zapbar ${VERSION}" \
+            --notes-file dist/release-notes.md
