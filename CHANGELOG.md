@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.1 — 2026-11-23
+
+- Native Apple Silicon support. The release build is a universal binary for Apple silicon and Intel.
+
 ## 1.2.0 — 2026-10-28
 
 - Setup looks for a Sony and a Xiaomi set in one search. Pick the set. Type an address only if nothing is found.

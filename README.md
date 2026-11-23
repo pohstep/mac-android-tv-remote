@@ -8,7 +8,7 @@ Zapbar was called Mac Android TV Remote up to v1.0.1. Same project, new name.
 
 ## Install
 
-1. Download `Zapbar-1.2.0.zip` from the [latest release](https://github.com/pohstep/mac-android-tv-remote/releases/latest).
+1. Download `Zapbar-1.2.1.zip` from the [latest release](https://github.com/pohstep/mac-android-tv-remote/releases/latest).
 2. Move **Zapbar** to Applications and open it. It is not signed with an Apple developer account, so macOS asks first. See [First launch](#first-launch-unsigned-app).
 3. Follow the setup window, or use **Try demo TV** to look around without a TV.
 
@@ -44,7 +44,7 @@ Xiaomi control (remote buttons, apps, and HDMI) is **experimental**. It was chec
 
 ## Requirements
 
-- macOS 13 Ventura or later (Intel or Apple silicon).
+- macOS 13 Ventura or later (Intel or Apple silicon). The release app is a universal binary, so an Apple silicon Mac runs it natively.
 - A TV on the same network. A Sony needs network control turned on (see Setup) and a control key. Other sets need this Mac allowed on the TV.
 - A sandboxed build needs a local copy of the connection helper on the build machine. See [docs/adb-notice.md](docs/adb-notice.md). The app never downloads it.
 
@@ -107,13 +107,14 @@ Options (environment variables):
 | `BUNDLE_ID` | `com.pohstep.tvremote` | Bundle identifier |
 | `INSTALL_DIR` | `~/Applications` | Install location |
 | `NO_INSTALL=1` | – | Build and sign only |
+| `ARCH` | `universal` | `universal` builds arm64 and x86_64 and joins them with `lipo`. `arm64`, `x86_64`, or `host` builds one slice. `host` follows this Mac. |
 | `SANDBOX=1` | – | Sandboxed build with a bundled `adb` |
 | `PLATFORM_TOOLS` | `./platform-tools` | Local platform-tools directory used when `SANDBOX=1` |
 | `ADB_BINARY` | `$PLATFORM_TOOLS/adb` | `adb` to embed |
 
 ### Sandboxed build
 
-Put an unzipped platform-tools folder on the Mac (do not commit it). It must contain `adb` and `NOTICE.txt` or `NOTICE`. The script copies both into the bundle and signs them. It will not fetch `adb`.
+Put an unzipped platform-tools folder on the Mac (do not commit it). It must contain `adb` and `NOTICE.txt` or `NOTICE`. The script copies both into the bundle and signs them. It will not fetch `adb`. A universal build also requires that `adb` to contain arm64 and x86_64. Current macOS platform-tools builds do.
 
 ```sh
 SANDBOX=1 NO_INSTALL=1 scripts/build-local.sh
@@ -129,7 +130,7 @@ The host is signed with `macos/PohstepRemote/Zapbar.entitlements` (`app-sandbox`
 
 See [docs/adb-notice.md](docs/adb-notice.md) for the Apache-2.0 notice.
 
-CI: a GitHub Actions workflow is included as `docs/ci/build.yml.example`. To enable it, copy it to `.github/workflows/build.yml`.
+CI: `.github/workflows/build.yml` runs on a macOS runner for pull requests, pushes to `main`, and pushes to `cursor/**` branches. The job downloads platform-tools, then runs `SANDBOX=1 NO_INSTALL=1 ARCH=universal scripts/build-local.sh` (the same sandboxed bundle as the 1.2.0 zip). It checks `lipo -archs` for arm64 and x86_64, and writes `Zapbar-<version>.zip` plus a SHA-256 file. Pushing a `v*` tag publishes those two files on that GitHub release. `docs/ci/build.yml.example` is a copy of the same workflow. The build script still does not download `adb`, and the app does not download it at runtime.
 
 > With ad-hoc or self-signed builds (no Apple Team ID), macOS ties keychain access to each build's hash. So after every rebuild, the keychain asks once more; click **Always Allow**.
 
